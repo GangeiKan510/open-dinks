@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+build
+coverage
+.codacy
+yarn.lock
+AGENTS.md
+CLAUDE.md
