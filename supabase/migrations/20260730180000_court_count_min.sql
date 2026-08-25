@@ -1,2 +1,7 @@
-alter table public.sessions
-  add constraint sessions_court_count_min check (court_count >= 1);
+do $$
+begin
+  alter table public.sessions
+    add constraint sessions_court_count_min check (court_count >= 1);
+exception
+  when duplicate_object then null;
+end $$;

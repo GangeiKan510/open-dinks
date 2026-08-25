@@ -1,31 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import type { EngineAction, EngineState } from "@/engine";
+import { useState, useSyncExternalStore } from "react";
+import type { EngineAction } from "@/engine";
 import { summarizeSession } from "@/engine";
 import { HostConsole } from "@/components/session/host-console";
 import {
   createDemoSession,
   dispatchDemo,
-  loadDemoState,
+  getClientTrue,
+  getDemoServerSnapshot,
+  getDemoSnapshot,
+  getServerFalse,
   seedDemoPlayers,
+  subscribeDemoState,
+  subscribeNever,
 } from "@/lib/demo-store";
 import { formatSkillTier } from "@/lib/skill-tier";
 import { Button } from "@/components/ui/button";
 
-function getInitialDemoState(): EngineState {
-  if (typeof window === "undefined") {
-    return createDemoSession();
-  }
-  return loadDemoState() ?? createDemoSession();
-}
-
 export function DemoHostApp() {
-  const [state, setState] = useState<EngineState>(getInitialDemoState);
+  const hydrated = useSyncExternalStore(
+    subscribeNever,
+    getClientTrue,
+    getServerFalse,
+  );
+  const liveState = useSyncExternalStore(
+    subscribeDemoState,
+    getDemoSnapshot,
+    getDemoServerSnapshot,
+  );
+  const state = hydrated ? liveState : getDemoServerSnapshot();
   const [ended, setEnded] = useState(false);
 
   function dispatch(action: EngineAction) {
-    setState((prev) => dispatchDemo(prev, action));
+    dispatchDemo(state, action);
   }
 
   if (ended) {
@@ -56,8 +64,7 @@ export function DemoHostApp() {
         </ul>
         <Button
           onClick={() => {
-            const next = createDemoSession();
-            setState(next);
+            createDemoSession();
             setEnded(false);
           }}
         >
@@ -73,7 +80,7 @@ export function DemoHostApp() {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => setState((s) => seedDemoPlayers(s))}
+          onClick={() => seedDemoPlayers(state)}
         >
           Seed 12 players
         </Button>
@@ -81,7 +88,7 @@ export function DemoHostApp() {
           variant="outline"
           size="sm"
           onClick={() => {
-            setState(createDemoSession());
+            createDemoSession();
           }}
         >
           Reset demo

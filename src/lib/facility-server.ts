@@ -73,16 +73,16 @@ export async function createFacilityForAccount(input: {
   name: string;
   shortName?: string;
   tagline?: string;
-}): Promise<string | null> {
+}): Promise<{ id: string } | { error: string }> {
   const name = input.name.trim();
-  if (!name) return null;
+  if (!name) return { error: "Facility name is required." };
 
   const shortName = (input.shortName?.trim() || name).slice(0, 32);
   const baseSlug = slugifyFacilityName(name);
   const slug = `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
 
   const supabase = await createClient();
-  const { data: created } = await supabase
+  const { data: created, error } = await supabase
     .from("facilities")
     .insert({
       slug,
@@ -93,5 +93,26 @@ export async function createFacilityForAccount(input: {
     .select("id")
     .single();
 
-  return created?.id ?? null;
+  if (error) {
+    console.error("[facility] create failed", error);
+    const message = error.message.toLowerCase();
+    if (
+      message.includes("does not exist") ||
+      message.includes("schema cache") ||
+      error.code === "42P01" ||
+      error.code === "PGRST205"
+    ) {
+      return {
+        error:
+          "Facilities table is missing. Run the latest Supabase migrations, then try again.",
+      };
+    }
+    return { error: "Could not create facility. Try again." };
+  }
+
+  if (!created?.id) {
+    return { error: "Could not create facility. Try again." };
+  }
+
+  return { id: created.id };
 }

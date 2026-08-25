@@ -4,6 +4,7 @@ out
 build
 coverage
 .codacy
+supabase/.temp
 yarn.lock
 AGENTS.md
 CLAUDE.md

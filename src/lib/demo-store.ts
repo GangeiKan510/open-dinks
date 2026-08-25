@@ -11,6 +11,21 @@ import { SKILL_TIERS, type SkillTier } from "@/lib/skill-tier";
 import { DEFAULT_COURT_COUNT, normalizeCourtCount } from "@/lib/court-count";
 
 const STORAGE_KEY = "opendinks.demo.v1";
+const DEMO_EVENT = "opendinks-demo";
+
+const SERVER_DEMO_STATE = createInitialState({
+  mode: "rotating",
+  now: 0,
+  courts: Array.from({ length: DEFAULT_COURT_COUNT }, (_, i) => ({
+    id: `c${i + 1}`,
+    name: `Court ${i + 1}`,
+  })),
+  players: [],
+  matches: [],
+});
+
+let cachedRaw: string | null | undefined;
+let cachedState: EngineState = SERVER_DEMO_STATE;
 
 export function loadDemoState(): EngineState | null {
   if (typeof window === "undefined") return null;
@@ -25,7 +40,57 @@ export function loadDemoState(): EngineState | null {
 
 export function saveDemoState(state: EngineState) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const raw = JSON.stringify(state);
+  window.localStorage.setItem(STORAGE_KEY, raw);
+  cachedRaw = raw;
+  cachedState = state;
+  window.dispatchEvent(new Event(DEMO_EVENT));
+}
+
+export function subscribeDemoState(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) onStoreChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(DEMO_EVENT, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(DEMO_EVENT, onStoreChange);
+  };
+}
+
+export function getDemoSnapshot(): EngineState {
+  if (typeof window === "undefined") return SERVER_DEMO_STATE;
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (raw === cachedRaw) return cachedState;
+  cachedRaw = raw;
+  if (!raw) {
+    cachedState = SERVER_DEMO_STATE;
+    return cachedState;
+  }
+  try {
+    cachedState = JSON.parse(raw) as EngineState;
+  } catch {
+    cachedState = SERVER_DEMO_STATE;
+  }
+  return cachedState;
+}
+
+export function getDemoServerSnapshot(): EngineState {
+  return SERVER_DEMO_STATE;
+}
+
+export function subscribeNever() {
+  return () => {};
+}
+
+export function getClientTrue() {
+  return true;
+}
+
+export function getServerFalse() {
+  return false;
 }
 
 export function createDemoSession(options?: {

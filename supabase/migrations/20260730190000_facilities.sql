@@ -2,7 +2,7 @@
 -- Each venue belongs to a facility owned/configured by the host account.
 -- There is no global default facility — branding comes from the account's facility.
 
-create table public.facilities (
+create table if not exists public.facilities (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   name text not null,
@@ -12,7 +12,7 @@ create table public.facilities (
 );
 
 alter table public.venues
-  add column facility_id uuid references public.facilities (id) on delete restrict;
+  add column if not exists facility_id uuid references public.facilities (id) on delete restrict;
 
 -- Backfill existing venues: one facility per venue named after the venue.
 insert into public.facilities (slug, name, short_name, tagline)
@@ -31,23 +31,29 @@ from public.facilities f
 where v.facility_id is null
   and f.slug = left(v.slug, 48);
 
-alter table public.venues
-  alter column facility_id set not null;
+do $$
+begin
+  alter table public.venues
+    alter column facility_id set not null;
+exception
+  when others then null;
+end $$;
 
-create index venues_facility_id_idx on public.venues (facility_id);
+create index if not exists venues_facility_id_idx on public.venues (facility_id);
 
 alter table public.facilities enable row level security;
 
--- Branding is safe to expose publicly (wallboard / player QR views).
+drop policy if exists "Anyone can read facilities" on public.facilities;
 create policy "Anyone can read facilities"
   on public.facilities for select to anon, authenticated
   using (true);
 
+drop policy if exists "Authenticated can create facilities" on public.facilities;
 create policy "Authenticated can create facilities"
   on public.facilities for insert to authenticated
   with check (true);
 
--- Venue owners/admins can update their facility branding.
+drop policy if exists "Venue owners update facilities" on public.facilities;
 create policy "Venue owners update facilities"
   on public.facilities for update to authenticated
   using (

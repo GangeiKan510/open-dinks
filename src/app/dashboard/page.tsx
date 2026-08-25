@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createVenueAction, signOutAction } from "@/app/actions/session";
+import { signOutAction } from "@/app/actions/session";
+import { CreateVenueForm } from "@/components/venue/create-venue-form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { isSupabaseConfigured } from "@/lib/env";
-import {
-  DEFAULT_COURT_COUNT,
-  MAX_COURT_COUNT,
-  MIN_COURT_COUNT,
-} from "@/lib/court-count";
-import { formatBrandTitle, PRODUCT_NAME } from "@/lib/facility";
+import { formatBrandTitle } from "@/lib/facility";
 import { loadFacilityForAccount } from "@/lib/facility-server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -79,51 +73,7 @@ export default async function DashboardPage() {
 
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <h2 className="mb-4 font-semibold">Create venue</h2>
-        <form action={createVenueAction} className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1 sm:col-span-2">
-            <Label htmlFor="name">Venue name</Label>
-            <Input id="name" name="name" required placeholder="Riverside Rec" />
-          </div>
-          <div className="space-y-1 sm:col-span-2">
-            <Label htmlFor="facilityName">Facility name</Label>
-            {facility ? (
-              <p className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm">
-                {formatBrandTitle(facility)}
-                <span className="mt-1 block text-xs text-[var(--muted)]">
-                  New venues use your existing facility. Edit branding on a
-                  venue page.
-                </span>
-              </p>
-            ) : (
-              <>
-                <Input
-                  id="facilityName"
-                  name="facilityName"
-                  placeholder="The PickleGrounds"
-                />
-                <p className="text-xs text-[var(--muted)]">
-                  Co-brands as {PRODUCT_NAME} | {"{"}facility{"}"}. Leave blank
-                  to use the venue name.
-                </p>
-              </>
-            )}
-          </div>
-          <div className="w-28 space-y-1">
-            <Label htmlFor="courtCount">Courts</Label>
-            <Input
-              id="courtCount"
-              name="courtCount"
-              type="number"
-              min={MIN_COURT_COUNT}
-              max={MAX_COURT_COUNT}
-              defaultValue={DEFAULT_COURT_COUNT}
-              required
-            />
-          </div>
-          <div className="flex items-end">
-            <Button type="submit">Create</Button>
-          </div>
-        </form>
+        <CreateVenueForm facility={facility} />
       </section>
 
       <section className="space-y-3">

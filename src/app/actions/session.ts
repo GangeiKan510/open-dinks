@@ -24,9 +24,11 @@ function slugify(name: string) {
     .slice(0, 48);
 }
 
-export async function createVenueAction(formData: FormData): Promise<void> {
+export async function createVenueAction(
+  formData: FormData,
+): Promise<{ error: string } | { ok: true; venueId: string }> {
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return { error: "Venue name is required." };
 
   const facilityName =
     String(formData.get("facilityName") ?? "").trim() || name;
@@ -35,7 +37,21 @@ export async function createVenueAction(formData: FormData): Promise<void> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return;
+  if (!user) return { error: "Sign in to create a venue." };
+
+  // Venue.created_by requires a profiles row (created by auth trigger).
+  const { error: profileError } = await supabase.from("profiles").upsert({
+    id: user.id,
+    display_name:
+      user.user_metadata?.display_name || user.email?.split("@")[0] || "Host",
+  });
+  if (profileError) {
+    console.error("[venue] profile upsert failed", profileError);
+    return {
+      error:
+        "Could not prepare your host profile. Apply the latest Supabase migrations, then try again.",
+    };
+  }
 
   const slugBase = slugify(name) || "venue";
   const slug = `${slugBase}-${Math.random().toString(36).slice(2, 6)}`;
@@ -45,34 +61,62 @@ export async function createVenueAction(formData: FormData): Promise<void> {
   );
 
   const existingFacility = await loadFacilityForAccount(user.id);
-  const facilityId =
-    existingFacility?.id ??
-    (await createFacilityForAccount({ name: facilityName }));
-  if (!facilityId) return;
+  let facilityId = existingFacility?.id ?? null;
+  if (!facilityId) {
+    const created = await createFacilityForAccount({ name: facilityName });
+    if ("error" in created) return { error: created.error };
+    facilityId = created.id;
+  }
 
-  const { data: venue, error } = await supabase
-    .from("venues")
-    .insert({ name, slug, created_by: user.id, facility_id: facilityId })
-    .select("id")
-    .single();
+  const venueId = crypto.randomUUID();
+  const { error } = await supabase.from("venues").insert({
+    id: venueId,
+    name,
+    slug,
+    created_by: user.id,
+    facility_id: facilityId,
+  });
 
-  if (error || !venue) return;
+  if (error) {
+    console.error("[venue] create failed", error);
+    const message = (error.message ?? "").toLowerCase();
+    if (
+      message.includes("facility_id") ||
+      message.includes("does not exist") ||
+      message.includes("schema cache")
+    ) {
+      return {
+        error:
+          "Venue schema is out of date. Run the latest Supabase migrations, then try again.",
+      };
+    }
+    return { error: "Could not create venue. Try again." };
+  }
 
-  await supabase.from("venue_members").insert({
-    venue_id: venue.id,
+  const { error: memberError } = await supabase.from("venue_members").insert({
+    venue_id: venueId,
     user_id: user.id,
     role: "owner",
   });
+  if (memberError) {
+    console.error("[venue] member insert failed", memberError);
+    return { error: "Venue created, but membership failed. Try again." };
+  }
 
   const courts = buildCourtNames(courtCount).map((courtName, index) => ({
-    venue_id: venue.id,
+    venue_id: venueId,
     name: courtName,
     sort_order: index + 1,
   }));
-  await supabase.from("courts").insert(courts);
+  const { error: courtsError } = await supabase.from("courts").insert(courts);
+  if (courtsError) {
+    console.error("[venue] courts insert failed", courtsError);
+    return { error: "Venue created, but courts failed to save. Try again." };
+  }
 
   revalidatePath("/dashboard");
-  redirect(`/venues/${venue.id}`);
+  revalidatePath(`/venues/${venueId}`);
+  return { ok: true as const, venueId };
 }
 
 export async function createSessionAction(formData: FormData): Promise<void> {
@@ -108,26 +152,6 @@ export async function createSessionAction(formData: FormData): Promise<void> {
 
   revalidatePath(`/venues/${venueId}`);
   redirect(`/s/${session.public_token}/host`);
-}
-
-export async function signInWithMagicLinkAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim();
-  if (!email) return { error: "Email is required" };
-
-  const supabase = await createClient();
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-    "http://localhost:3000";
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: `${siteUrl}/auth/callback`,
-    },
-  });
-
-  if (error) return { error: error.message };
-  return { ok: true as const };
 }
 
 export async function signOutAction() {

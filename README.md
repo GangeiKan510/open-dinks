@@ -28,10 +28,11 @@ Open [http://localhost:3000/demo](http://localhost:3000/demo):
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `NEXT_PUBLIC_SITE_URL` (e.g. `http://localhost:3000`)
-3. Run the SQL in [`supabase/migrations`](supabase/migrations) in the Supabase SQL editor (or `supabase db push`)
+3. Run **all** SQL in [`supabase/migrations`](supabase/migrations) in the Supabase SQL editor (or `supabase db push`). Signup creates a `profiles` row via trigger — missing migrations often cause “Could not create account.”
 4. Facility branding is per account: creating a venue creates a facility for that host. Edit name/tagline on the venue page; wallboard and player views load it from the venue.
-5. In Auth → URL configuration, add `{SITE_URL}/auth/callback`
-6. `yarn dev` → `/login` → magic link → create a venue → start open play
+5. In Auth → URL configuration, add `{SITE_URL}/auth/callback` (used if email confirmation is enabled)
+6. Optional: Auth → Providers → Email → disable “Confirm email” for faster local sign-up
+7. `yarn dev` → `/login` → create account or sign in with email + password → create a venue → start open play
 
 ## Scripts
 

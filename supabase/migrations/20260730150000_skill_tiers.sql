@@ -23,9 +23,8 @@ begin
       and column_name = 'skill'
       and udt_name = 'int4'
   ) then
-    alter table public.players
-      alter column skill drop default,
-      alter column skill drop constraint if exists players_skill_check;
+    alter table public.players drop constraint if exists players_skill_check;
+    alter table public.players alter column skill drop default;
 
     alter table public.players
       alter column skill type public.skill_tier
@@ -39,11 +38,10 @@ begin
           else 'intermediate'::public.skill_tier
         end
       ),
-      alter column skill set default 'intermediate';
+      alter column skill set default 'intermediate'::public.skill_tier;
 
-    alter table public.session_players
-      alter column skill drop default,
-      alter column skill drop constraint if exists session_players_skill_check;
+    alter table public.session_players drop constraint if exists session_players_skill_check;
+    alter table public.session_players alter column skill drop default;
 
     alter table public.session_players
       alter column skill type public.skill_tier
@@ -57,7 +55,7 @@ begin
           else 'intermediate'::public.skill_tier
         end
       ),
-      alter column skill set default 'intermediate';
+      alter column skill set default 'intermediate'::public.skill_tier;
 
     alter table public.courts
       alter column skill_min type public.skill_tier

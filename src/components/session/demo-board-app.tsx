@@ -1,25 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { EngineState } from "@/engine";
+import { useSyncExternalStore } from "react";
 import { Wallboard } from "@/components/session/wallboard";
-import { createDemoSession, loadDemoState } from "@/lib/demo-store";
-
-function readDemo(): EngineState {
-  if (typeof window === "undefined") return createDemoSession();
-  return loadDemoState() ?? createDemoSession();
-}
+import {
+  getClientTrue,
+  getDemoServerSnapshot,
+  getDemoSnapshot,
+  getServerFalse,
+  subscribeDemoState,
+  subscribeNever,
+} from "@/lib/demo-store";
 
 export function DemoBoardApp() {
-  const [state, setState] = useState<EngineState>(readDemo);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const next = loadDemoState();
-      if (next) setState(next);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, []);
+  const hydrated = useSyncExternalStore(
+    subscribeNever,
+    getClientTrue,
+    getServerFalse,
+  );
+  const liveState = useSyncExternalStore(
+    subscribeDemoState,
+    getDemoSnapshot,
+    getDemoServerSnapshot,
+  );
+  const state = hydrated ? liveState : getDemoServerSnapshot();
 
   return <Wallboard state={state} />;
 }
