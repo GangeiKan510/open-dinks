@@ -83,11 +83,14 @@ export function formatRemainingTimeAnnouncement(
   return `${courtName}, ${formatRemainingTimeForSpeech(remainingMs)} remaining.`;
 }
 
+/** Slightly under 1 so gym announcements are easier to catch. */
+export const ANNOUNCEMENT_SPEECH_RATE = 0.85;
+
 export function speakAnnouncement(text: string): void {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1;
+  utterance.rate = ANNOUNCEMENT_SPEECH_RATE;
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
 }
