@@ -438,16 +438,36 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
 
     case "SET_STATUS": {
-      const next = {
-        ...state,
-        players: updatePlayer(state.players, action.playerId, {
-          status: action.status,
-          consecutiveWins:
-            action.status === "resting" || action.status === "left"
-              ? 0
-              : undefined,
-        }),
-      };
+      const leaving = action.status === "left";
+      const removed = state.players.find((p) => p.id === action.playerId);
+      const teamGroupId = leaving ? (removed?.teamLockGroupId ?? null) : null;
+
+      let players = updatePlayer(state.players, action.playerId, {
+        status: action.status,
+        consecutiveWins:
+          action.status === "resting" || action.status === "left"
+            ? 0
+            : undefined,
+        ...(leaving ? { partnerLockId: null, teamLockGroupId: null } : {}),
+      });
+
+      if (leaving) {
+        players = players.map((p) => {
+          if (p.id === action.playerId) return p;
+          const clearPartner = p.partnerLockId === action.playerId;
+          const clearTeam = Boolean(
+            teamGroupId && p.teamLockGroupId === teamGroupId,
+          );
+          if (!clearPartner && !clearTeam) return p;
+          return {
+            ...p,
+            partnerLockId: clearPartner ? null : p.partnerLockId,
+            teamLockGroupId: clearTeam ? null : p.teamLockGroupId,
+          };
+        });
+      }
+
+      const next = { ...state, players };
       if (action.status === "waiting") {
         return appendToWaitingQueue(next, [action.playerId]);
       }

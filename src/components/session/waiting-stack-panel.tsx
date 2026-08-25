@@ -99,19 +99,35 @@ function SortablePlayerRow({
             : ""}
         </div>
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() =>
-          dispatch({
-            type: "SET_STATUS",
-            playerId: player.id,
-            status: "resting",
-          })
-        }
-      >
-        Rest
-      </Button>
+      <div className="flex shrink-0 gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() =>
+            dispatch({
+              type: "SET_STATUS",
+              playerId: player.id,
+              status: "resting",
+            })
+          }
+        >
+          Rest
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-red-700 hover:bg-red-50 hover:text-red-800"
+          onClick={() =>
+            dispatch({
+              type: "SET_STATUS",
+              playerId: player.id,
+              status: "left",
+            })
+          }
+        >
+          Remove
+        </Button>
+      </div>
     </li>
   );
 }

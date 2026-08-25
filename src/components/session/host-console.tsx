@@ -55,6 +55,7 @@ export function HostConsole({
   const openCourtCount = state.courts.length - courts.length;
   const waiting = state.players.filter((p) => p.status === "waiting");
   const resting = state.players.filter((p) => p.status === "resting");
+  const rosterPlayers = state.players.filter((p) => p.status !== "left");
   const summary = useMemo(() => summarizeSession(state), [state]);
 
   function checkIn() {
@@ -310,7 +311,7 @@ export function HostConsole({
                 onChange={(e) => setLockA(e.target.value)}
               >
                 <option value="">Player A</option>
-                {state.players.map((p) => (
+                {rosterPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -322,7 +323,7 @@ export function HostConsole({
                 onChange={(e) => setLockB(e.target.value)}
               >
                 <option value="">Player B</option>
-                {state.players.map((p) => (
+                {rosterPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -505,7 +506,7 @@ function QueueCard({
               </div>
             </div>
             {dispatch ? (
-              <div className="flex gap-1">
+              <div className="flex shrink-0 gap-1">
                 {p.status === "waiting" ? (
                   <Button
                     size="sm"
@@ -535,6 +536,20 @@ function QueueCard({
                     Return
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-700 hover:bg-red-50 hover:text-red-800"
+                  onClick={() =>
+                    dispatch({
+                      type: "SET_STATUS",
+                      playerId: p.id,
+                      status: "left",
+                    })
+                  }
+                >
+                  Remove
+                </Button>
               </div>
             ) : null}
           </li>

@@ -1,8 +1,22 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { isSupabaseConfigured } from "@/lib/env";
 import { PRODUCT_NAME } from "@/lib/facility";
+import { createClient } from "@/lib/supabase/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  let signedIn = false;
+  if (isSupabaseConfigured()) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    signedIn = Boolean(user);
+  }
+
+  const ctaHref = signedIn ? "/dashboard" : "/login";
+  const ctaLabel = signedIn ? "Create venue" : "Host login";
+
   return (
     <main className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(183,242,85,0.18),transparent_35%),radial-gradient(circle_at_80%_10%,rgba(31,122,76,0.16),transparent_30%)]" />
@@ -12,7 +26,7 @@ export default function HomePage() {
           {PRODUCT_NAME}
         </div>
         <Button asChild>
-          <Link href="/login">Host login</Link>
+          <Link href={ctaHref}>{ctaLabel}</Link>
         </Button>
       </nav>
 
@@ -30,7 +44,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Button size="lg" asChild>
-              <Link href="/login">Host login</Link>
+              <Link href={ctaHref}>{ctaLabel}</Link>
             </Button>
           </div>
         </div>

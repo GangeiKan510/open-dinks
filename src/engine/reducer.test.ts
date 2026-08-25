@@ -210,6 +210,49 @@ describe("rotation engine", () => {
     ).toBe(true);
   });
 
+  it("removing a player marks them left and clears locks", () => {
+    let state = createInitialState({ now: 1_000 });
+    state = checkInMany(state, ["A", "B", "C", "D", "E"]);
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "a",
+      partnerId: "b",
+    });
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "b",
+      partnerId: "a",
+    });
+    state = reduce(state, {
+      type: "SET_TEAM_LOCK",
+      playerIds: ["b", "c", "d", "e"],
+    });
+
+    state = reduce(state, {
+      type: "SET_STATUS",
+      playerId: "a",
+      status: "left",
+    });
+
+    expect(state.players.find((p) => p.id === "a")?.status).toBe("left");
+    expect(state.players.find((p) => p.id === "a")?.partnerLockId).toBeNull();
+    expect(state.players.find((p) => p.id === "b")?.partnerLockId).toBeNull();
+    expect(
+      state.players.filter((p) => p.status === "waiting").map((p) => p.id),
+    ).not.toContain("a");
+
+    state = reduce(state, {
+      type: "SET_STATUS",
+      playerId: "c",
+      status: "left",
+    });
+    expect(
+      state.players
+        .filter((p) => p.status !== "left")
+        .every((p) => !p.teamLockGroupId),
+    ).toBe(true);
+  });
+
   it("summarizeSession ranks by wins then games", () => {
     let state = createInitialState({
       now: 1_000,
