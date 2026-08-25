@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import type { EngineAction, EnginePlayer, EngineState } from "@/engine";
 import { formatSkillTier } from "@/lib/skill-tier";
 import {
@@ -10,7 +10,9 @@ import {
   formatSeparatedTeamLockMessage,
   formatTeamLockLabel,
   groupWaitingStack,
+  moveWaitingStackGroupIds,
   orderedWaitingPlayers,
+  reorderWaitingStackGroupIds,
   reorderWaitingStackIds,
   playerName,
   playersPerCourt,
@@ -22,6 +24,9 @@ import {
 } from "@/lib/speech-announcer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+type DragState =
+  { kind: "player"; id: string } | { kind: "group"; index: number } | null;
 
 function groupLabel(
   groupIndex: number,
@@ -149,40 +154,47 @@ export function WaitingStackPanel({
     state,
     separatedTeamLocks,
   );
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [drag, setDrag] = useState<DragState>(null);
+  const [dragOver, setDragOver] = useState<DragState>(null);
 
   function clearDrag() {
-    setDraggedId(null);
-    setDragOverId(null);
+    setDrag(null);
+    setDragOver(null);
   }
 
-  function handleDragStart(event: DragEvent, playerId: string) {
-    setDraggedId(playerId);
+  function handlePlayerDragStart(event: DragEvent, playerId: string) {
+    event.stopPropagation();
+    setDrag({ kind: "player", id: playerId });
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", playerId);
+    event.dataTransfer.setData("text/plain", `player:${playerId}`);
   }
 
-  function handleDragOver(event: DragEvent, playerId: string) {
+  function handlePlayerDragOver(event: DragEvent, playerId: string) {
+    if (drag?.kind === "group") return;
     event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
-    if (playerId !== draggedId) {
-      setDragOverId(playerId);
+    if (drag?.kind !== "player" || drag.id !== playerId) {
+      setDragOver({ kind: "player", id: playerId });
     }
   }
 
-  function handleDrop(event: DragEvent, targetId: string) {
+  function handlePlayerDrop(event: DragEvent, targetId: string) {
     event.preventDefault();
-    const sourceId =
-      draggedId ?? event.dataTransfer.getData("text/plain") ?? null;
-    if (!sourceId) {
+    event.stopPropagation();
+    const raw =
+      drag?.kind === "player"
+        ? drag.id
+        : (event.dataTransfer.getData("text/plain").replace(/^player:/, "") ??
+          null);
+    if (!raw || drag?.kind === "group") {
       clearDrag();
       return;
     }
 
     const reordered = reorderWaitingStackIds(
       stack.map((player) => player.id),
-      sourceId,
+      raw,
       targetId,
     );
     if (reordered) {
@@ -190,6 +202,61 @@ export function WaitingStackPanel({
     }
     clearDrag();
   }
+
+  function handleGroupDragStart(event: DragEvent, groupIndex: number) {
+    setDrag({ kind: "group", index: groupIndex });
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `group:${groupIndex}`);
+  }
+
+  function handleGroupDragOver(event: DragEvent, groupIndex: number) {
+    if (drag?.kind === "player") return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (drag?.kind !== "group" || drag.index !== groupIndex) {
+      setDragOver({ kind: "group", index: groupIndex });
+    }
+  }
+
+  function handleGroupDrop(event: DragEvent, targetIndex: number) {
+    event.preventDefault();
+    let sourceIndex: number | null = drag?.kind === "group" ? drag.index : null;
+    if (sourceIndex == null) {
+      const raw = event.dataTransfer.getData("text/plain");
+      const match = /^group:(\d+)$/.exec(raw);
+      sourceIndex = match ? Number(match[1]) : null;
+    }
+    if (sourceIndex == null || drag?.kind === "player") {
+      clearDrag();
+      return;
+    }
+
+    const reordered = reorderWaitingStackGroupIds(
+      stack.map((player) => player.id),
+      sourceIndex,
+      targetIndex,
+      perCourt,
+    );
+    if (reordered) {
+      dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
+    }
+    clearDrag();
+  }
+
+  function moveGroup(groupIndex: number, direction: "up" | "down") {
+    const reordered = moveWaitingStackGroupIds(
+      stack.map((player) => player.id),
+      groupIndex,
+      direction,
+      perCourt,
+    );
+    if (reordered) {
+      dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
+    }
+  }
+
+  const draggedPlayerId = drag?.kind === "player" ? drag.id : null;
+  const dragOverPlayerId = dragOver?.kind === "player" ? dragOver.id : null;
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -200,8 +267,8 @@ export function WaitingStackPanel({
             <span className="text-[var(--muted)]">({stack.length})</span>
           </h2>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            Players group in sets of {perCourt}. Drag the handle to reorder,
-            then push the stack to open courts.
+            Players group in sets of {perCourt}. Drag a group handle or use the
+            arrows to reorder stacks; drag players within or across groups.
           </p>
         </div>
         <Button
@@ -232,45 +299,102 @@ export function WaitingStackPanel({
             const isNextUp = groupIndex === 0;
             const isComplete = group.length === perCourt;
             const baseIndex = groupIndex * perCourt;
+            const isGroupDragging =
+              drag?.kind === "group" && drag.index === groupIndex;
+            const isGroupDragOver =
+              dragOver?.kind === "group" &&
+              dragOver.index === groupIndex &&
+              drag?.kind === "group" &&
+              drag.index !== groupIndex;
 
             return (
               <section
                 key={`group-${groupIndex}-${group.map((p) => p.id).join("-")}`}
+                onDragOver={(event) => handleGroupDragOver(event, groupIndex)}
+                onDragLeave={() => {
+                  if (dragOver?.kind === "group") setDragOver(null);
+                }}
+                onDrop={(event) => handleGroupDrop(event, groupIndex)}
                 className={cn(
-                  "rounded-xl border p-3",
-                  isNextUp && isComplete
-                    ? "border-[var(--accent)]/40 bg-[var(--accent-soft)]"
-                    : "border-[var(--border)] bg-[var(--surface-2)]",
+                  "rounded-xl border p-3 transition-colors",
+                  isGroupDragging && "opacity-45",
+                  isGroupDragOver
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : isNextUp && isComplete
+                      ? "border-[var(--accent)]/40 bg-[var(--accent-soft)]"
+                      : "border-[var(--border)] bg-[var(--surface-2)]",
                 )}
               >
                 <header className="mb-2 flex items-center justify-between gap-2">
-                  <h3
-                    className={cn(
-                      "text-xs font-semibold uppercase tracking-wide",
-                      isNextUp && isComplete
-                        ? "text-[var(--accent-fg-soft)]"
-                        : "text-[var(--muted)]",
-                    )}
-                  >
-                    {groupLabel(groupIndex, perCourt, group.length)}
-                  </h3>
-                  {isNextUp && isComplete ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        speakAnnouncement(
-                          formatPrepareAnnouncement(group.map((p) => p.name)),
-                        )
-                      }
+                  <div className="flex min-w-0 items-center gap-2">
+                    {groups.length > 1 ? (
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(event) =>
+                          handleGroupDragStart(event, groupIndex)
+                        }
+                        onDragEnd={clearDrag}
+                        className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)] active:cursor-grabbing"
+                        aria-label={`Drag to reorder group ${groupIndex + 1}`}
+                      >
+                        <GripVertical className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : null}
+                    <h3
+                      className={cn(
+                        "text-xs font-semibold uppercase tracking-wide",
+                        isNextUp && isComplete
+                          ? "text-[var(--accent-fg-soft)]"
+                          : "text-[var(--muted)]",
+                      )}
                     >
-                      Announce prepare
-                    </Button>
-                  ) : !isComplete ? (
-                    <span className="text-xs text-[var(--muted)]">
-                      Needs {perCourt - group.length} more
-                    </span>
-                  ) : null}
+                      {groupLabel(groupIndex, perCourt, group.length)}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {groups.length > 1 ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 px-0"
+                          disabled={groupIndex === 0}
+                          aria-label={`Move group ${groupIndex + 1} up`}
+                          onClick={() => moveGroup(groupIndex, "up")}
+                        >
+                          <ChevronUp className="h-4 w-4" aria-hidden />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 px-0"
+                          disabled={groupIndex === groups.length - 1}
+                          aria-label={`Move group ${groupIndex + 1} down`}
+                          onClick={() => moveGroup(groupIndex, "down")}
+                        >
+                          <ChevronDown className="h-4 w-4" aria-hidden />
+                        </Button>
+                      </>
+                    ) : null}
+                    {isNextUp && isComplete ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          speakAnnouncement(
+                            formatPrepareAnnouncement(group.map((p) => p.name)),
+                          )
+                        }
+                      >
+                        Announce prepare
+                      </Button>
+                    ) : !isComplete ? (
+                      <span className="text-xs text-[var(--muted)]">
+                        Needs {perCourt - group.length} more
+                      </span>
+                    ) : null}
+                  </div>
                 </header>
 
                 <ol className="space-y-2">
@@ -281,12 +405,14 @@ export function WaitingStackPanel({
                       stackIndex={baseIndex + indexInGroup}
                       state={state}
                       dispatch={dispatch}
-                      draggedId={draggedId}
-                      dragOverId={dragOverId}
-                      onDragStart={handleDragStart}
-                      onDragOver={handleDragOver}
-                      onDragLeave={() => setDragOverId(null)}
-                      onDrop={handleDrop}
+                      draggedId={draggedPlayerId}
+                      dragOverId={dragOverPlayerId}
+                      onDragStart={handlePlayerDragStart}
+                      onDragOver={handlePlayerDragOver}
+                      onDragLeave={() => {
+                        if (dragOver?.kind === "player") setDragOver(null);
+                      }}
+                      onDrop={handlePlayerDrop}
                       onDragEnd={clearDrag}
                     />
                   ))}

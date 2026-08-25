@@ -48,6 +48,19 @@ function appendToWaitingQueue(
   return applyWaitingQueueOrder(state, [...without, ...appended]);
 }
 
+/** Put these waiting players at the front of the stack, preserving their order. */
+function prependToWaitingQueue(
+  state: EngineState,
+  playerIds: string[],
+): EngineState {
+  const waitingIds = orderedWaitingPlayers(state).map((p) => p.id);
+  const without = waitingIds.filter((id) => !playerIds.includes(id));
+  const prepended = playerIds.filter((id) =>
+    state.players.some((p) => p.id === id && p.status === "waiting"),
+  );
+  return applyWaitingQueueOrder(state, [...prepended, ...without]);
+}
+
 function fillCourtsFromStack(
   state: EngineState,
   courtIds?: string[],
@@ -125,7 +138,8 @@ function startMatch(state: EngineState, matchId: string): EngineState {
   };
 }
 
-function clearCourt(state: EngineState, matchId: string): EngineState {
+/** Empty a court back onto the waiting stack. Ready = front (undo). Active = end (played). No auto-refill. */
+function returnToStack(state: EngineState, matchId: string): EngineState {
   const match = state.matches.find((m) => m.id === matchId);
   if (!match || !isOccupied(match.status)) return state;
 
@@ -133,8 +147,9 @@ function clearCourt(state: EngineState, matchId: string): EngineState {
   let players = state.players;
   let partnerHistory = state.partnerHistory;
   let opponentHistory = state.opponentHistory;
+  const wasActive = match.status === "active";
 
-  if (match.status === "active") {
+  if (wasActive) {
     const recorded = recordMatchPairings(
       state.partnerHistory,
       state.opponentHistory,
@@ -155,7 +170,10 @@ function clearCourt(state: EngineState, matchId: string): EngineState {
     }
   } else {
     for (const id of allIds) {
-      players = updatePlayer(players, id, { status: "waiting" });
+      players = updatePlayer(players, id, {
+        status: "waiting",
+        consecutiveWins: 0,
+      });
     }
   }
 
@@ -166,18 +184,17 @@ function clearCourt(state: EngineState, matchId: string): EngineState {
     endedAt: state.now,
   };
 
-  const cleared = appendToWaitingQueue(
-    {
-      ...state,
-      players,
-      partnerHistory,
-      opponentHistory,
-      matches: state.matches.map((m) => (m.id === matchId ? completed : m)),
-    },
-    allIds,
-  );
+  const next = {
+    ...state,
+    players,
+    partnerHistory,
+    opponentHistory,
+    matches: state.matches.map((m) => (m.id === matchId ? completed : m)),
+  };
 
-  return fillCourtsFromStack(cleared, [match.courtId]);
+  return wasActive
+    ? appendToWaitingQueue(next, allIds)
+    : prependToWaitingQueue(next, allIds);
 }
 
 function completeMatch(
@@ -534,8 +551,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case "START_MATCH":
       return startMatch(state, action.matchId);
 
-    case "CLEAR_COURT":
-      return clearCourt(state, action.matchId);
+    case "RETURN_TO_STACK":
+      return returnToStack(state, action.matchId);
 
     case "COMPLETE_MATCH":
       return completeMatch(state, action.matchId, action.winner);

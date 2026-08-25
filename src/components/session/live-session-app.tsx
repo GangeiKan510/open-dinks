@@ -165,8 +165,8 @@ export function LiveSessionApp({
         case "START_MATCH":
           payload = { type: "START_MATCH", matchId: action.matchId };
           break;
-        case "CLEAR_COURT":
-          payload = { type: "CLEAR_COURT", matchId: action.matchId };
+        case "RETURN_TO_STACK":
+          payload = { type: "RETURN_TO_STACK", matchId: action.matchId };
           break;
         case "COMPLETE_MATCH":
           payload = {

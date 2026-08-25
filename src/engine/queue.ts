@@ -81,6 +81,53 @@ export function reorderWaitingStackIds(
   return next;
 }
 
+/** Swap a court-sized waiting group with its neighbor (up/down). */
+export function moveWaitingStackGroupIds(
+  ids: string[],
+  groupIndex: number,
+  direction: "up" | "down",
+  groupSize: number,
+): string[] | null {
+  if (groupSize < 1 || ids.length === 0) return null;
+  const groups: string[][] = [];
+  for (let i = 0; i < ids.length; i += groupSize) {
+    groups.push(ids.slice(i, i + groupSize));
+  }
+  const target = direction === "up" ? groupIndex - 1 : groupIndex + 1;
+  if (groupIndex < 0 || groupIndex >= groups.length) return null;
+  if (target < 0 || target >= groups.length) return null;
+  const next = groups.map((group) => [...group]);
+  [next[groupIndex], next[target]] = [next[target], next[groupIndex]];
+  return next.flat();
+}
+
+/** Move a court-sized waiting group to another group slot (drag/drop). */
+export function reorderWaitingStackGroupIds(
+  ids: string[],
+  sourceGroupIndex: number,
+  targetGroupIndex: number,
+  groupSize: number,
+): string[] | null {
+  if (groupSize < 1 || ids.length === 0) return null;
+  const groups: string[][] = [];
+  for (let i = 0; i < ids.length; i += groupSize) {
+    groups.push(ids.slice(i, i + groupSize));
+  }
+  if (
+    sourceGroupIndex < 0 ||
+    sourceGroupIndex >= groups.length ||
+    targetGroupIndex < 0 ||
+    targetGroupIndex >= groups.length ||
+    sourceGroupIndex === targetGroupIndex
+  ) {
+    return null;
+  }
+  const next = groups.map((group) => [...group]);
+  const [moved] = next.splice(sourceGroupIndex, 1);
+  next.splice(targetGroupIndex, 0, moved);
+  return next.flat();
+}
+
 export function moveWaitingPlayer(
   state: EngineState,
   playerId: string,

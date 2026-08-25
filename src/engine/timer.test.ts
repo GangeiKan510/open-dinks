@@ -8,6 +8,7 @@ import {
   matchElapsedMs,
   matchRemainingMs,
   occupiedMatches,
+  orderedWaitingPlayers,
   reduce,
 } from "./index";
 
@@ -148,28 +149,65 @@ describe("court timers and start match", () => {
     );
   });
 
-  it("CLEAR_COURT releases players and pushes the next stack group", () => {
+  it("RETURN_TO_STACK puts ready court players first on the waiting stack without refill", () => {
     let state = createInitialState({
       now: 1_000,
       courts: [{ id: "c1", name: "Court 1" }],
     });
     state = checkInMany(state, ["A", "B", "C", "D", "E", "F", "G", "H"]);
     state = reduce(state, { type: "FILL_COURTS" });
-    const matchId = occupiedMatches(state)[0].id;
-    state = reduce(state, { type: "START_MATCH", matchId });
+    const match = occupiedMatches(state)[0];
+    expect(match.status).toBe("ready");
+    const courtPlayerIds = [...match.teamA, ...match.teamB];
 
-    state = reduce(state, { type: "CLEAR_COURT", matchId });
+    state = reduce(state, { type: "RETURN_TO_STACK", matchId: match.id });
 
-    const cleared = state.matches.find((m) => m.id === matchId);
-    expect(cleared?.status).toBe("completed");
-    expect(cleared?.winner).toBeNull();
-
-    const active = occupiedMatches(state)[0];
-    expect(active).toBeTruthy();
-    expect(active.id).not.toBe(matchId);
-    const assigned = [...active.teamA, ...active.teamB].map(
-      (id) => state.players.find((p) => p.id === id)?.name,
+    expect(occupiedMatches(state)).toHaveLength(0);
+    expect(state.matches.find((m) => m.id === match.id)?.status).toBe(
+      "completed",
     );
-    expect(assigned).toEqual(["E", "F", "G", "H"]);
+    expect(
+      state.players
+        .filter((p) => courtPlayerIds.includes(p.id))
+        .every((p) => p.status === "waiting" && p.gamesPlayed === 0),
+    ).toBe(true);
+
+    const waitingNames = orderedWaitingPlayers(state).map((p) => p.name);
+    const returnedNames = courtPlayerIds.map(
+      (id) => state.players.find((p) => p.id === id)!.name,
+    );
+    expect(waitingNames.slice(0, 4)).toEqual(returnedNames);
+    expect(waitingNames.slice(4)).toEqual(["E", "F", "G", "H"]);
+  });
+
+  it("RETURN_TO_STACK ends an active match and leaves the court empty", () => {
+    let state = createInitialState({
+      now: 1_000,
+      courts: [{ id: "c1", name: "Court 1" }],
+    });
+    state = checkInMany(state, ["A", "B", "C", "D", "E", "F", "G", "H"]);
+    state = reduce(state, { type: "FILL_COURTS" });
+    const match = occupiedMatches(state)[0];
+    const courtPlayerIds = [...match.teamA, ...match.teamB];
+    state = reduce(state, { type: "START_MATCH", matchId: match.id });
+
+    state = reduce(state, { type: "RETURN_TO_STACK", matchId: match.id });
+
+    expect(occupiedMatches(state)).toHaveLength(0);
+    expect(state.matches.find((m) => m.id === match.id)?.status).toBe(
+      "completed",
+    );
+    expect(
+      state.players
+        .filter((p) => courtPlayerIds.includes(p.id))
+        .every((p) => p.status === "waiting" && p.gamesPlayed === 1),
+    ).toBe(true);
+
+    const waitingNames = orderedWaitingPlayers(state).map((p) => p.name);
+    const returnedNames = courtPlayerIds.map(
+      (id) => state.players.find((p) => p.id === id)!.name,
+    );
+    expect(waitingNames.slice(0, 4)).toEqual(["E", "F", "G", "H"]);
+    expect(waitingNames.slice(4)).toEqual(returnedNames);
   });
 });

@@ -372,7 +372,7 @@ export async function hostDispatchAction(
         direction: "up" | "down";
       }
     | { type: "START_MATCH"; matchId: string }
-    | { type: "CLEAR_COURT"; matchId: string }
+    | { type: "RETURN_TO_STACK"; matchId: string }
     | { type: "COMPLETE_MATCH"; matchId: string; winner: "a" | "b" }
     | { type: "SET_MODE"; mode: SessionMode }
     | { type: "SET_MAX_GAME_MINUTES"; minutes: number }

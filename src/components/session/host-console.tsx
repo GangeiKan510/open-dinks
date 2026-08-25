@@ -199,16 +199,16 @@ export function HostConsole({
                           size="sm"
                           className="w-full"
                           variant={
-                            match.status === "active" ? "default" : "secondary"
+                            match.status === "active" ? "default" : "outline"
                           }
                           onClick={() =>
                             dispatch({
-                              type: "CLEAR_COURT",
+                              type: "RETURN_TO_STACK",
                               matchId: match.id,
                             })
                           }
                         >
-                          Court cleared
+                          Return to stack
                         </Button>
                       </div>
                     ) : null}

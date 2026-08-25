@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createInitialState, reduce } from "./reducer";
 import {
   groupWaitingStack,
+  moveWaitingStackGroupIds,
   orderedWaitingPlayers,
+  reorderWaitingStackGroupIds,
   reorderWaitingStackIds,
 } from "./queue";
 
@@ -109,6 +111,84 @@ describe("waiting stack", () => {
     expect(
       groupWaitingStack(players, 4).map((g) => g.map((p) => p.name)),
     ).toEqual([["A", "B", "C", "D"], ["E"]]);
+  });
+
+  it("moveWaitingStackGroupIds swaps adjacent court-sized groups", () => {
+    expect(
+      moveWaitingStackGroupIds(
+        ["a", "b", "c", "d", "e", "f", "g", "h"],
+        1,
+        "up",
+        4,
+      ),
+    ).toEqual(["e", "f", "g", "h", "a", "b", "c", "d"]);
+    expect(
+      moveWaitingStackGroupIds(
+        ["a", "b", "c", "d", "e", "f", "g", "h"],
+        0,
+        "down",
+        4,
+      ),
+    ).toEqual(["e", "f", "g", "h", "a", "b", "c", "d"]);
+    expect(
+      moveWaitingStackGroupIds(["a", "b", "c", "d"], 0, "up", 4),
+    ).toBeNull();
+    expect(
+      moveWaitingStackGroupIds(
+        ["a", "b", "c", "d", "e", "f", "g", "h"],
+        1,
+        "down",
+        4,
+      ),
+    ).toBeNull();
+  });
+
+  it("reorderWaitingStackGroupIds moves a group to another slot", () => {
+    expect(
+      reorderWaitingStackGroupIds(
+        ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"],
+        2,
+        0,
+        4,
+      ),
+    ).toEqual(["i", "j", "k", "l", "a", "b", "c", "d", "e", "f", "g", "h"]);
+    expect(
+      reorderWaitingStackGroupIds(
+        ["a", "b", "c", "d", "e", "f", "g", "h"],
+        0,
+        1,
+        4,
+      ),
+    ).toEqual(["e", "f", "g", "h", "a", "b", "c", "d"]);
+    expect(
+      reorderWaitingStackGroupIds(["a", "b", "c", "d"], 0, 0, 4),
+    ).toBeNull();
+  });
+
+  it("MOVE_WAITING_STACK swaps whole groups via REORDER_WAITING_QUEUE", () => {
+    let state = createInitialState({ now: 1_000 });
+    ["A", "B", "C", "D", "E", "F", "G", "H"].forEach((name) => {
+      state = checkIn(state, name);
+    });
+
+    const ids = orderedWaitingPlayers(state).map((p) => p.id);
+    const reordered = moveWaitingStackGroupIds(ids, 1, "up", 4);
+    expect(reordered).toBeTruthy();
+    state = reduce(state, {
+      type: "REORDER_WAITING_QUEUE",
+      playerIds: reordered!,
+    });
+
+    expect(orderedWaitingPlayers(state).map((p) => p.name)).toEqual([
+      "E",
+      "F",
+      "G",
+      "H",
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
   });
 
   it("PUSH_TO_COURT only fills the requested court", () => {
