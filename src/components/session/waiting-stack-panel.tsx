@@ -50,6 +50,9 @@ function SortablePlayerRow({
   onDragLeave,
   onDrop,
   onDragEnd,
+  isPending = false,
+  busyKey = null,
+  onBusy,
 }: {
   player: EnginePlayer;
   stackIndex: number;
@@ -62,9 +65,17 @@ function SortablePlayerRow({
   onDragLeave: () => void;
   onDrop: (event: DragEvent, playerId: string) => void;
   onDragEnd: () => void;
+  isPending?: boolean;
+  busyKey?: string | null;
+  onBusy?: (key: string, action: () => void) => void;
 }) {
   const isDragging = draggedId === player.id;
   const isDragOver = dragOverId === player.id && draggedId !== player.id;
+
+  function run(key: string, action: () => void) {
+    if (onBusy) onBusy(key, action);
+    else action();
+  }
 
   return (
     <li
@@ -108,12 +119,16 @@ function SortablePlayerRow({
         <Button
           size="sm"
           variant="ghost"
+          loading={busyKey === `rest-${player.id}`}
+          disabled={isPending}
           onClick={() =>
-            dispatch({
-              type: "SET_STATUS",
-              playerId: player.id,
-              status: "resting",
-            })
+            run(`rest-${player.id}`, () =>
+              dispatch({
+                type: "SET_STATUS",
+                playerId: player.id,
+                status: "resting",
+              }),
+            )
           }
         >
           Rest
@@ -122,12 +137,16 @@ function SortablePlayerRow({
           size="sm"
           variant="ghost"
           className="text-red-700 hover:bg-red-50 hover:text-red-800"
+          loading={busyKey === `remove-${player.id}`}
+          disabled={isPending}
           onClick={() =>
-            dispatch({
-              type: "SET_STATUS",
-              playerId: player.id,
-              status: "left",
-            })
+            run(`remove-${player.id}`, () =>
+              dispatch({
+                type: "SET_STATUS",
+                playerId: player.id,
+                status: "left",
+              }),
+            )
           }
         >
           Remove
@@ -141,11 +160,18 @@ export function WaitingStackPanel({
   state,
   dispatch,
   openCourtCount,
+  isPending,
+  busyKey = null,
+  onBusy,
 }: {
   state: EngineState;
   dispatch: (action: EngineAction) => void;
   openCourtCount: number;
+  isPending?: boolean;
+  busyKey?: string | null;
+  onBusy?: (key: string, action: () => void) => void;
 }) {
+  const pending = isPending ?? false;
   const stack = orderedWaitingPlayers(state);
   const perCourt = playersPerCourt(state.mode);
   const groups = groupWaitingStack(stack, perCourt);
@@ -156,6 +182,11 @@ export function WaitingStackPanel({
   );
   const [drag, setDrag] = useState<DragState>(null);
   const [dragOver, setDragOver] = useState<DragState>(null);
+
+  function run(key: string, action: () => void) {
+    if (onBusy) onBusy(key, action);
+    else action();
+  }
 
   function clearDrag() {
     setDrag(null);
@@ -272,8 +303,13 @@ export function WaitingStackPanel({
           </p>
         </div>
         <Button
-          disabled={stack.length < perCourt || openCourtCount === 0}
-          onClick={() => tryStackPush(state, dispatch, { type: "FILL_COURTS" })}
+          loading={busyKey === "fill-courts"}
+          disabled={pending || stack.length < perCourt || openCourtCount === 0}
+          onClick={() =>
+            run("fill-courts", () =>
+              tryStackPush(state, dispatch, { type: "FILL_COURTS" }),
+            )
+          }
         >
           Push stack to open courts
         </Button>
@@ -359,21 +395,35 @@ export function WaitingStackPanel({
                           size="sm"
                           variant="ghost"
                           className="h-8 w-8 px-0"
-                          disabled={groupIndex === 0}
+                          loading={busyKey === `group-up-${groupIndex}`}
+                          disabled={pending || groupIndex === 0}
                           aria-label={`Move group ${groupIndex + 1} up`}
-                          onClick={() => moveGroup(groupIndex, "up")}
+                          onClick={() =>
+                            run(`group-up-${groupIndex}`, () =>
+                              moveGroup(groupIndex, "up"),
+                            )
+                          }
                         >
-                          <ChevronUp className="h-4 w-4" aria-hidden />
+                          {busyKey === `group-up-${groupIndex}` ? null : (
+                            <ChevronUp className="h-4 w-4" aria-hidden />
+                          )}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           className="h-8 w-8 px-0"
-                          disabled={groupIndex === groups.length - 1}
+                          loading={busyKey === `group-down-${groupIndex}`}
+                          disabled={pending || groupIndex === groups.length - 1}
                           aria-label={`Move group ${groupIndex + 1} down`}
-                          onClick={() => moveGroup(groupIndex, "down")}
+                          onClick={() =>
+                            run(`group-down-${groupIndex}`, () =>
+                              moveGroup(groupIndex, "down"),
+                            )
+                          }
                         >
-                          <ChevronDown className="h-4 w-4" aria-hidden />
+                          {busyKey === `group-down-${groupIndex}` ? null : (
+                            <ChevronDown className="h-4 w-4" aria-hidden />
+                          )}
                         </Button>
                       </>
                     ) : null}
@@ -414,6 +464,9 @@ export function WaitingStackPanel({
                       }}
                       onDrop={handlePlayerDrop}
                       onDragEnd={clearDrag}
+                      isPending={pending}
+                      busyKey={busyKey}
+                      onBusy={onBusy}
                     />
                   ))}
                 </ol>

@@ -267,13 +267,7 @@ export function LiveSessionApp({
 
   if (mode === "player") {
     return (
-      <PlayerView
-        state={state}
-        facility={facility}
-        dispatch={(action) => {
-          void onGuestCheckIn(action);
-        }}
-      />
+      <PlayerView state={state} facility={facility} dispatch={onGuestCheckIn} />
     );
   }
 
@@ -293,6 +287,7 @@ export function LiveSessionApp({
         state={state}
         dispatch={dispatch}
         boardUrl={boardUrl}
+        isPending={pending}
         onEndSession={() => {
           startTransition(async () => {
             await endSessionAction(token);

@@ -180,7 +180,7 @@ export default function LoginPage() {
               }
             />
           </div>
-          <Button className="w-full" disabled={pending}>
+          <Button className="w-full" loading={pending}>
             {pending
               ? mode === "sign-in"
                 ? "Signing in…"

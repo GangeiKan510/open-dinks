@@ -36,12 +36,15 @@ export function HostConsole({
   boardUrl,
   onEndSession,
   readOnly = false,
+  isPending,
 }: {
   state: EngineState;
   dispatch: (action: EngineAction) => void;
   boardUrl?: string;
   onEndSession?: () => void;
   readOnly?: boolean;
+  /** When set, action buttons show a spinner until the live sync finishes. */
+  isPending?: boolean;
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
@@ -50,6 +53,10 @@ export function HostConsole({
   const [teamLockIds, setTeamLockIds] = useState<string[]>(() =>
     Array.from({ length: 4 }, () => ""),
   );
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const tracksPending = isPending !== undefined;
+  const pending = isPending ?? false;
+  const activeBusyKey = tracksPending && pending ? busyKey : null;
   const perCourt = playersPerCourt(state.mode);
   const courts = occupiedMatches(state);
   const openCourtCount = state.courts.length - courts.length;
@@ -58,18 +65,25 @@ export function HostConsole({
   const rosterPlayers = state.players.filter((p) => p.status !== "left");
   const summary = useMemo(() => summarizeSession(state), [state]);
 
+  function runBusy(key: string, action: () => void) {
+    if (tracksPending) setBusyKey(key);
+    action();
+  }
+
   function checkIn() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    dispatch({
-      type: "CHECK_IN",
-      player: {
-        id: `p_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
-        name: trimmed,
-        skill,
-      },
+    runBusy("check-in", () => {
+      dispatch({
+        type: "CHECK_IN",
+        player: {
+          id: `p_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
+          name: trimmed,
+          skill,
+        },
+      });
+      setName("");
     });
-    setName("");
   }
 
   function announceCourtRemainingTime(
@@ -113,7 +127,13 @@ export function HostConsole({
               </Button>
             ) : null}
             {onEndSession ? (
-              <Button variant="danger" size="sm" onClick={onEndSession}>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={activeBusyKey === "end-session"}
+                disabled={pending}
+                onClick={() => runBusy("end-session", onEndSession)}
+              >
                 End session
               </Button>
             ) : null}
@@ -190,7 +210,13 @@ export function HostConsole({
                           <Button
                             size="sm"
                             className="w-full"
-                            onClick={() => startMatch(match, court.name)}
+                            loading={activeBusyKey === `start-${match.id}`}
+                            disabled={pending}
+                            onClick={() =>
+                              runBusy(`start-${match.id}`, () =>
+                                startMatch(match, court.name),
+                              )
+                            }
                           >
                             Start session
                           </Button>
@@ -201,11 +227,15 @@ export function HostConsole({
                           variant={
                             match.status === "active" ? "default" : "outline"
                           }
+                          loading={activeBusyKey === `return-${match.id}`}
+                          disabled={pending}
                           onClick={() =>
-                            dispatch({
-                              type: "RETURN_TO_STACK",
-                              matchId: match.id,
-                            })
+                            runBusy(`return-${match.id}`, () =>
+                              dispatch({
+                                type: "RETURN_TO_STACK",
+                                matchId: match.id,
+                              }),
+                            )
                           }
                         >
                           Return to stack
@@ -223,14 +253,18 @@ export function HostConsole({
                         size="sm"
                         variant="secondary"
                         className="w-full"
+                        loading={activeBusyKey === `push-${court.id}`}
                         disabled={
+                          pending ||
                           waiting.length < (state.mode === "singles" ? 2 : 4)
                         }
                         onClick={() =>
-                          tryStackPush(state, dispatch, {
-                            type: "PUSH_TO_COURT",
-                            courtId: court.id,
-                          })
+                          runBusy(`push-${court.id}`, () =>
+                            tryStackPush(state, dispatch, {
+                              type: "PUSH_TO_COURT",
+                              courtId: court.id,
+                            }),
+                          )
                         }
                       >
                         Push stack here
@@ -248,6 +282,9 @@ export function HostConsole({
             state={state}
             dispatch={dispatch}
             openCourtCount={openCourtCount}
+            isPending={isPending}
+            busyKey={activeBusyKey}
+            onBusy={runBusy}
           />
         ) : null}
       </section>
@@ -294,7 +331,12 @@ export function HostConsole({
                 />
               </div>
               <SkillTierSelect id="skill" value={skill} onChange={setSkill} />
-              <Button className="w-full" onClick={checkIn}>
+              <Button
+                className="w-full"
+                loading={activeBusyKey === "check-in"}
+                disabled={pending}
+                onClick={checkIn}
+              >
                 Add player
               </Button>
             </div>
@@ -333,19 +375,22 @@ export function HostConsole({
             <Button
               className="mt-3 w-full"
               variant="secondary"
-              disabled={!lockA || !lockB || lockA === lockB}
-              onClick={() => {
-                dispatch({
-                  type: "SET_PARTNER_LOCK",
-                  playerId: lockA,
-                  partnerId: lockB,
-                });
-                dispatch({
-                  type: "SET_PARTNER_LOCK",
-                  playerId: lockB,
-                  partnerId: lockA,
-                });
-              }}
+              loading={activeBusyKey === "partner-lock"}
+              disabled={pending || !lockA || !lockB || lockA === lockB}
+              onClick={() =>
+                runBusy("partner-lock", () => {
+                  dispatch({
+                    type: "SET_PARTNER_LOCK",
+                    playerId: lockA,
+                    partnerId: lockB,
+                  });
+                  dispatch({
+                    type: "SET_PARTNER_LOCK",
+                    playerId: lockB,
+                    partnerId: lockA,
+                  });
+                })
+              }
             >
               Lock partners
             </Button>
@@ -385,28 +430,35 @@ export function HostConsole({
               <Button
                 className="flex-1"
                 variant="secondary"
+                loading={activeBusyKey === "team-lock"}
                 disabled={
+                  pending ||
                   teamLockIds.some((id) => !id) ||
                   new Set(teamLockIds).size !== 4
                 }
-                onClick={() => {
-                  dispatch({ type: "SET_TEAM_LOCK", playerIds: teamLockIds });
-                  setTeamLockIds(Array.from({ length: 4 }, () => ""));
-                }}
+                onClick={() =>
+                  runBusy("team-lock", () => {
+                    dispatch({ type: "SET_TEAM_LOCK", playerIds: teamLockIds });
+                    setTeamLockIds(Array.from({ length: 4 }, () => ""));
+                  })
+                }
               >
                 Lock team
               </Button>
               <Button
                 className="flex-1"
                 variant="outline"
-                disabled={!teamLockIds.some(Boolean)}
-                onClick={() => {
-                  const first = teamLockIds.find(Boolean);
-                  if (first) {
-                    dispatch({ type: "CLEAR_TEAM_LOCK", playerId: first });
-                  }
-                  setTeamLockIds(Array.from({ length: 4 }, () => ""));
-                }}
+                loading={activeBusyKey === "team-clear"}
+                disabled={pending || !teamLockIds.some(Boolean)}
+                onClick={() =>
+                  runBusy("team-clear", () => {
+                    const first = teamLockIds.find(Boolean);
+                    if (first) {
+                      dispatch({ type: "CLEAR_TEAM_LOCK", playerId: first });
+                    }
+                    setTeamLockIds(Array.from({ length: 4 }, () => ""));
+                  })
+                }
               >
                 Clear
               </Button>
@@ -419,6 +471,9 @@ export function HostConsole({
           players={resting}
           state={state}
           dispatch={readOnly ? undefined : dispatch}
+          isPending={pending}
+          busyKey={activeBusyKey}
+          onBusy={runBusy}
         />
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -478,12 +533,23 @@ function QueueCard({
   players,
   state,
   dispatch,
+  isPending = false,
+  busyKey = null,
+  onBusy,
 }: {
   title: string;
   players: EngineState["players"];
   state: EngineState;
   dispatch?: (action: EngineAction) => void;
+  isPending?: boolean;
+  busyKey?: string | null;
+  onBusy?: (key: string, action: () => void) => void;
 }) {
+  function run(key: string, action: () => void) {
+    if (onBusy) onBusy(key, action);
+    else action();
+  }
+
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <h2 className="mb-3 font-semibold">
@@ -511,12 +577,16 @@ function QueueCard({
                   <Button
                     size="sm"
                     variant="ghost"
+                    loading={busyKey === `rest-${p.id}`}
+                    disabled={isPending}
                     onClick={() =>
-                      dispatch({
-                        type: "SET_STATUS",
-                        playerId: p.id,
-                        status: "resting",
-                      })
+                      run(`rest-${p.id}`, () =>
+                        dispatch({
+                          type: "SET_STATUS",
+                          playerId: p.id,
+                          status: "resting",
+                        }),
+                      )
                     }
                   >
                     Rest
@@ -525,12 +595,16 @@ function QueueCard({
                   <Button
                     size="sm"
                     variant="ghost"
+                    loading={busyKey === `return-${p.id}`}
+                    disabled={isPending}
                     onClick={() =>
-                      dispatch({
-                        type: "SET_STATUS",
-                        playerId: p.id,
-                        status: "waiting",
-                      })
+                      run(`return-${p.id}`, () =>
+                        dispatch({
+                          type: "SET_STATUS",
+                          playerId: p.id,
+                          status: "waiting",
+                        }),
+                      )
                     }
                   >
                     Return
@@ -540,12 +614,16 @@ function QueueCard({
                   size="sm"
                   variant="ghost"
                   className="text-red-700 hover:bg-red-50 hover:text-red-800"
+                  loading={busyKey === `remove-${p.id}`}
+                  disabled={isPending}
                   onClick={() =>
-                    dispatch({
-                      type: "SET_STATUS",
-                      playerId: p.id,
-                      status: "left",
-                    })
+                    run(`remove-${p.id}`, () =>
+                      dispatch({
+                        type: "SET_STATUS",
+                        playerId: p.id,
+                        status: "left",
+                      }),
+                    )
                   }
                 >
                   Remove

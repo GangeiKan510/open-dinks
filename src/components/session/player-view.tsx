@@ -18,13 +18,14 @@ export function PlayerView({
   facility = null,
 }: {
   state: EngineState;
-  dispatch?: (action: EngineAction) => void;
+  dispatch?: (action: EngineAction) => void | Promise<void>;
   allowSelfCheckIn?: boolean;
   facility?: FacilityConfig | null;
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
   const [me, setMe] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
   const courts = occupiedMatches(state);
   const waiting = orderedWaitingPlayers(state);
 
@@ -44,17 +45,22 @@ export function PlayerView({
     return idx >= 0 ? idx + 1 : null;
   }, [me, myPlayer, waiting]);
 
-  function selfCheckIn() {
-    if (!dispatch) return;
+  async function selfCheckIn() {
+    if (!dispatch || joining) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     const id = `guest_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`;
-    dispatch({
-      type: "CHECK_IN",
-      player: { id, name: trimmed, skill },
-    });
-    setMe(id);
-    setName("");
+    setJoining(true);
+    try {
+      await dispatch({
+        type: "CHECK_IN",
+        player: { id, name: trimmed, skill },
+      });
+      setMe(id);
+      setName("");
+    } finally {
+      setJoining(false);
+    }
   }
 
   return (
@@ -81,7 +87,7 @@ export function PlayerView({
             />
           </div>
           <SkillTierSelect id="guest-skill" value={skill} onChange={setSkill} />
-          <Button className="w-full" onClick={selfCheckIn}>
+          <Button className="w-full" loading={joining} onClick={selfCheckIn}>
             Join queue
           </Button>
         </div>

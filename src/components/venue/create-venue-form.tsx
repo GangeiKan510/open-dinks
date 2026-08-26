@@ -102,7 +102,7 @@ export function CreateVenueForm({
         />
       </div>
       <div className="flex items-end">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Creating…" : "Create"}
         </Button>
       </div>
