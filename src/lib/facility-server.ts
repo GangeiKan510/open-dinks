@@ -4,6 +4,7 @@ import {
   type FacilityConfig,
 } from "@/lib/facility";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccountVenue } from "@/lib/account-venue";
 
 /** Resolve facility branding for a venue. */
 export async function loadFacilityForVenue(
@@ -34,35 +35,18 @@ export async function loadFacilityForSession(
   return loadFacilityForVenue(venueId);
 }
 
-/**
- * Facility for the logged-in account: first facility among venues they belong to
- * (oldest venue first).
- */
+/** Facility branding for the logged-in account's single venue. */
 export async function loadFacilityForAccount(
   userId: string,
 ): Promise<FacilityConfig | null> {
+  const venue = await loadAccountVenue(userId);
+  if (!venue?.facilityId) return null;
+
   const supabase = await createClient();
-  const { data: memberships } = await supabase
-    .from("venue_members")
-    .select("venue_id")
-    .eq("user_id", userId);
-
-  const venueIds = (memberships ?? []).map((m) => m.venue_id);
-  if (venueIds.length === 0) return null;
-
-  const { data: venues } = await supabase
-    .from("venues")
-    .select("facility_id, created_at")
-    .in("id", venueIds)
-    .order("created_at", { ascending: true });
-
-  const facilityId = venues?.find((v) => v.facility_id)?.facility_id;
-  if (!facilityId) return null;
-
   const { data: facility } = await supabase
     .from("facilities")
     .select("id, slug, name, short_name, tagline")
-    .eq("id", facilityId)
+    .eq("id", venue.facilityId)
     .single();
 
   return facility ? facilityFromRow(facility) : null;

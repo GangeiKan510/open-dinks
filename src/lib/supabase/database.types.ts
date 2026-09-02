@@ -1,5 +1,11 @@
 export type DbSkillTier = "beginner" | "novice" | "intermediate" | "advanced";
 
+export type DbBookingStatus = "pending" | "confirmed" | "cancelled";
+
+export type DbBookingPaymentStatus = "unpaid" | "paid" | "refunded";
+
+export type DbBookingSource = "staff" | "public";
+
 export type Json =
   | string
   | number
@@ -65,6 +71,8 @@ export type Database = {
           facility_id: string;
           created_by: string;
           created_at: string;
+          booking_open_hour: number;
+          booking_close_hour: number;
         };
         Insert: {
           id?: string;
@@ -74,6 +82,8 @@ export type Database = {
           facility_id?: string;
           created_by: string;
           created_at?: string;
+          booking_open_hour?: number;
+          booking_close_hour?: number;
         };
         Update: {
           id?: string;
@@ -83,6 +93,8 @@ export type Database = {
           facility_id?: string;
           created_by?: string;
           created_at?: string;
+          booking_open_hour?: number;
+          booking_close_hour?: number;
         };
         Relationships: [];
       };
@@ -134,6 +146,72 @@ export type Database = {
           skill_min?: DbSkillTier | null;
           skill_max?: DbSkillTier | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      bookings: {
+        Row: {
+          id: string;
+          venue_id: string;
+          court_id: string;
+          starts_at: string;
+          ends_at: string;
+          status: DbBookingStatus;
+          booked_by_name: string;
+          contact_email: string | null;
+          contact_phone: string | null;
+          notes: string | null;
+          /** Cents. The DB stores minor units; only the UI converts to dollars. */
+          price_cents: number | null;
+          payment_status: DbBookingPaymentStatus;
+          source: DbBookingSource;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          public_token: string;
+          decline_reason: string | null;
+        };
+        Insert: {
+          id?: string;
+          venue_id: string;
+          court_id: string;
+          starts_at: string;
+          ends_at: string;
+          status?: DbBookingStatus;
+          booked_by_name: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          /** Cents. */
+          price_cents?: number | null;
+          payment_status?: DbBookingPaymentStatus;
+          source?: DbBookingSource;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          public_token?: string;
+          decline_reason?: string | null;
+        };
+        Update: {
+          id?: string;
+          venue_id?: string;
+          court_id?: string;
+          starts_at?: string;
+          ends_at?: string;
+          status?: DbBookingStatus;
+          booked_by_name?: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          /** Cents. */
+          price_cents?: number | null;
+          payment_status?: DbBookingPaymentStatus;
+          source?: DbBookingSource;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          public_token?: string;
+          decline_reason?: string | null;
         };
         Relationships: [];
       };
@@ -358,8 +436,40 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      get_public_booking_venue: {
+        Args: { p_slug: string };
+        Returns: Json;
+      };
+      get_court_busy_ranges: {
+        Args: { p_venue_id: string; p_from: string; p_to: string };
+        Returns: {
+          court_id: string;
+          starts_at: string;
+          ends_at: string;
+        }[];
+      };
+      request_booking: {
+        Args: {
+          p_venue_id: string;
+          p_court_id: string;
+          p_starts_at: string;
+          p_ends_at: string;
+          p_booked_by_name: string;
+          p_contact_email?: string | null;
+          p_contact_phone?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      get_booking_request_status: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
+    };
     Enums: {
+      booking_status: DbBookingStatus;
+      booking_payment_status: DbBookingPaymentStatus;
       venue_role: "owner" | "admin" | "host";
       session_mode:
         "rotating" | "skill_separated" | "king_of_court" | "singles";

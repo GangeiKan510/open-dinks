@@ -1,12 +1,52 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { signOutAction } from "@/app/actions/session";
-import { CreateVenueForm } from "@/components/venue/create-venue-form";
+import { Radio } from "lucide-react";
+import {
+  addRosterPlayerAction,
+  createSessionAction,
+  signOutAction,
+} from "@/app/actions/session";
+import { BookingsManager } from "@/components/venue/bookings-manager";
+import { DashboardTabs } from "@/components/venue/dashboard-tabs";
+import { FacilitySettings } from "@/components/venue/facility-settings";
+import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
-import { isSupabaseConfigured } from "@/lib/env";
-import { formatBrandTitle } from "@/lib/facility";
-import { loadFacilityForAccount } from "@/lib/facility-server";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { loadAccountVenue } from "@/lib/account-venue";
+import {
+  buildHourlySlotGrid,
+  busyRangesFromBookings,
+  PUBLIC_BOOKING_LOOKAHEAD_DAYS,
+} from "@/lib/booking-calendar";
+import { venueBookingsFrom } from "@/lib/bookings";
+import {
+  DEFAULT_COURT_COUNT,
+  MAX_COURT_COUNT,
+  MIN_COURT_COUNT,
+} from "@/lib/court-count";
+import { isSupabaseConfigured, siteUrl } from "@/lib/env";
+import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
+import { ensureSingleLiveSession } from "@/lib/live-session";
+import {
+  DEFAULT_SKILL_TIER,
+  formatSkillTier,
+  SKILL_TIERS,
+} from "@/lib/skill-tier";
 import { createClient } from "@/lib/supabase/server";
+
+const CARD = "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5";
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={`${CARD} py-4`}>
+      <dt className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+        {label}
+      </dt>
+      <dd className="mt-1 text-2xl font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
 
 export default async function DashboardPage() {
   if (!isSupabaseConfigured()) {
@@ -31,37 +71,98 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: memberships } = await supabase
-    .from("venue_members")
-    .select("role, venue_id")
-    .eq("user_id", user.id);
+  const venue = await loadAccountVenue(user.id);
 
-  const venueIds = (memberships ?? []).map((m) => m.venue_id);
-  const [{ data: venueRows }, facility] = await Promise.all([
-    venueIds.length > 0
-      ? supabase.from("venues").select("id, name, slug").in("id", venueIds)
-      : Promise.resolve({
-          data: [] as { id: string; name: string; slug: string }[],
-        }),
-    loadFacilityForAccount(user.id),
+  if (!venue) {
+    return (
+      <main className="mx-auto max-w-2xl space-y-6 px-6 py-16">
+        <header>
+          <h1 className="font-[family-name:var(--font-display)] text-4xl">
+            Set up your facility
+          </h1>
+          <p className="mt-2 text-[var(--muted)]">
+            Name the place you run open play at and how many courts you have.
+            You can change both later.
+          </p>
+        </header>
+        <section className={CARD}>
+          <FacilitySetupForm />
+        </section>
+      </main>
+    );
+  }
+
+  const bookingsFrom = venueBookingsFrom();
+
+  const liveSession = await ensureSingleLiveSession(supabase, venue.id);
+
+  const [
+    { data: courts },
+    { data: players },
+    { data: sessions },
+    { data: facilityRow },
+    { data: bookings },
+  ] = await Promise.all([
+    supabase
+      .from("courts")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .order("sort_order"),
+    supabase.from("players").select("*").eq("venue_id", venue.id).order("name"),
+    supabase
+      .from("sessions")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("facilities")
+      .select("id, slug, name, short_name, tagline")
+      .eq("id", venue.facilityId)
+      .single(),
+    supabase
+      .from("bookings")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .neq("status", "cancelled")
+      .gt("ends_at", bookingsFrom)
+      .order("starts_at"),
   ]);
 
-  const venues = (venueRows ?? []).map((venue) => ({
-    ...venue,
-    role:
-      memberships?.find((m) => m.venue_id === venue.id)?.role ??
-      ("host" as const),
-  }));
+  const facility = facilityRow ? facilityFromRow(facilityRow) : null;
+  const courtRows = courts ?? [];
+  const playerRows = players ?? [];
+  const sessionRows = sessions ?? [];
+  const bookingRows = bookings ?? [];
+
+  const pendingRequests = bookingRows.filter((b) => b.status === "pending");
+  const upcomingBookings = bookingRows.filter((b) => b.status === "confirmed");
+  const bookingPath = `/book/${venue.slug}`;
+
+  const bookingGridFrom = new Date();
+  const bookingGrid = buildHourlySlotGrid(
+    courtRows.map((court) => ({ id: court.id, name: court.name })),
+    busyRangesFromBookings(bookingRows, { includePending: true }),
+    {
+      fromMs: bookingGridFrom.getTime(),
+      dayCount: PUBLIC_BOOKING_LOOKAHEAD_DAYS,
+      timeZone: venue.timezone,
+      now: bookingGridFrom.getTime(),
+      openHour: venue.bookingOpenHour,
+      closeHour: venue.bookingCloseHour,
+    },
+  );
 
   return (
-    <main className="mx-auto max-w-4xl space-y-8 px-6 py-10">
+    <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
             {formatBrandTitle(facility)}
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">
-            Your venues
+            {facility?.name ?? venue.name}
           </h1>
         </div>
         <form action={signOutAction}>
@@ -71,32 +172,193 @@ export default async function DashboardPage() {
         </form>
       </header>
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-4 font-semibold">Create venue</h2>
-        <CreateVenueForm facility={facility} />
-      </section>
+      {liveSession ? (
+        <Link
+          href={`/s/${liveSession.public_token}/host`}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <Radio className="h-4 w-4 shrink-0 animate-pulse" aria-hidden />
+            Live now · {liveSession.title}
+          </span>
+          <span className="text-sm text-[var(--accent)] underline">
+            Open host console
+          </span>
+        </Link>
+      ) : null}
 
-      <section className="space-y-3">
-        {venues.length === 0 ? (
-          <p className="text-[var(--muted)]">No venues yet.</p>
-        ) : (
-          venues.map((v) => (
-            <Link
-              key={v.id}
-              href={`/venues/${v.id}`}
-              className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4 transition hover:border-[var(--accent)]"
-            >
-              <div>
-                <div className="font-medium">{v.name}</div>
-                <div className="text-sm text-[var(--muted)]">/{v.slug}</div>
-              </div>
-              <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                {v.role}
-              </span>
-            </Link>
-          ))
-        )}
-      </section>
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Courts" value={String(courtRows.length)} />
+        <Stat label="Pending requests" value={String(pendingRequests.length)} />
+        <Stat
+          label="Upcoming bookings"
+          value={String(upcomingBookings.length)}
+        />
+        <Stat label="Saved players" value={String(playerRows.length)} />
+      </dl>
+
+      <DashboardTabs
+        pendingRequestCount={pendingRequests.length}
+        rosterCount={playerRows.length}
+        openPlay={
+          <>
+            {liveSession ? (
+              <section className={CARD}>
+                <h2 className="mb-1 font-semibold">Session in progress</h2>
+                <p className="mb-4 text-sm text-[var(--muted)]">
+                  You can run one session at a time. End{" "}
+                  <span className="font-medium text-[var(--foreground)]">
+                    {liveSession.title}
+                  </span>{" "}
+                  from the host console before starting another.
+                </p>
+                <Button asChild>
+                  <Link href={`/s/${liveSession.public_token}/host`}>
+                    Open host console
+                  </Link>
+                </Button>
+              </section>
+            ) : (
+              <section className={CARD}>
+                <h2 className="mb-1 font-semibold">Start open play</h2>
+                <p className="mb-4 text-sm text-[var(--muted)]">
+                  Going live opens a wallboard and a player check-in link for
+                  this session.
+                </p>
+                <form
+                  action={createSessionAction}
+                  className="grid gap-3 md:grid-cols-3"
+                >
+                  <input type="hidden" name="venueId" value={venue.id} />
+                  <div className="space-y-1 md:col-span-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      name="title"
+                      defaultValue="Weeknight Open Play"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="courtCount">Courts in play</Label>
+                    <Input
+                      id="courtCount"
+                      name="courtCount"
+                      type="number"
+                      min={MIN_COURT_COUNT}
+                      max={MAX_COURT_COUNT}
+                      defaultValue={Math.max(
+                        MIN_COURT_COUNT,
+                        courtRows.length || DEFAULT_COURT_COUNT,
+                      )}
+                      required
+                    />
+                    <p className="text-xs text-[var(--muted)]">
+                      {courtRows.length} court
+                      {courtRows.length === 1 ? "" : "s"} at this facility
+                    </p>
+                  </div>
+                  <div className="md:col-span-3">
+                    <Button type="submit">Go live</Button>
+                  </div>
+                </form>
+              </section>
+            )}
+
+            <section className="space-y-3">
+              <h2 className="font-semibold">Past sessions</h2>
+              {sessionRows.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/s/${s.public_token}/host`}
+                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm transition-colors hover:border-[var(--accent)]"
+                >
+                  <span>{s.title}</span>
+                  <span className="text-[var(--muted)]">Completed</span>
+                </Link>
+              ))}
+              {sessionRows.length === 0 ? (
+                <p className="text-sm text-[var(--muted)]">
+                  No past sessions yet.
+                </p>
+              ) : null}
+            </section>
+          </>
+        }
+        bookings={
+          <BookingsManager
+            venueId={venue.id}
+            courts={courtRows}
+            bookings={bookingRows}
+            grid={bookingGrid}
+            timeZone={venue.timezone}
+            publicBookingUrl={`${siteUrl()}${bookingPath}`}
+            bookingPath={bookingPath}
+          />
+        }
+        roster={
+          <section className={CARD}>
+            <h2 className="mb-1 font-semibold">Roster</h2>
+            <p className="mb-4 text-sm text-[var(--muted)]">
+              Saved players can be checked into any session without retyping
+              their name and skill.
+            </p>
+            <form action={addRosterPlayerAction} className="mb-4 flex gap-2">
+              <input type="hidden" name="venueId" value={venue.id} />
+              <Input name="name" placeholder="Player name" required />
+              <select
+                name="skill"
+                aria-label="Skill"
+                defaultValue={DEFAULT_SKILL_TIER}
+                className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm"
+              >
+                {SKILL_TIERS.map((tier) => (
+                  <option key={tier} value={tier}>
+                    {formatSkillTier(tier)}
+                  </option>
+                ))}
+              </select>
+              <Button type="submit" variant="secondary">
+                Add
+              </Button>
+            </form>
+            <ul className="max-h-96 space-y-2 overflow-auto text-sm">
+              {playerRows.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex justify-between border-b border-[var(--border)] pb-2 last:border-0"
+                >
+                  <span>{p.name}</span>
+                  <span className="text-[var(--muted)]">
+                    {formatSkillTier(p.skill)}
+                  </span>
+                </li>
+              ))}
+              {playerRows.length === 0 ? (
+                <li className="text-[var(--muted)]">No saved players yet</li>
+              ) : null}
+            </ul>
+          </section>
+        }
+        settings={
+          facility ? (
+            <FacilitySettings
+              facility={facility}
+              courts={courtRows}
+              venueTimezone={venue.timezone}
+              bookingHours={{
+                openHour: venue.bookingOpenHour,
+                closeHour: venue.bookingCloseHour,
+              }}
+            />
+          ) : (
+            <section className={CARD}>
+              <p className="text-sm text-[var(--muted)]">
+                Facility settings are unavailable right now.
+              </p>
+            </section>
+          )
+        }
+      />
     </main>
   );
 }

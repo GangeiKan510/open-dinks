@@ -1,124 +1,21 @@
 "use server";
 
 import { parseSkillTier, type SkillTier } from "@/lib/skill-tier";
-import {
-  buildCourtNames,
-  DEFAULT_COURT_COUNT,
-  normalizeCourtCount,
-} from "@/lib/court-count";
-import {
-  createFacilityForAccount,
-  loadFacilityForAccount,
-} from "@/lib/facility-server";
+import { DEFAULT_COURT_COUNT, normalizeCourtCount } from "@/lib/court-count";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { reduce, type SessionMode } from "@/engine";
+import { ensureSingleLiveSession } from "@/lib/live-session";
 import { dbToEngineState } from "@/lib/session-mapper";
 
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 48);
-}
+/** Violation of sessions_one_live_per_venue. */
+const PG_UNIQUE_VIOLATION = "23505";
 
-export async function createVenueAction(
-  formData: FormData,
-): Promise<{ error: string } | { ok: true; venueId: string }> {
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { error: "Venue name is required." };
-
-  const facilityName =
-    String(formData.get("facilityName") ?? "").trim() || name;
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sign in to create a venue." };
-
-  // Venue.created_by requires a profiles row (created by auth trigger).
-  const { error: profileError } = await supabase.from("profiles").upsert({
-    id: user.id,
-    display_name:
-      user.user_metadata?.display_name || user.email?.split("@")[0] || "Host",
-  });
-  if (profileError) {
-    console.error("[venue] profile upsert failed", profileError);
-    return {
-      error:
-        "Could not prepare your host profile. Apply the latest Supabase migrations, then try again.",
-    };
-  }
-
-  const slugBase = slugify(name) || "venue";
-  const slug = `${slugBase}-${Math.random().toString(36).slice(2, 6)}`;
-  const courtCount = normalizeCourtCount(
-    formData.get("courtCount"),
-    DEFAULT_COURT_COUNT,
-  );
-
-  const existingFacility = await loadFacilityForAccount(user.id);
-  let facilityId = existingFacility?.id ?? null;
-  if (!facilityId) {
-    const created = await createFacilityForAccount({ name: facilityName });
-    if ("error" in created) return { error: created.error };
-    facilityId = created.id;
-  }
-
-  const venueId = crypto.randomUUID();
-  const { error } = await supabase.from("venues").insert({
-    id: venueId,
-    name,
-    slug,
-    created_by: user.id,
-    facility_id: facilityId,
-  });
-
-  if (error) {
-    console.error("[venue] create failed", error);
-    const message = (error.message ?? "").toLowerCase();
-    if (
-      message.includes("facility_id") ||
-      message.includes("does not exist") ||
-      message.includes("schema cache")
-    ) {
-      return {
-        error:
-          "Venue schema is out of date. Run the latest Supabase migrations, then try again.",
-      };
-    }
-    return { error: "Could not create venue. Try again." };
-  }
-
-  const { error: memberError } = await supabase.from("venue_members").insert({
-    venue_id: venueId,
-    user_id: user.id,
-    role: "owner",
-  });
-  if (memberError) {
-    console.error("[venue] member insert failed", memberError);
-    return { error: "Venue created, but membership failed. Try again." };
-  }
-
-  const courts = buildCourtNames(courtCount).map((courtName, index) => ({
-    venue_id: venueId,
-    name: courtName,
-    sort_order: index + 1,
-  }));
-  const { error: courtsError } = await supabase.from("courts").insert(courts);
-  if (courtsError) {
-    console.error("[venue] courts insert failed", courtsError);
-    return { error: "Venue created, but courts failed to save. Try again." };
-  }
-
-  revalidatePath("/dashboard");
-  revalidatePath(`/venues/${venueId}`);
-  return { ok: true as const, venueId };
-}
-
+/**
+ * Goes live for a venue. A venue may only have one live session at a time, so
+ * if one is already running the host is sent to it instead of opening a second.
+ */
 export async function createSessionAction(formData: FormData): Promise<void> {
   const venueId = String(formData.get("venueId") ?? "");
   const title = String(formData.get("title") ?? "Open Play").trim();
@@ -134,6 +31,12 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) return;
 
+  const alreadyLive = await ensureSingleLiveSession(supabase, venueId);
+  if (alreadyLive) {
+    revalidatePath("/dashboard");
+    redirect(`/s/${alreadyLive.public_token}/host`);
+  }
+
   const { data: session, error } = await supabase
     .from("sessions")
     .insert({
@@ -148,9 +51,20 @@ export async function createSessionAction(formData: FormData): Promise<void> {
     .select("public_token")
     .single();
 
+  // Lost a race against a concurrent "Go live": join the winner rather than
+  // leaving the host on a form that appears to have done nothing.
+  if (error?.code === PG_UNIQUE_VIOLATION) {
+    const winner = await ensureSingleLiveSession(supabase, venueId);
+    if (winner) {
+      revalidatePath("/dashboard");
+      redirect(`/s/${winner.public_token}/host`);
+    }
+    return;
+  }
+
   if (error || !session) return;
 
-  revalidatePath(`/venues/${venueId}`);
+  revalidatePath("/dashboard");
   redirect(`/s/${session.public_token}/host`);
 }
 
@@ -450,6 +364,8 @@ export async function endSessionAction(token: string) {
 
   revalidatePath(`/s/${token}`);
   revalidatePath(`/s/${token}/host`);
+  // Frees the venue's single live slot, so the dashboard can offer "Go live".
+  revalidatePath("/dashboard");
   return { ok: true as const };
 }
 
@@ -465,34 +381,5 @@ export async function addRosterPlayerAction(formData: FormData): Promise<void> {
     name,
     skill,
   });
-  revalidatePath(`/venues/${venueId}`);
-}
-
-export async function updateFacilityAction(formData: FormData): Promise<void> {
-  const venueId = String(formData.get("venueId") ?? "");
-  const facilityId = String(formData.get("facilityId") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const shortName = String(formData.get("shortName") ?? "").trim();
-  const tagline = String(formData.get("tagline") ?? "").trim();
-  if (!venueId || !facilityId || !name || !shortName) return;
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const { error } = await supabase
-    .from("facilities")
-    .update({
-      name,
-      short_name: shortName,
-      tagline,
-    })
-    .eq("id", facilityId);
-
-  if (error) return;
-
-  revalidatePath(`/venues/${venueId}`);
   revalidatePath("/dashboard");
 }

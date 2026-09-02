@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import type { EngineState } from "@/engine";
-import { occupiedMatches, playerName } from "@/engine";
+import { activeCourtBooking, occupiedMatches, playerName } from "@/engine";
+import { BookingWindow } from "@/components/session/booking-window";
 import { CourtAnnouncer } from "@/components/session/court-announcer";
 import { CourtTimer } from "@/components/session/court-timer";
 import { formatBrandTitle, type FacilityConfig } from "@/lib/facility";
@@ -11,9 +12,11 @@ import { primeSpeechAnnouncer } from "@/lib/speech-announcer";
 export function Wallboard({
   state,
   facility = null,
+  venueTimezone,
 }: {
   state: EngineState;
   facility?: FacilityConfig | null;
+  venueTimezone?: string;
 }) {
   const courts = occupiedMatches(state);
   const waiting = state.players.filter((p) => p.status === "waiting");
@@ -48,30 +51,55 @@ export function Wallboard({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {state.courts.map((court) => {
               const match = courts.find((m) => m.courtId === court.id);
-              const badge =
-                match?.status === "active"
+              const booking = activeCourtBooking(court, state.now);
+              // A match already on court keeps its tile; the booking only takes
+              // the display over once the court is actually clear.
+              const badge = match
+                ? match.status === "active"
                   ? "LIVE"
-                  : match?.status === "ready"
-                    ? "READY"
-                    : "OPEN";
+                  : "READY"
+                : booking
+                  ? "BOOKED"
+                  : "OPEN";
               return (
                 <article
                   key={court.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur"
+                  className={
+                    booking && !match
+                      ? "rounded-2xl border border-amber-300/40 bg-amber-300/10 p-5 backdrop-blur"
+                      : "rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur"
+                  }
                 >
                   <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-2xl font-semibold">{court.name}</h2>
                     <span
                       className={
-                        match
-                          ? "rounded-full bg-[var(--lime)]/20 px-3 py-1 text-xs text-[var(--lime)]"
-                          : "rounded-full bg-white/10 px-3 py-1 text-xs text-white/50"
+                        booking && !match
+                          ? "rounded-full bg-amber-300/20 px-3 py-1 text-xs text-amber-200"
+                          : match
+                            ? "rounded-full bg-[var(--lime)]/20 px-3 py-1 text-xs text-[var(--lime)]"
+                            : "rounded-full bg-white/10 px-3 py-1 text-xs text-white/50"
                       }
                     >
                       {badge}
                     </span>
                   </div>
-                  {match ? (
+                  {booking && !match ? (
+                    <div className="space-y-2">
+                      <p className="text-xl font-semibold text-amber-100">
+                        {booking.label}
+                      </p>
+                      <BookingWindow
+                        startsAt={booking.startsAt}
+                        endsAt={booking.endsAt}
+                        timeZone={venueTimezone}
+                        className="block text-lg text-amber-200/80"
+                      />
+                      <p className="text-sm text-amber-200/60">
+                        Reserved · not in open play
+                      </p>
+                    </div>
+                  ) : match ? (
                     <div className="space-y-4 text-lg">
                       <CourtTimer
                         match={match}
@@ -91,6 +119,12 @@ export function Wallboard({
                           <div key={id}>{playerName(state, id)}</div>
                         ))}
                       </div>
+                      {booking ? (
+                        <p className="rounded-lg bg-amber-300/15 px-3 py-2 text-sm text-amber-200">
+                          Reserved for {booking.label} — last game on this
+                          court.
+                        </p>
+                      ) : null}
                     </div>
                   ) : (
                     <p className="text-white/40">Next group loading…</p>

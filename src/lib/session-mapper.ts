@@ -4,6 +4,7 @@ import type { Database } from "@/lib/supabase/database.types";
 import {
   createInitialState,
   type EngineCourt,
+  type EngineCourtBooking,
   type EngineState,
   type SessionMode,
 } from "@/engine";
@@ -13,25 +14,64 @@ type SessionPlayerRow = Database["public"]["Tables"]["session_players"]["Row"];
 type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+
+/**
+ * Confirmed bookings per real court id, ascending by start.
+ * Pending and cancelled rows are requests, not reservations, so they never
+ * take a court out of open play.
+ */
+function groupConfirmedBookings(
+  bookingRows: BookingRow[],
+): Map<string, EngineCourtBooking[]> {
+  const byCourt = new Map<string, EngineCourtBooking[]>();
+
+  for (const row of bookingRows) {
+    if (row.status !== "confirmed") continue;
+    const startsAt = new Date(row.starts_at).getTime();
+    const endsAt = new Date(row.ends_at).getTime();
+    if (Number.isNaN(startsAt) || Number.isNaN(endsAt)) continue;
+
+    const existing = byCourt.get(row.court_id);
+    const booking: EngineCourtBooking = {
+      id: row.id,
+      label: row.booked_by_name,
+      startsAt,
+      endsAt,
+    };
+    if (existing) existing.push(booking);
+    else byCourt.set(row.court_id, [booking]);
+  }
+
+  for (const bookings of byCourt.values()) {
+    bookings.sort((a, b) => a.startsAt - b.startsAt);
+  }
+
+  return byCourt;
+}
 
 function resolveSessionCourts(
   courtRows: CourtRow[],
   sessionCourtCount: number,
+  bookingRows: BookingRow[],
 ): EngineCourt[] {
   const count = normalizeCourtCount(sessionCourtCount, MIN_COURT_COUNT);
   const sorted = courtRows.slice().sort((a, b) => a.sort_order - b.sort_order);
+  const bookingsByCourt = groupConfirmedBookings(bookingRows);
 
   const fromDb = sorted.slice(0, count).map((c) => ({
     id: c.id,
     name: c.name,
     skillMin: c.skill_min ? parseSkillTier(c.skill_min) : undefined,
     skillMax: c.skill_max ? parseSkillTier(c.skill_max) : undefined,
+    bookings: bookingsByCourt.get(c.id),
   }));
 
   if (fromDb.length >= count) {
     return fromDb;
   }
 
+  // Padding courts have no `courts` row, so nothing can be booked against them.
   const virtual = Array.from({ length: count - fromDb.length }, (_, i) => ({
     id: `virtual_${fromDb.length + i + 1}`,
     name: `Court ${fromDb.length + i + 1}`,
@@ -46,6 +86,7 @@ export function dbToEngineState(input: {
   matches: MatchRow[];
   courts: CourtRow[];
   pairings: PairingRow[];
+  bookings?: BookingRow[];
 }): EngineState {
   const partnerHistory: Record<string, number> = {};
   const opponentHistory: Record<string, number> = {};
@@ -55,7 +96,11 @@ export function dbToEngineState(input: {
     opponentHistory[key] = p.as_opponents;
   }
 
-  const courts = resolveSessionCourts(input.courts, input.session.court_count);
+  const courts = resolveSessionCourts(
+    input.courts,
+    input.session.court_count,
+    input.bookings ?? [],
+  );
 
   return createInitialState({
     mode: input.session.mode as SessionMode,

@@ -1,3 +1,4 @@
+import { isCourtBooked } from "./bookings";
 import { recordMatchPairings } from "./history";
 import { proposeFillCourts } from "./matchmaking";
 import {
@@ -93,6 +94,8 @@ function applyAssignment(
 ): EngineState {
   const court = state.courts.find((c) => c.id === courtId);
   if (!court) return state;
+  // Also guards FORCE_ASSIGN, which bypasses proposeFillCourts.
+  if (isCourtBooked(court, state.now)) return state;
 
   const existing = state.matches.find(
     (m) => m.courtId === courtId && isOccupied(m.status),

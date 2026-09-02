@@ -1,4 +1,5 @@
 import { playerMatchesSkillBand, skillTierRank } from "@/lib/skill-tier";
+import { isCourtBooked } from "./bookings";
 import { count } from "./history";
 import {
   takeNextCourtPlayers,
@@ -180,7 +181,9 @@ export function proposeFillCourts(
       .filter((m) => m.status === "active" || m.status === "ready")
       .map((m) => m.courtId),
   );
-  let freeCourts = state.courts.filter((c) => !activeCourtIds.has(c.id));
+  let freeCourts = state.courts.filter(
+    (c) => !activeCourtIds.has(c.id) && !isCourtBooked(c, state.now),
+  );
   if (options?.courtIds?.length) {
     const allowed = new Set(options.courtIds);
     freeCourts = freeCourts.filter((c) => allowed.has(c.id));
@@ -248,7 +251,8 @@ export function getStackPushBlockReason(
       .map((m) => m.courtId),
   );
   let freeCourts = state.courts.filter(
-    (court) => !activeCourtIds.has(court.id),
+    (court) =>
+      !activeCourtIds.has(court.id) && !isCourtBooked(court, state.now),
   );
   if (options?.courtIds?.length) {
     const allowed = new Set(options.courtIds);

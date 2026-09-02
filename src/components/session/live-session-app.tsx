@@ -25,6 +25,7 @@ import {
 } from "@/engine";
 import { createClient } from "@/lib/supabase/client";
 import { dbToEngineState } from "@/lib/session-mapper";
+import { BOOKING_TICK_MS, sessionBookingWindow } from "@/lib/bookings";
 import { formatSkillTier } from "@/lib/skill-tier";
 import type { FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
@@ -34,6 +35,7 @@ type SessionPlayerRow = Database["public"]["Tables"]["session_players"]["Row"];
 type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
 export function LiveSessionApp({
   token,
@@ -49,7 +51,9 @@ export function LiveSessionApp({
     matches: MatchRow[];
     courts: CourtRow[];
     pairings: PairingRow[];
+    bookings: BookingRow[];
     facility: FacilityConfig | null;
+    venueTimezone: string;
   };
   mode: "host" | "player" | "board";
   playerUrl: string;
@@ -58,17 +62,28 @@ export function LiveSessionApp({
   const [bundle, setBundle] = useState(initial);
   const [pending, startTransition] = useTransition();
   const [ended, setEnded] = useState(initial.session.status === "completed");
+  const [now, setNow] = useState(() => Date.now());
   const facility = bundle.facility;
+  const venueTimezone = bundle.venueTimezone;
+
+  // Bookings start and end on the clock, not on a database change, so the
+  // engine's `now` has to advance on its own for a court to flip to BOOKED.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), BOOKING_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const state: EngineState = useMemo(() => {
-    return dbToEngineState({
+    const mapped = dbToEngineState({
       session: bundle.session,
       players: bundle.players,
       matches: bundle.matches,
       courts: bundle.courts,
       pairings: bundle.pairings,
+      bookings: bundle.bookings,
     });
-  }, [bundle]);
+    return { ...mapped, now };
+  }, [bundle, now]);
 
   const refresh = useCallback(async () => {
     const supabase = createClient();
@@ -79,11 +94,14 @@ export function LiveSessionApp({
       .single();
     if (!session) return;
 
+    const bookingWindow = sessionBookingWindow();
+
     const [
       { data: players },
       { data: matches },
       { data: courts },
       { data: pairings },
+      { data: bookings },
     ] = await Promise.all([
       supabase.from("session_players").select("*").eq("session_id", session.id),
       supabase.from("matches").select("*").eq("session_id", session.id),
@@ -93,6 +111,14 @@ export function LiveSessionApp({
         .eq("venue_id", session.venue_id)
         .order("sort_order"),
       supabase.from("pairing_history").select("*").eq("session_id", session.id),
+      supabase
+        .from("bookings")
+        .select("*")
+        .eq("venue_id", session.venue_id)
+        .eq("status", "confirmed")
+        .gt("ends_at", bookingWindow.from)
+        .lt("starts_at", bookingWindow.to)
+        .order("starts_at"),
     ]);
 
     setBundle((prev) => ({
@@ -101,7 +127,9 @@ export function LiveSessionApp({
       matches: matches ?? [],
       courts: courts ?? [],
       pairings: pairings ?? [],
+      bookings: bookings ?? [],
       facility: prev.facility,
+      venueTimezone: prev.venueTimezone,
     }));
     setEnded(session.status === "completed");
   }, [token]);
@@ -127,6 +155,13 @@ export function LiveSessionApp({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "sessions" },
+        () => {
+          void refresh();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings" },
         () => {
           void refresh();
         },
@@ -262,7 +297,13 @@ export function LiveSessionApp({
   }
 
   if (mode === "board") {
-    return <Wallboard state={state} facility={facility} />;
+    return (
+      <Wallboard
+        state={state}
+        facility={facility}
+        venueTimezone={venueTimezone}
+      />
+    );
   }
 
   if (mode === "player") {
@@ -287,6 +328,7 @@ export function LiveSessionApp({
         state={state}
         dispatch={dispatch}
         boardUrl={boardUrl}
+        venueTimezone={venueTimezone}
         isPending={pending}
         onEndSession={() => {
           startTransition(async () => {

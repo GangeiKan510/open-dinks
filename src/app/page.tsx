@@ -15,7 +15,7 @@ export default async function HomePage() {
   }
 
   const ctaHref = signedIn ? "/dashboard" : "/login";
-  const ctaLabel = signedIn ? "Create venue" : "Host login";
+  const ctaLabel = signedIn ? "Open dashboard" : "Host login";
 
   return (
     <main className="relative overflow-hidden">

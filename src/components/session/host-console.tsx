@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
 import type { EngineAction, EngineMatch, EngineState } from "@/engine";
 import {
+  activeCourtBooking,
+  bookableCourts,
   isMatchOvertime,
   matchRemainingMs,
   occupiedMatches,
@@ -11,6 +13,7 @@ import {
   playersPerCourt,
   summarizeSession,
 } from "@/engine";
+import { BookingWindow } from "@/components/session/booking-window";
 import { WaitingStackPanel } from "@/components/session/waiting-stack-panel";
 import {
   DEFAULT_SKILL_TIER,
@@ -37,6 +40,7 @@ export function HostConsole({
   onEndSession,
   readOnly = false,
   isPending,
+  venueTimezone,
 }: {
   state: EngineState;
   dispatch: (action: EngineAction) => void;
@@ -45,6 +49,7 @@ export function HostConsole({
   readOnly?: boolean;
   /** When set, action buttons show a spinner until the live sync finishes. */
   isPending?: boolean;
+  venueTimezone?: string;
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
@@ -59,7 +64,10 @@ export function HostConsole({
   const activeBusyKey = tracksPending && pending ? busyKey : null;
   const perCourt = playersPerCourt(state.mode);
   const courts = occupiedMatches(state);
-  const openCourtCount = state.courts.length - courts.length;
+  // Booked courts are unavailable, so they must not count as open capacity.
+  const openCourtCount = bookableCourts(state).filter(
+    (court) => !courts.some((match) => match.courtId === court.id),
+  ).length;
   const waiting = state.players.filter((p) => p.status === "waiting");
   const resting = state.players.filter((p) => p.status === "resting");
   const rosterPlayers = state.players.filter((p) => p.status !== "left");
@@ -143,19 +151,26 @@ export function HostConsole({
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {state.courts.map((court) => {
             const match = courts.find((m) => m.courtId === court.id);
-            const statusLabel = !match
-              ? "Open"
-              : match.status === "ready"
+            const booking = activeCourtBooking(court, state.now);
+            // Keep showing a match that is already on court; the reservation
+            // only owns the tile once the court is clear.
+            const reservedAndClear = Boolean(booking) && !match;
+            const statusLabel = match
+              ? match.status === "ready"
                 ? "Ready"
-                : "Playing";
+                : "Playing"
+              : booking
+                ? "Booked"
+                : "Open";
             return (
               <article
                 key={court.id}
                 className={cn(
                   "rounded-xl border bg-[var(--surface)] p-4 shadow-[0_1px_0_rgba(0,0,0,0.04)]",
+                  reservedAndClear && "border-amber-500/60 bg-amber-50/60",
                   match?.status === "active" && "border-[var(--accent)]/40",
                   match?.status === "ready" && "border-amber-400/50",
-                  !match && "border-[var(--border)]",
+                  !reservedAndClear && !match && "border-[var(--border)]",
                 )}
               >
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -183,17 +198,32 @@ export function HostConsole({
                   <span
                     className={cn(
                       "rounded-full px-2 py-0.5 text-xs",
-                      match?.status === "active"
-                        ? "bg-[var(--accent-soft)] text-[var(--accent-fg-soft)]"
-                        : match?.status === "ready"
-                          ? "bg-amber-100 text-amber-900"
-                          : "bg-[var(--surface-2)] text-[var(--muted)]",
+                      reservedAndClear
+                        ? "bg-amber-200 text-amber-950"
+                        : match?.status === "active"
+                          ? "bg-[var(--accent-soft)] text-[var(--accent-fg-soft)]"
+                          : match?.status === "ready"
+                            ? "bg-amber-100 text-amber-900"
+                            : "bg-[var(--surface-2)] text-[var(--muted)]",
                     )}
                   >
                     {statusLabel}
                   </span>
                 </div>
-                {match ? (
+                {reservedAndClear && booking ? (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{booking.label}</p>
+                    <BookingWindow
+                      startsAt={booking.startsAt}
+                      endsAt={booking.endsAt}
+                      timeZone={venueTimezone}
+                      className="block text-sm text-[var(--muted)]"
+                    />
+                    <p className="text-xs text-[var(--muted)]">
+                      Reserved — unavailable for open play.
+                    </p>
+                  </div>
+                ) : match ? (
                   <div className="space-y-3">
                     <CourtTimer
                       match={match}
@@ -204,6 +234,12 @@ export function HostConsole({
                       vs
                     </div>
                     <TeamBlock label="Team B" ids={match.teamB} state={state} />
+                    {booking ? (
+                      <p className="rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-950">
+                        Reserved for {booking.label} — this court leaves open
+                        play when the game ends.
+                      </p>
+                    ) : null}
                     {!readOnly ? (
                       <div className="flex flex-col gap-2 pt-1">
                         {match.status === "ready" ? (

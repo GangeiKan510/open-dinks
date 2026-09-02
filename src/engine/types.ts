@@ -7,12 +7,24 @@ export type PlayerStatus = "waiting" | "playing" | "resting" | "left";
 
 export type MatchStatus = "ready" | "active" | "completed";
 
+/** A confirmed reservation that takes a court out of open play for its window. */
+export interface EngineCourtBooking {
+  id: string;
+  /** Who reserved it, shown on the wallboard. */
+  label: string;
+  startsAt: number;
+  /** Exclusive: a booking ending at `now` no longer blocks the court. */
+  endsAt: number;
+}
+
 export interface EngineCourt {
   id: string;
   name: string;
   /** Optional skill band for skill_separated mode (inclusive). */
   skillMin?: SkillTier;
   skillMax?: SkillTier;
+  /** Confirmed bookings overlapping the session window, ascending by start. */
+  bookings?: EngineCourtBooking[];
 }
 
 export interface EnginePlayer {

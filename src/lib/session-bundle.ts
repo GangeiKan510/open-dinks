@@ -2,12 +2,14 @@ import type { FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { loadFacilityForSession } from "@/lib/facility-server";
+import { sessionBookingWindow } from "@/lib/bookings";
 
 type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 type SessionPlayerRow = Database["public"]["Tables"]["session_players"]["Row"];
 type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
 export type SessionBundle = {
   session: SessionRow;
@@ -15,7 +17,9 @@ export type SessionBundle = {
   matches: MatchRow[];
   courts: CourtRow[];
   pairings: PairingRow[];
+  bookings: BookingRow[];
   facility: FacilityConfig | null;
+  venueTimezone: string;
 };
 
 export async function loadSessionBundle(
@@ -29,11 +33,15 @@ export async function loadSessionBundle(
     .single();
   if (!session) return null;
 
+  const bookingWindow = sessionBookingWindow();
+
   const [
     { data: players },
     { data: matches },
     { data: courts },
     { data: pairings },
+    { data: bookings },
+    { data: venue },
     facility,
   ] = await Promise.all([
     supabase.from("session_players").select("*").eq("session_id", session.id),
@@ -44,6 +52,19 @@ export async function loadSessionBundle(
       .eq("venue_id", session.venue_id)
       .order("sort_order"),
     supabase.from("pairing_history").select("*").eq("session_id", session.id),
+    supabase
+      .from("bookings")
+      .select("*")
+      .eq("venue_id", session.venue_id)
+      .eq("status", "confirmed")
+      .gt("ends_at", bookingWindow.from)
+      .lt("starts_at", bookingWindow.to)
+      .order("starts_at"),
+    supabase
+      .from("venues")
+      .select("timezone")
+      .eq("id", session.venue_id)
+      .single(),
     loadFacilityForSession(session.venue_id),
   ]);
 
@@ -53,6 +74,8 @@ export async function loadSessionBundle(
     matches: matches ?? [],
     courts: courts ?? [],
     pairings: pairings ?? [],
+    bookings: bookings ?? [],
     facility,
+    venueTimezone: venue?.timezone ?? "UTC",
   };
 }
