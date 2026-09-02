@@ -6,6 +6,7 @@ import {
   moveWaitingPlayer,
   nextQueueOrder,
   orderedWaitingPlayers,
+  repositionPartnersForFairJoin,
 } from "./queue";
 import { clampMaxGameMinutes } from "./timer";
 import type {
@@ -500,13 +501,27 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return next;
     }
 
-    case "SET_PARTNER_LOCK":
-      return {
-        ...state,
-        players: updatePlayer(state.players, action.playerId, {
-          partnerLockId: action.partnerId,
-        }),
-      };
+    case "SET_PARTNER_LOCK": {
+      const players = updatePlayer(state.players, action.playerId, {
+        partnerLockId: action.partnerId,
+      });
+      let next: EngineState = { ...state, players };
+      const partner = next.players.find((p) => p.id === action.partnerId);
+      const mutual =
+        action.partnerId !== null && partner?.partnerLockId === action.playerId;
+      if (mutual && action.partnerId) {
+        const ids = orderedWaitingPlayers(next).map((p) => p.id);
+        const reordered = repositionPartnersForFairJoin(
+          ids,
+          action.playerId,
+          action.partnerId,
+        );
+        if (reordered) {
+          next = applyWaitingQueueOrder(next, reordered);
+        }
+      }
+      return next;
+    }
 
     case "SET_TEAM_LOCK": {
       const groupId = `team_${state.now}_${Math.random().toString(36).slice(2, 8)}`;

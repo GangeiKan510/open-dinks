@@ -382,6 +382,10 @@ export function HostConsole({
         {!readOnly ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <h2 className="mb-3 font-semibold">Partner lock</h2>
+            <p className="mb-3 text-xs text-[var(--muted)]">
+              Lock two players as partners. The player closer to the front moves
+              down to join the other — they cannot cut ahead.
+            </p>
             <div className="grid grid-cols-2 gap-2">
               <select
                 className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"

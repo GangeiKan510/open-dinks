@@ -3,10 +3,12 @@
 import { useState } from "react";
 import type { DragEvent } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { toast } from "sonner";
 import type { EngineAction, EnginePlayer, EngineState } from "@/engine";
 import { formatSkillTier } from "@/lib/skill-tier";
 import {
   findSeparatedTeamLocks,
+  formatFairJoinBlockMessage,
   formatSeparatedTeamLockMessage,
   formatTeamLockLabel,
   groupWaitingStack,
@@ -223,13 +225,22 @@ export function WaitingStackPanel({
       return;
     }
 
-    const reordered = reorderWaitingStackIds(
-      stack.map((player) => player.id),
-      raw,
-      targetId,
-    );
+    const ids = stack.map((player) => player.id);
+    const reordered = reorderWaitingStackIds(ids, raw, targetId);
     if (reordered) {
       dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
+    } else {
+      const blockMessage = formatFairJoinBlockMessage(
+        (id) => playerName(state, id),
+        ids,
+        raw,
+        targetId,
+      );
+      if (blockMessage) {
+        toast.error("Can't move up in the stack", {
+          description: blockMessage,
+        });
+      }
     }
     clearDrag();
   }
@@ -299,7 +310,8 @@ export function WaitingStackPanel({
           </h2>
           <p className="mt-1 text-xs text-[var(--muted)]">
             Players group in sets of {perCourt}. Drag a group handle or use the
-            arrows to reorder stacks; drag players within or across groups.
+            arrows to reorder stacks. To join another player, drag the person
+            closer to the front down — players who just finished cannot move up.
           </p>
         </div>
         <Button

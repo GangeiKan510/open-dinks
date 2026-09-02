@@ -6,6 +6,9 @@ import {
   orderedWaitingPlayers,
   reorderWaitingStackGroupIds,
   reorderWaitingStackIds,
+  repositionPartnersForFairJoin,
+  formatFairJoinBlockMessage,
+  isBlockedFairJoinMove,
 } from "./queue";
 
 function checkIn(state: ReturnType<typeof createInitialState>, name: string) {
@@ -89,14 +92,98 @@ describe("waiting stack", () => {
     expect(assigned).toEqual(["Alex", "Drew", "Casey", "Blake"]);
   });
 
-  it("reorderWaitingStackIds moves a player to a new slot", () => {
-    expect(reorderWaitingStackIds(["a", "b", "c", "d"], "d", "b")).toEqual([
+  it("formatFairJoinBlockMessage explains who must move down", () => {
+    const names: Record<string, string> = {
+      sean: "Sean",
+      gino: "Gino",
+    };
+    expect(
+      formatFairJoinBlockMessage(
+        (id) => names[id] ?? id,
+        ["sean", "b", "gino"],
+        "gino",
+        "sean",
+      ),
+    ).toBe(
+      "Gino can't go up in the stack. Sean should move down to Gino's stack.",
+    );
+    expect(
+      formatFairJoinBlockMessage(
+        (id) => names[id] ?? id,
+        ["sean", "b", "gino"],
+        "sean",
+        "gino",
+      ),
+    ).toBeNull();
+    expect(isBlockedFairJoinMove(["a", "b", "c"], "c", "a")).toBe(true);
+    expect(isBlockedFairJoinMove(["a", "b", "c"], "a", "c")).toBe(false);
+  });
+
+  it("reorderWaitingStackIds moves a player down but not up", () => {
+    expect(reorderWaitingStackIds(["a", "b", "c", "d"], "a", "c")).toEqual([
+      "b",
+      "c",
       "a",
       "d",
+    ]);
+    expect(reorderWaitingStackIds(["a", "b", "c", "d"], "d", "b")).toBeNull();
+    expect(
+      reorderWaitingStackIds(["a", "b", "c", "d"], "d", "b", {
+        allowMoveUp: true,
+      }),
+    ).toEqual(["a", "d", "b", "c"]);
+    expect(reorderWaitingStackIds(["a", "b"], "a", "a")).toBeNull();
+  });
+
+  it("repositionPartnersForFairJoin moves the front partner down to the back", () => {
+    expect(
+      repositionPartnersForFairJoin(
+        ["sean", "b", "c", "d", "e", "f", "g", "gino"],
+        "sean",
+        "gino",
+      ),
+    ).toEqual(["b", "c", "d", "e", "f", "g", "sean", "gino"]);
+    expect(
+      repositionPartnersForFairJoin(
+        ["sean", "b", "c", "d", "e", "f", "g", "gino"],
+        "gino",
+        "sean",
+      ),
+    ).toEqual(["b", "c", "d", "e", "f", "g", "sean", "gino"]);
+    expect(repositionPartnersForFairJoin(["a", "b", "c"], "a", "b")).toEqual([
+      "a",
       "b",
       "c",
     ]);
-    expect(reorderWaitingStackIds(["a", "b"], "a", "a")).toBeNull();
+  });
+
+  it("SET_PARTNER_LOCK repositions the front partner down when both lock", () => {
+    let state = createInitialState({ now: 1_000 });
+    ["Sean", "B", "C", "D", "E", "F", "G", "Gino"].forEach((name) => {
+      state = checkIn(state, name);
+    });
+
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "sean",
+      partnerId: "gino",
+    });
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "gino",
+      partnerId: "sean",
+    });
+
+    expect(orderedWaitingPlayers(state).map((p) => p.name)).toEqual([
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "Sean",
+      "Gino",
+    ]);
   });
 
   it("groups waiting players into court-sized chunks", () => {

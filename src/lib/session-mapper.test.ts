@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { reduce } from "@/engine";
 import { dbToEngineState } from "@/lib/session-mapper";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -198,5 +199,59 @@ describe("session mapper bookings", () => {
 
     expect(state.courts[1].id).toBe("virtual_2");
     expect(state.courts[1].bookings).toBeUndefined();
+  });
+
+  it("FILL_COURTS skips rented courts only when bookings are mapped", () => {
+    const courts: CourtRow[] = [
+      court,
+      {
+        ...court,
+        id: "court-2",
+        name: "Court 2",
+        sort_order: 2,
+      },
+    ];
+    const players = ["a", "b", "c", "d"].map((id, index) => ({
+      id,
+      session_id: "session-1",
+      player_id: null,
+      display_name: id.toUpperCase(),
+      skill: "intermediate" as const,
+      status: "waiting" as const,
+      games_played: 0,
+      last_played_at: null,
+      checked_in_at: new Date().toISOString(),
+      partner_lock_id: null,
+      avoid_ids: [],
+      consecutive_wins: 0,
+      queue_order: index,
+      team_lock_group_id: null,
+    }));
+    const noon = Date.parse("2026-08-29T12:00:00.000Z");
+    const base = {
+      session: { ...baseSession, court_count: 2 },
+      players,
+      matches: [],
+      courts,
+      pairings: [],
+    };
+
+    const withBookings = {
+      ...dbToEngineState({
+        ...base,
+        bookings: [bookingRow({ court_id: "court-1" })],
+      }),
+      now: noon,
+    };
+    const filled = reduce(withBookings, { type: "FILL_COURTS" });
+    expect(filled.matches).toHaveLength(1);
+    expect(filled.matches[0]?.courtId).toBe("court-2");
+
+    const withoutBookings = {
+      ...dbToEngineState(base),
+      now: noon,
+    };
+    const wronglyFilled = reduce(withoutBookings, { type: "FILL_COURTS" });
+    expect(wronglyFilled.matches[0]?.courtId).toBe("court-1");
   });
 });

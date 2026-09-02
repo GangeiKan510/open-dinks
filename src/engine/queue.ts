@@ -71,13 +71,68 @@ export function reorderWaitingStackIds(
   ids: string[],
   sourceId: string,
   targetId: string,
+  options?: { allowMoveUp?: boolean },
 ): string[] | null {
   const from = ids.indexOf(sourceId);
   const to = ids.indexOf(targetId);
   if (from < 0 || to < 0 || from === to) return null;
+  if (!options?.allowMoveUp && from > to) return null;
   const next = [...ids];
   next.splice(from, 1);
   next.splice(to, 0, sourceId);
+  return next;
+}
+
+export function isBlockedFairJoinMove(
+  ids: string[],
+  sourceId: string,
+  targetId: string,
+): boolean {
+  const from = ids.indexOf(sourceId);
+  const to = ids.indexOf(targetId);
+  return from >= 0 && to >= 0 && from !== to && from > to;
+}
+
+export function formatFairJoinBlockMessage(
+  nameFor: (id: string) => string,
+  ids: string[],
+  sourceId: string,
+  targetId: string,
+): string | null {
+  if (!isBlockedFairJoinMove(ids, sourceId, targetId)) return null;
+  const backName = nameFor(sourceId);
+  const frontName = nameFor(targetId);
+  return `${backName} can't go up in the stack. ${frontName} should move down to ${backName}'s stack.`;
+}
+
+/**
+ * When two waiting players partner up, the player closer to the front moves
+ * down to join the player further back — never the other way around.
+ */
+export function repositionPartnersForFairJoin(
+  ids: string[],
+  playerId: string,
+  partnerId: string,
+): string[] | null {
+  const playerIndex = ids.indexOf(playerId);
+  const partnerIndex = ids.indexOf(partnerId);
+  if (playerIndex < 0 || partnerIndex < 0 || playerIndex === partnerIndex) {
+    return null;
+  }
+
+  const frontId = playerIndex < partnerIndex ? playerId : partnerId;
+  const backId = playerIndex < partnerIndex ? partnerId : playerId;
+  const frontIndex = ids.indexOf(frontId);
+  const backIndex = ids.indexOf(backId);
+
+  if (frontIndex >= backIndex - 1) {
+    return ids;
+  }
+
+  const next = [...ids];
+  next.splice(frontIndex, 1);
+  const newBackIndex = next.indexOf(backId);
+  next.splice(newBackIndex, 0, frontId);
   return next;
 }
 

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { reduce, type SessionMode } from "@/engine";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { dbToEngineState } from "@/lib/session-mapper";
+import { loadSessionBundle } from "@/lib/session-bundle";
 
 /** Violation of sessions_one_live_per_venue. */
 const PG_UNIQUE_VIOLATION = "23505";
@@ -74,37 +75,16 @@ export async function signOutAction() {
   redirect("/");
 }
 
-async function loadSessionBundle(token: string) {
-  const supabase = await createClient();
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("public_token", token)
-    .single();
-  if (!session) return null;
-
-  const [
-    { data: players },
-    { data: matches },
-    { data: courts },
-    { data: pairings },
-  ] = await Promise.all([
-    supabase.from("session_players").select("*").eq("session_id", session.id),
-    supabase.from("matches").select("*").eq("session_id", session.id),
-    supabase
-      .from("courts")
-      .select("*")
-      .eq("venue_id", session.venue_id)
-      .order("sort_order"),
-    supabase.from("pairing_history").select("*").eq("session_id", session.id),
-  ]);
-
+async function loadSessionBundleForPersist(token: string) {
+  const bundle = await loadSessionBundle(token);
+  if (!bundle) return null;
   return {
-    session,
-    players: players ?? [],
-    matches: matches ?? [],
-    courts: courts ?? [],
-    pairings: pairings ?? [],
+    session: bundle.session,
+    players: bundle.players,
+    matches: bundle.matches,
+    courts: bundle.courts,
+    pairings: bundle.pairings,
+    bookings: bundle.bookings,
   };
 }
 
@@ -114,7 +94,7 @@ async function persistEngineDiff(
     state: ReturnType<typeof dbToEngineState>,
   ) => ReturnType<typeof dbToEngineState>,
 ) {
-  const bundle = await loadSessionBundle(token);
+  const bundle = await loadSessionBundleForPersist(token);
   if (!bundle) return { error: "Session not found" };
 
   const before = dbToEngineState(bundle);
