@@ -39,7 +39,7 @@ describe("parseBookingTime", () => {
 });
 
 describe("parsePriceToCents", () => {
-  it("converts dollars to integer cents", () => {
+  it("converts pesos to integer centavos", () => {
     expect(parsePriceToCents("25")).toBe(2500);
     expect(parsePriceToCents("25.50")).toBe(2550);
   });
@@ -62,10 +62,10 @@ describe("parsePriceToCents", () => {
 });
 
 describe("formatPriceCents", () => {
-  it("renders cents as dollars without double-converting", () => {
-    expect(formatPriceCents(2500)).toBe("$25.00");
-    expect(formatPriceCents(45)).toBe("$0.45");
-    expect(formatPriceCents(0)).toBe("$0.00");
+  it("renders cents as pesos without double-converting", () => {
+    expect(formatPriceCents(2500)).toBe("₱25.00");
+    expect(formatPriceCents(45)).toBe("₱0.45");
+    expect(formatPriceCents(0)).toBe("₱0.00");
   });
 
   it("renders an em dash when no price is set", () => {

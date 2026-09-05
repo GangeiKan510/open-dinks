@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
-import { PublicBookingFlow } from "@/components/venue/public-booking-flow";
+import { PublicBookingTabs } from "@/components/venue/public-booking-tabs";
 import {
   buildHourlySlotGrid,
   PUBLIC_BOOKING_LOOKAHEAD_DAYS,
 } from "@/lib/booking-calendar";
 import { parsePublicBookingVenue } from "@/lib/bookings";
 import { formatBookingHoursRange } from "@/lib/booking-hours";
+import { buildCoachHourlySlotGrid, parsePublicCoaches } from "@/lib/coaching";
 import { formatVenueTimezoneLabel } from "@/lib/timezone";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,8 +18,7 @@ export default async function PublicBookingPage({
   const { slug } = await params;
   const supabase = await createClient();
 
-  // SECURITY DEFINER RPCs: anon has no read access to bookings or courts, so
-  // nothing here can leak who booked a court or their contact details.
+  // SECURITY DEFINER RPCs: anon has no table grants for bookings/coaches.
   const { data: venueJson } = await supabase.rpc("get_public_booking_venue", {
     p_slug: slug,
   });
@@ -30,13 +30,24 @@ export default async function PublicBookingPage({
     from.getTime() + PUBLIC_BOOKING_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000,
   );
 
-  const { data: busy } = await supabase.rpc("get_court_busy_ranges", {
-    p_venue_id: venue.id,
-    p_from: from.toISOString(),
-    p_to: to.toISOString(),
-  });
+  const [{ data: busy }, coachesRpc, coachBusyRpc] = await Promise.all([
+    supabase.rpc("get_court_busy_ranges", {
+      p_venue_id: venue.id,
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+    }),
+    supabase.rpc("get_public_coaches", { p_venue_id: venue.id }),
+    supabase.rpc("get_coach_busy_ranges", {
+      p_venue_id: venue.id,
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+    }),
+  ]);
 
-  const grid = buildHourlySlotGrid(venue.courts, busy ?? [], {
+  const coaches = coachesRpc.error ? [] : parsePublicCoaches(coachesRpc.data);
+  const coachBusy = coachBusyRpc.error ? [] : (coachBusyRpc.data ?? []);
+
+  const courtGrid = buildHourlySlotGrid(venue.courts, busy ?? [], {
     fromMs: from.getTime(),
     dayCount: PUBLIC_BOOKING_LOOKAHEAD_DAYS,
     timeZone: venue.timezone,
@@ -44,6 +55,24 @@ export default async function PublicBookingPage({
     openHour: venue.bookingOpenHour,
     closeHour: venue.bookingCloseHour,
   });
+
+  const coachingGrid = buildCoachHourlySlotGrid(
+    coaches,
+    coachBusy.map((row) => ({
+      coach_id: row.coach_id,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      status: "confirmed",
+    })),
+    {
+      fromMs: from.getTime(),
+      dayCount: PUBLIC_BOOKING_LOOKAHEAD_DAYS,
+      timeZone: venue.timezone,
+      now: from.getTime(),
+      openHour: venue.bookingOpenHour,
+      closeHour: venue.bookingCloseHour,
+    },
+  );
 
   const hoursLabel = formatBookingHoursRange(
     {
@@ -57,33 +86,30 @@ export default async function PublicBookingPage({
     <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-          Court booking
+          Book with us
         </p>
         <h1 className="font-[family-name:var(--font-display)] text-4xl">
           {venue.name}
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Tap open hours for consecutive 1-hour blocks on one court. Bookings
-          are available {hoursLabel} in{" "}
-          {formatVenueTimezoneLabel(venue.timezone)}. The venue confirms every
-          request before the court is held for you.
+          Reserve a court or request a coaching session. Everything is in{" "}
+          {formatVenueTimezoneLabel(venue.timezone)}.
         </p>
       </header>
 
-      {venue.courts.length === 0 ? (
-        <p className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-sm text-[var(--muted)]">
-          This venue has not published any courts yet.
-        </p>
-      ) : (
-        <PublicBookingFlow
-          venueId={venue.id}
-          venueSlug={venue.slug}
-          courts={venue.courts}
-          grid={grid}
-          timeZone={venue.timezone}
-          dayCount={PUBLIC_BOOKING_LOOKAHEAD_DAYS}
-        />
-      )}
+      <PublicBookingTabs
+        venueId={venue.id}
+        venueSlug={venue.slug}
+        courts={venue.courts}
+        courtGrid={courtGrid}
+        courtBusy={busy ?? []}
+        coaches={coaches}
+        coachingGrid={coachingGrid}
+        timeZone={venue.timezone}
+        dayCount={PUBLIC_BOOKING_LOOKAHEAD_DAYS}
+        hoursLabel={hoursLabel}
+        timezoneLabel={formatVenueTimezoneLabel(venue.timezone)}
+      />
     </main>
   );
 }

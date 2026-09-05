@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Link2, PenLine, CalendarDays } from "lucide-react";
+import { Link2, PenLine, CalendarDays, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import {
   createBookingAction,
@@ -16,6 +16,7 @@ import {
   BookingSlotPicker,
   type SelectedBookingRange,
 } from "@/components/venue/booking-slot-picker";
+import { CoachingManager } from "@/components/venue/coaching-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,11 +32,14 @@ import {
   type HourlySlotGrid,
 } from "@/lib/booking-calendar";
 import { formatDateAndTimeRange, formatPriceCents } from "@/lib/bookings";
+import type { CoachWithAvailability } from "@/lib/coaching";
 import { useHydrated } from "@/lib/use-hydrated";
 import type { Database } from "@/lib/supabase/database.types";
 
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
+type CoachingBookingRow =
+  Database["public"]["Tables"]["coaching_bookings"]["Row"];
 
 const CARD = "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5";
 
@@ -73,6 +77,9 @@ export function BookingsManager({
   timeZone,
   publicBookingUrl,
   bookingPath,
+  coaches,
+  coachingBookings,
+  coachingGrid,
 }: {
   venueId: string;
   courts: CourtRow[];
@@ -81,6 +88,9 @@ export function BookingsManager({
   timeZone: string;
   publicBookingUrl: string;
   bookingPath: string;
+  coaches: CoachWithAvailability[];
+  coachingBookings: CoachingBookingRow[];
+  coachingGrid: HourlySlotGrid;
 }) {
   const hydrated = useHydrated();
   const [pending, startTransition] = useTransition();
@@ -184,12 +194,49 @@ export function BookingsManager({
 
   if (courts.length === 0) {
     return (
-      <section className={CARD}>
-        <h2 className="mb-1 font-semibold">Court bookings</h2>
-        <p className="text-sm text-[var(--muted)]">
-          Add a court to this venue before taking bookings.
-        </p>
-      </section>
+      <Tabs defaultValue="coaching">
+        <TabsList aria-label="Booking sections">
+          <TabsTrigger value="coaching">
+            <GraduationCap className="h-4 w-4 shrink-0" aria-hidden />
+            Coaching
+            <TabsBadge count={coaches.filter((c) => c.active).length} />
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="coaching">
+          <div className="space-y-4">
+            <section className={CARD}>
+              <h2 className="mb-1 font-semibold">Court bookings</h2>
+              <p className="text-sm text-[var(--muted)]">
+                Add a court in Settings before taking court rentals. Coaching
+                also needs at least one court so sessions can reserve space.
+              </p>
+            </section>
+            <CoachingManager
+              venueId={venueId}
+              coaches={coaches}
+              bookings={coachingBookings}
+              courts={courts.map((court) => ({
+                id: court.id,
+                name: court.name,
+              }))}
+              courtBusy={[
+                ...bookings.map((booking) => ({
+                  court_id: booking.court_id,
+                  starts_at: booking.starts_at,
+                  ends_at: booking.ends_at,
+                })),
+                ...coachingBookings.map((booking) => ({
+                  court_id: booking.court_id,
+                  starts_at: booking.starts_at,
+                  ends_at: booking.ends_at,
+                })),
+              ]}
+              grid={coachingGrid}
+              timeZone={timeZone}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
     );
   }
 
@@ -199,6 +246,11 @@ export function BookingsManager({
         <TabsTrigger value="create">
           <PenLine className="h-4 w-4 shrink-0" aria-hidden />
           Create booking
+        </TabsTrigger>
+        <TabsTrigger value="coaching">
+          <GraduationCap className="h-4 w-4 shrink-0" aria-hidden />
+          Coaching
+          <TabsBadge count={coaches.filter((c) => c.active).length} />
         </TabsTrigger>
         <TabsTrigger value="schedule">
           <CalendarDays className="h-4 w-4 shrink-0" aria-hidden />
@@ -331,6 +383,32 @@ export function BookingsManager({
             </div>
           </form>
         </section>
+      </TabsContent>
+
+      <TabsContent value="coaching">
+        <CoachingManager
+          venueId={venueId}
+          coaches={coaches}
+          bookings={coachingBookings}
+          courts={courts.map((court) => ({
+            id: court.id,
+            name: court.name,
+          }))}
+          courtBusy={[
+            ...bookings.map((booking) => ({
+              court_id: booking.court_id,
+              starts_at: booking.starts_at,
+              ends_at: booking.ends_at,
+            })),
+            ...coachingBookings.map((booking) => ({
+              court_id: booking.court_id,
+              starts_at: booking.starts_at,
+              ends_at: booking.ends_at,
+            })),
+          ]}
+          grid={coachingGrid}
+          timeZone={timeZone}
+        />
       </TabsContent>
 
       <TabsContent value="schedule" className="space-y-4">

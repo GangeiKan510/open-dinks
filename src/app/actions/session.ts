@@ -85,6 +85,7 @@ async function loadSessionBundleForPersist(token: string) {
     courts: bundle.courts,
     pairings: bundle.pairings,
     bookings: bundle.bookings,
+    coachingBookings: bundle.coachingBookings,
   };
 }
 

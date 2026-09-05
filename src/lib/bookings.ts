@@ -65,20 +65,20 @@ export function parseBookingTime(value: unknown): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-/** Dollars from a price input → integer cents. `""` means "no price set". */
+/** Major currency units from a price input → integer minor units. `""` means unset. */
 export function parsePriceToCents(value: unknown): number | null | "invalid" {
   if (value == null) return null;
   const trimmed = String(value).trim();
   if (!trimmed) return null;
-  const dollars = Number(trimmed);
-  if (!Number.isFinite(dollars) || dollars < 0) return "invalid";
-  return Math.round(dollars * 100);
+  const amount = Number(trimmed);
+  if (!Number.isFinite(amount) || amount < 0) return "invalid";
+  return Math.round(amount * 100);
 }
 
-/** Cents → display string. The DB column is cents; only this converts it. */
+/** Minor units → peso display string. The DB column is centavos; only this converts it. */
 export function formatPriceCents(cents: number | null | undefined): string {
   if (cents == null) return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+  return `₱${(cents / 100).toFixed(2)}`;
 }
 
 export function validateBookingWindow(

@@ -10,6 +10,8 @@ type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+type CoachingBookingRow =
+  Database["public"]["Tables"]["coaching_bookings"]["Row"];
 
 export type SessionBundle = {
   session: SessionRow;
@@ -18,6 +20,7 @@ export type SessionBundle = {
   courts: CourtRow[];
   pairings: PairingRow[];
   bookings: BookingRow[];
+  coachingBookings: CoachingBookingRow[];
   facility: FacilityConfig | null;
   venueTimezone: string;
 };
@@ -41,6 +44,7 @@ export async function loadSessionBundle(
     { data: courts },
     { data: pairings },
     { data: bookings },
+    coachingResult,
     { data: venue },
     facility,
   ] = await Promise.all([
@@ -54,6 +58,14 @@ export async function loadSessionBundle(
     supabase.from("pairing_history").select("*").eq("session_id", session.id),
     supabase
       .from("bookings")
+      .select("*")
+      .eq("venue_id", session.venue_id)
+      .eq("status", "confirmed")
+      .gt("ends_at", bookingWindow.from)
+      .lt("starts_at", bookingWindow.to)
+      .order("starts_at"),
+    supabase
+      .from("coaching_bookings")
       .select("*")
       .eq("venue_id", session.venue_id)
       .eq("status", "confirmed")
@@ -75,6 +87,7 @@ export async function loadSessionBundle(
     courts: courts ?? [],
     pairings: pairings ?? [],
     bookings: bookings ?? [],
+    coachingBookings: coachingResult.error ? [] : (coachingResult.data ?? []),
     facility,
     venueTimezone: venue?.timezone ?? "UTC",
   };

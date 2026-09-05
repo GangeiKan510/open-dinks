@@ -15,18 +15,26 @@ type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+type CoachingBusyInput = {
+  id: string;
+  court_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  label: string;
+};
 
 /**
- * Confirmed bookings per real court id, ascending by start.
+ * Confirmed court holds per real court id, ascending by start.
  * Pending and cancelled rows are requests, not reservations, so they never
  * take a court out of open play.
  */
-function groupConfirmedBookings(
-  bookingRows: BookingRow[],
+function groupConfirmedCourtBusy(
+  rows: CoachingBusyInput[],
 ): Map<string, EngineCourtBooking[]> {
   const byCourt = new Map<string, EngineCourtBooking[]>();
 
-  for (const row of bookingRows) {
+  for (const row of rows) {
     if (row.status !== "confirmed") continue;
     const startsAt = new Date(row.starts_at).getTime();
     const endsAt = new Date(row.ends_at).getTime();
@@ -35,7 +43,7 @@ function groupConfirmedBookings(
     const existing = byCourt.get(row.court_id);
     const booking: EngineCourtBooking = {
       id: row.id,
-      label: row.booked_by_name,
+      label: row.label,
       startsAt,
       endsAt,
     };
@@ -54,10 +62,21 @@ function resolveSessionCourts(
   courtRows: CourtRow[],
   sessionCourtCount: number,
   bookingRows: BookingRow[],
+  coachingRows: CoachingBusyInput[] = [],
 ): EngineCourt[] {
   const count = normalizeCourtCount(sessionCourtCount, MIN_COURT_COUNT);
   const sorted = courtRows.slice().sort((a, b) => a.sort_order - b.sort_order);
-  const bookingsByCourt = groupConfirmedBookings(bookingRows);
+  const bookingsByCourt = groupConfirmedCourtBusy([
+    ...bookingRows.map((row) => ({
+      id: row.id,
+      court_id: row.court_id,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      status: row.status,
+      label: row.booked_by_name,
+    })),
+    ...coachingRows,
+  ]);
 
   const fromDb = sorted.slice(0, count).map((c) => ({
     id: c.id,
@@ -87,6 +106,14 @@ export function dbToEngineState(input: {
   courts: CourtRow[];
   pairings: PairingRow[];
   bookings?: BookingRow[];
+  coachingBookings?: Array<{
+    id: string;
+    court_id: string;
+    starts_at: string;
+    ends_at: string;
+    status: string;
+    booked_by_name?: string;
+  }>;
 }): EngineState {
   const partnerHistory: Record<string, number> = {};
   const opponentHistory: Record<string, number> = {};
@@ -96,10 +123,24 @@ export function dbToEngineState(input: {
     opponentHistory[key] = p.as_opponents;
   }
 
+  const coachingBusy: CoachingBusyInput[] = (input.coachingBookings ?? []).map(
+    (row) => ({
+      id: row.id,
+      court_id: row.court_id,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      status: row.status,
+      label: row.booked_by_name
+        ? `Coaching · ${row.booked_by_name}`
+        : "Coaching",
+    }),
+  );
+
   const courts = resolveSessionCourts(
     input.courts,
     input.session.court_count,
     input.bookings ?? [],
+    coachingBusy,
   );
 
   return createInitialState({

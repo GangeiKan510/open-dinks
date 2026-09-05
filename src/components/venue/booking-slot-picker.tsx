@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   formatSlotRangeLabel,
   slotsForDay,
@@ -49,6 +49,9 @@ export function BookingSlotPicker({
   timeZone,
   selection,
   onSelect,
+  resourceLabel = "Court",
+  title = "Pick your time",
+  description,
 }: {
   grid: HourlySlotGrid;
   courts: Array<{ id: string; name: string }>;
@@ -56,6 +59,9 @@ export function BookingSlotPicker({
   dayCount?: number;
   selection: SelectedBookingRange | null;
   onSelect: (selection: SelectedBookingRange | null) => void;
+  resourceLabel?: string;
+  title?: string;
+  description?: ReactNode;
 }) {
   const hydrated = useHydrated();
   const [selectedDay, setSelectedDay] = useState(grid.days[0]?.key ?? "");
@@ -84,18 +90,22 @@ export function BookingSlotPicker({
   }
 
   return (
-    <section className="space-y-2" aria-label="Court availability">
+    <section className="space-y-2" aria-label={`${resourceLabel} availability`}>
       <div>
-        <h2 className="font-semibold">Pick your time</h2>
+        <h2 className="font-semibold">{title}</h2>
         <p className="mt-0.5 text-sm text-[var(--muted)]">
-          Each column is a 1-hour rental in{" "}
-          <span className="font-medium text-[var(--foreground)]">
-            {hydrated
-              ? formatVenueTimezoneLabel(timeZone)
-              : "your venue timezone"}
-          </span>
-          . Tap open slots on the same court to book back-to-back hours. For a
-          gap later in the day, submit a separate request.
+          {description ?? (
+            <>
+              Each column is a 1-hour rental in{" "}
+              <span className="font-medium text-[var(--foreground)]">
+                {hydrated
+                  ? formatVenueTimezoneLabel(timeZone)
+                  : "your venue timezone"}
+              </span>
+              . Tap open slots on the same court to book back-to-back hours. For
+              a gap later in the day, submit a separate request.
+            </>
+          )}
         </p>
       </div>
 
@@ -141,7 +151,7 @@ export function BookingSlotPicker({
                 scope="col"
                 className="sticky left-0 z-10 w-16 border-r border-[var(--border)] bg-[var(--surface-2)] px-1.5 py-1.5 text-left font-medium"
               >
-                Court
+                {resourceLabel}
               </th>
               {grid.hours.map((hour) => (
                 <th

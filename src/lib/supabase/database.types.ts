@@ -161,7 +161,7 @@ export type Database = {
           contact_email: string | null;
           contact_phone: string | null;
           notes: string | null;
-          /** Cents. The DB stores minor units; only the UI converts to dollars. */
+          /** Centavos. The DB stores minor units; only the UI converts to pesos. */
           price_cents: number | null;
           payment_status: DbBookingPaymentStatus;
           source: DbBookingSource;
@@ -212,6 +212,129 @@ export type Database = {
           updated_at?: string;
           public_token?: string;
           decline_reason?: string | null;
+        };
+        Relationships: [];
+      };
+      coaches: {
+        Row: {
+          id: string;
+          venue_id: string;
+          name: string;
+          rate_cents: number;
+          active: boolean;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          venue_id: string;
+          name: string;
+          rate_cents?: number;
+          active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          venue_id?: string;
+          name?: string;
+          rate_cents?: number;
+          active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      coach_availability: {
+        Row: {
+          id: string;
+          coach_id: string;
+          day_of_week: number;
+          start_hour: number;
+          end_hour: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          coach_id: string;
+          day_of_week: number;
+          start_hour: number;
+          end_hour: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          coach_id?: string;
+          day_of_week?: number;
+          start_hour?: number;
+          end_hour?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      coaching_bookings: {
+        Row: {
+          id: string;
+          venue_id: string;
+          coach_id: string;
+          court_id: string;
+          starts_at: string;
+          ends_at: string;
+          status: DbBookingStatus;
+          booked_by_name: string;
+          contact_email: string | null;
+          contact_phone: string | null;
+          notes: string | null;
+          price_cents: number | null;
+          payment_status: DbBookingPaymentStatus;
+          source: DbBookingSource;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          public_token: string;
+        };
+        Insert: {
+          id?: string;
+          venue_id: string;
+          coach_id: string;
+          court_id: string;
+          starts_at: string;
+          ends_at: string;
+          status?: DbBookingStatus;
+          booked_by_name: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          price_cents?: number | null;
+          payment_status?: DbBookingPaymentStatus;
+          source?: DbBookingSource;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          public_token?: string;
+        };
+        Update: {
+          id?: string;
+          venue_id?: string;
+          coach_id?: string;
+          court_id?: string;
+          starts_at?: string;
+          ends_at?: string;
+          status?: DbBookingStatus;
+          booked_by_name?: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          notes?: string | null;
+          price_cents?: number | null;
+          payment_status?: DbBookingPaymentStatus;
+          source?: DbBookingSource;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          public_token?: string;
         };
         Relationships: [];
       };
@@ -463,6 +586,36 @@ export type Database = {
         Returns: string;
       };
       get_booking_request_status: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
+      get_public_coaches: {
+        Args: { p_venue_id: string };
+        Returns: Json;
+      };
+      get_coach_busy_ranges: {
+        Args: { p_venue_id: string; p_from: string; p_to: string };
+        Returns: {
+          coach_id: string;
+          starts_at: string;
+          ends_at: string;
+        }[];
+      };
+      request_coaching_booking: {
+        Args: {
+          p_venue_id: string;
+          p_coach_id: string;
+          p_court_id: string;
+          p_starts_at: string;
+          p_ends_at: string;
+          p_booked_by_name: string;
+          p_contact_email?: string | null;
+          p_contact_phone?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      get_coaching_request_status: {
         Args: { p_token: string };
         Returns: Json;
       };

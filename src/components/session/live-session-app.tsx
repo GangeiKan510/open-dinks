@@ -38,6 +38,8 @@ type MatchRow = Database["public"]["Tables"]["matches"]["Row"];
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 type PairingRow = Database["public"]["Tables"]["pairing_history"]["Row"];
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+type CoachingBookingRow =
+  Database["public"]["Tables"]["coaching_bookings"]["Row"];
 
 export function LiveSessionApp({
   token,
@@ -54,6 +56,7 @@ export function LiveSessionApp({
     courts: CourtRow[];
     pairings: PairingRow[];
     bookings: BookingRow[];
+    coachingBookings: CoachingBookingRow[];
     facility: FacilityConfig | null;
     venueTimezone: string;
   };
@@ -83,6 +86,7 @@ export function LiveSessionApp({
       courts: bundle.courts,
       pairings: bundle.pairings,
       bookings: bundle.bookings,
+      coachingBookings: bundle.coachingBookings,
     });
     return { ...mapped, now };
   }, [bundle, now]);
@@ -104,6 +108,7 @@ export function LiveSessionApp({
       { data: courts },
       { data: pairings },
       { data: bookings },
+      coachingResult,
     ] = await Promise.all([
       supabase.from("session_players").select("*").eq("session_id", session.id),
       supabase.from("matches").select("*").eq("session_id", session.id),
@@ -121,6 +126,14 @@ export function LiveSessionApp({
         .gt("ends_at", bookingWindow.from)
         .lt("starts_at", bookingWindow.to)
         .order("starts_at"),
+      supabase
+        .from("coaching_bookings")
+        .select("*")
+        .eq("venue_id", session.venue_id)
+        .eq("status", "confirmed")
+        .gt("ends_at", bookingWindow.from)
+        .lt("starts_at", bookingWindow.to)
+        .order("starts_at"),
     ]);
 
     setBundle((prev) => ({
@@ -130,6 +143,7 @@ export function LiveSessionApp({
       courts: courts ?? [],
       pairings: pairings ?? [],
       bookings: bookings ?? [],
+      coachingBookings: coachingResult.error ? [] : (coachingResult.data ?? []),
       facility: prev.facility,
       venueTimezone: prev.venueTimezone,
     }));
@@ -164,6 +178,13 @@ export function LiveSessionApp({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
+        () => {
+          void refresh();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "coaching_bookings" },
         () => {
           void refresh();
         },

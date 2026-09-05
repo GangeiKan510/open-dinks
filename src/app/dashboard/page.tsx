@@ -20,11 +20,13 @@ import {
   PUBLIC_BOOKING_LOOKAHEAD_DAYS,
 } from "@/lib/booking-calendar";
 import { venueBookingsFrom } from "@/lib/bookings";
+import { buildCoachHourlySlotGrid } from "@/lib/coaching";
 import {
   DEFAULT_COURT_COUNT,
   MAX_COURT_COUNT,
   MIN_COURT_COUNT,
 } from "@/lib/court-count";
+import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
 import { ensureSingleLiveSession } from "@/lib/live-session";
@@ -102,6 +104,9 @@ export default async function DashboardPage() {
     { data: sessions },
     { data: facilityRow },
     { data: bookings },
+    coachesResult,
+    coachingBookingsResult,
+    availabilityResult,
   ] = await Promise.all([
     supabase
       .from("courts")
@@ -128,6 +133,15 @@ export default async function DashboardPage() {
       .neq("status", "cancelled")
       .gt("ends_at", bookingsFrom)
       .order("starts_at"),
+    supabase.from("coaches").select("*").eq("venue_id", venue.id).order("name"),
+    supabase
+      .from("coaching_bookings")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .neq("status", "cancelled")
+      .gt("ends_at", bookingsFrom)
+      .order("starts_at"),
+    supabase.from("coach_availability").select("*"),
   ]);
 
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
@@ -136,6 +150,42 @@ export default async function DashboardPage() {
   const sessionRows = sessions ?? [];
   const bookingRows = bookings ?? [];
 
+  const coachingSchemaReady =
+    !isMissingSchemaError(coachesResult.error) &&
+    !isMissingSchemaError(coachingBookingsResult.error) &&
+    !isMissingSchemaError(availabilityResult.error);
+
+  const coachRows = coachingSchemaReady ? (coachesResult.data ?? []) : [];
+  const coachingBookingRows = coachingSchemaReady
+    ? (coachingBookingsResult.data ?? [])
+    : [];
+  const availabilityRows = coachingSchemaReady
+    ? (availabilityResult.data ?? [])
+    : [];
+
+  const availabilityByCoach = new Map<
+    string,
+    Array<{ dayOfWeek: number; startHour: number; endHour: number }>
+  >();
+  for (const row of availabilityRows) {
+    const list = availabilityByCoach.get(row.coach_id) ?? [];
+    list.push({
+      dayOfWeek: row.day_of_week,
+      startHour: row.start_hour,
+      endHour: row.end_hour,
+    });
+    availabilityByCoach.set(row.coach_id, list);
+  }
+
+  const coachesWithAvailability = coachRows.map((coach) => ({
+    id: coach.id,
+    name: coach.name,
+    rateCents: coach.rate_cents,
+    active: coach.active,
+    notes: coach.notes,
+    availability: availabilityByCoach.get(coach.id) ?? [],
+  }));
+
   const pendingRequests = bookingRows.filter((b) => b.status === "pending");
   const upcomingBookings = bookingRows.filter((b) => b.status === "confirmed");
   const bookingPath = `/book/${venue.slug}`;
@@ -143,7 +193,36 @@ export default async function DashboardPage() {
   const bookingGridFrom = new Date();
   const bookingGrid = buildHourlySlotGrid(
     courtRows.map((court) => ({ id: court.id, name: court.name })),
-    busyRangesFromBookings(bookingRows, { includePending: true }),
+    busyRangesFromBookings(
+      [
+        ...bookingRows,
+        ...coachingBookingRows.map((booking) => ({
+          court_id: booking.court_id,
+          starts_at: booking.starts_at,
+          ends_at: booking.ends_at,
+          status: booking.status,
+        })),
+      ],
+      { includePending: true },
+    ),
+    {
+      fromMs: bookingGridFrom.getTime(),
+      dayCount: PUBLIC_BOOKING_LOOKAHEAD_DAYS,
+      timeZone: venue.timezone,
+      now: bookingGridFrom.getTime(),
+      openHour: venue.bookingOpenHour,
+      closeHour: venue.bookingCloseHour,
+    },
+  );
+
+  const coachingGrid = buildCoachHourlySlotGrid(
+    coachesWithAvailability.filter((coach) => coach.active),
+    coachingBookingRows.map((booking) => ({
+      coach_id: booking.coach_id,
+      starts_at: booking.starts_at,
+      ends_at: booking.ends_at,
+      status: booking.status,
+    })),
     {
       fromMs: bookingGridFrom.getTime(),
       dayCount: PUBLIC_BOOKING_LOOKAHEAD_DAYS,
@@ -293,6 +372,9 @@ export default async function DashboardPage() {
             timeZone={venue.timezone}
             publicBookingUrl={`${siteUrl()}${bookingPath}`}
             bookingPath={bookingPath}
+            coaches={coachesWithAvailability}
+            coachingBookings={coachingBookingRows}
+            coachingGrid={coachingGrid}
           />
         }
         roster={

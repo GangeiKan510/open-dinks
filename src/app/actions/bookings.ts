@@ -95,11 +95,27 @@ export async function createBookingAction(
   } = await supabase.auth.getUser();
   if (!user) return { error: BOOKING_ERROR_MESSAGES.signIn };
 
+  const startsIso = new Date(startsAt).toISOString();
+  const endsIso = new Date(endsAt).toISOString();
+
+  const { data: coachingConflict } = await supabase
+    .from("coaching_bookings")
+    .select("id")
+    .eq("court_id", courtId)
+    .eq("status", "confirmed")
+    .lt("starts_at", endsIso)
+    .gt("ends_at", startsIso)
+    .limit(1);
+
+  if (coachingConflict && coachingConflict.length > 0) {
+    return { error: BOOKING_ERROR_MESSAGES.overlap };
+  }
+
   const { error } = await supabase.from("bookings").insert({
     venue_id: venueId,
     court_id: courtId,
-    starts_at: new Date(startsAt).toISOString(),
-    ends_at: new Date(endsAt).toISOString(),
+    starts_at: startsIso,
+    ends_at: endsIso,
     status: "confirmed",
     booked_by_name: bookedByName,
     // Already cents from parsePriceToCents; do not scale again.
