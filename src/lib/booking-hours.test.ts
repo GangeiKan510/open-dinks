@@ -59,6 +59,28 @@ describe("formatBookingHoursRange", () => {
     ).toBe("24 hours (midnight – midnight)");
   });
 
+  it("labels wall-clock hours without shifting by venue timezone", () => {
+    expect(
+      formatBookingHoursRange(
+        { openHour: 6, closeHour: BOOKING_CLOSE_HOUR_24 },
+        { timeZone: "Asia/Manila" },
+      ),
+    ).toBe("6:00 AM – midnight");
+    expect(
+      formatBookingHoursRange(
+        { openHour: 5, closeHour: 8 },
+        { timeZone: "Asia/Manila" },
+      ),
+    ).toBe("5:00 AM – 8:00 AM");
+    // Regression: hour 21 must stay evening, not "5:00 AM" under UTC+8.
+    expect(
+      formatBookingHoursRange(
+        { openHour: 21, closeHour: BOOKING_CLOSE_HOUR_24 },
+        { timeZone: "Asia/Manila" },
+      ),
+    ).toBe("9:00 PM – midnight");
+  });
+
   it("falls back to defaults for invalid stored values", () => {
     expect(normalizeBookingHours({ openHour: 99, closeHour: 1 })).toEqual({
       openHour: 6,

@@ -89,12 +89,16 @@ export function formatBookingHourLabel(
   options?: { locale?: string; timeZone?: string },
 ): string {
   const locale = options?.locale ?? "en-US";
-  const timeZone = options?.timeZone ?? "UTC";
-  const probe = Date.UTC(2026, 0, 1, hour === 24 ? 0 : hour, 0);
+  // `hour` is already a venue-local wall-clock value (0–24). Format it as UTC
+  // so the label matches the integer. Passing the venue timezone here used to
+  // shift labels (e.g. hour 21 showed as "5:00 AM" in Asia/Manila).
+  void options?.timeZone;
+  const normalized = hour === 24 ? 0 : hour;
+  const probe = Date.UTC(2026, 0, 1, normalized, 0);
   return new Intl.DateTimeFormat(locale, {
     hour: "numeric",
     minute: "2-digit",
-    timeZone,
+    timeZone: "UTC",
   }).format(probe);
 }
 
@@ -107,6 +111,9 @@ export function formatBookingHoursRange(
   const locale = options?.locale;
   const timeZone = options?.timeZone;
   const open = formatBookingHourLabel(hours.openHour, { locale, timeZone });
+  if (hours.closeHour === BOOKING_CLOSE_HOUR_24) {
+    return `${open} – midnight`;
+  }
   const close = formatBookingHourLabel(hours.closeHour, { locale, timeZone });
   return `${open} – ${close}`;
 }

@@ -7,6 +7,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   endSessionAction,
@@ -17,6 +18,7 @@ import { HostConsole } from "@/components/session/host-console";
 import { PlayerView } from "@/components/session/player-view";
 import { SessionQr } from "@/components/session/session-qr";
 import { Wallboard } from "@/components/session/wallboard";
+import { Button } from "@/components/ui/button";
 import {
   createInitialState,
   type EngineAction,
@@ -291,7 +293,17 @@ export function LiveSessionApp({
         <h1 className="font-[family-name:var(--font-display)] text-4xl">
           Session complete
         </h1>
+        <p className="text-sm text-[var(--muted)]">
+          {mode === "host"
+            ? "Open play is closed. Review the session summary, then head back to your facility."
+            : "Thanks for playing. See you next open play."}
+        </p>
         <SessionSummaryList state={summaryState} />
+        {mode === "host" ? (
+          <Button asChild>
+            <Link href="/dashboard">Back to dashboard</Link>
+          </Button>
+        ) : null}
       </div>
     );
   }
