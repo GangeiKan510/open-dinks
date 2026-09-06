@@ -6,7 +6,11 @@ import {
   BOOKING_SLOT_DURATION_MS,
   validatePublicBookingDuration,
 } from "@/lib/booking-calendar";
-import { parseBookingTime, validateBookingWindow } from "@/lib/bookings";
+import {
+  parseBookingTime,
+  parsePaymentStatus,
+  validateBookingWindow,
+} from "@/lib/bookings";
 import {
   COACHING_ERROR_MESSAGES,
   coachIsAvailableAtHour,
@@ -409,6 +413,35 @@ export async function setCoachingBookingStatusAction(
     .eq("id", bookingId);
 
   if (error) return coachingWriteError(error, "setCoachingBookingStatus");
+  revalidateCoaching();
+  return { ok: true };
+}
+
+export async function setCoachingBookingPaymentStatusAction(
+  formData: FormData,
+): Promise<CoachingActionResult> {
+  const auth = await requireUser();
+  if ("error" in auth) return { error: auth.error };
+
+  const bookingId = String(formData.get("bookingId") ?? "").trim();
+  if (!bookingId) return { error: COACHING_ERROR_MESSAGES.notFound };
+
+  const parsed = parsePaymentStatus(formData.get("paymentStatus"));
+  if (parsed === "invalid") {
+    return { error: COACHING_ERROR_MESSAGES.payment };
+  }
+
+  const { error } = await auth.supabase
+    .from("coaching_bookings")
+    .update({
+      payment_status: parsed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
+
+  if (error) {
+    return coachingWriteError(error, "setCoachingBookingPaymentStatus");
+  }
   revalidateCoaching();
   return { ok: true };
 }

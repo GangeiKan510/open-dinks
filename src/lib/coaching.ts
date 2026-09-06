@@ -32,6 +32,7 @@ export const COACHING_ERROR_MESSAGES = {
   courtBusy: "That court is already booked for the selected time.",
   notFound: "That coach or session no longer exists.",
   save: "Could not save. Try again.",
+  payment: "Choose unpaid or paid.",
   migrations:
     "Coaching is not set up yet. Run the latest Supabase migrations, then try again.",
 } as const;

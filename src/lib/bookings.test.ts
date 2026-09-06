@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   BOOKING_ERROR_MESSAGES,
+  BOOKING_HISTORY_LOOKBACK_MS,
   formatDateAndTimeRange,
+  formatPaymentStatus,
   formatPriceCents,
   formatTimeRange,
+  isBookingHistoryRow,
   parseBookingTime,
   parseBookingRequestStatus,
+  parsePaymentStatus,
   parsePriceToCents,
   parsePublicBookingVenue,
   rangesOverlap,
   sessionBookingWindow,
   validateBookingWindow,
+  venueBookingHistoryFrom,
 } from "./bookings";
 
 const NOON = new Date("2026-08-29T12:00:00Z").getTime();
@@ -71,6 +76,26 @@ describe("formatPriceCents", () => {
   it("renders an em dash when no price is set", () => {
     expect(formatPriceCents(null)).toBe("—");
     expect(formatPriceCents(undefined)).toBe("—");
+  });
+});
+
+describe("parsePaymentStatus", () => {
+  it("accepts unpaid and paid", () => {
+    expect(parsePaymentStatus("unpaid")).toBe("unpaid");
+    expect(parsePaymentStatus("paid")).toBe("paid");
+  });
+
+  it("rejects empty or unknown values", () => {
+    expect(parsePaymentStatus("")).toBe("invalid");
+    expect(parsePaymentStatus("refunded")).toBe("invalid");
+  });
+});
+
+describe("formatPaymentStatus", () => {
+  it("labels payment status for the UI", () => {
+    expect(formatPaymentStatus("paid")).toBe("Paid");
+    expect(formatPaymentStatus("unpaid")).toBe("Unpaid");
+    expect(formatPaymentStatus("refunded")).toBe("Refunded");
   });
 });
 
@@ -219,5 +244,44 @@ describe("sessionBookingWindow", () => {
     const { from, to } = sessionBookingWindow(NOON);
     expect(new Date(from).getTime()).toBeLessThan(NOON);
     expect(new Date(to).getTime()).toBeGreaterThan(NOON);
+  });
+});
+
+describe("isBookingHistoryRow", () => {
+  it("treats cancelled and ended bookings as history", () => {
+    expect(
+      isBookingHistoryRow(
+        {
+          status: "cancelled",
+          ends_at: new Date(NOON + HOUR).toISOString(),
+        },
+        NOON,
+      ),
+    ).toBe(true);
+    expect(
+      isBookingHistoryRow(
+        {
+          status: "confirmed",
+          ends_at: new Date(NOON - 1).toISOString(),
+        },
+        NOON,
+      ),
+    ).toBe(true);
+    expect(
+      isBookingHistoryRow(
+        {
+          status: "confirmed",
+          ends_at: new Date(NOON + HOUR).toISOString(),
+        },
+        NOON,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("venueBookingHistoryFrom", () => {
+  it("looks back ninety days", () => {
+    const from = new Date(venueBookingHistoryFrom(NOON)).getTime();
+    expect(NOON - from).toBe(BOOKING_HISTORY_LOOKBACK_MS);
   });
 });

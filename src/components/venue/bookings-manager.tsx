@@ -2,15 +2,26 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Link2, PenLine, CalendarDays, GraduationCap } from "lucide-react";
+import {
+  Link2,
+  PenLine,
+  CalendarDays,
+  GraduationCap,
+  History,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   createBookingAction,
   declineBookingRequestAction,
   deleteBookingAction,
+  setBookingPaymentStatusAction,
   setBookingStatusAction,
   type BookingActionResult,
 } from "@/app/actions/bookings";
+import {
+  setCoachingBookingPaymentStatusAction,
+  type CoachingActionResult,
+} from "@/app/actions/coaching";
 import { BookingScheduleCalendar } from "@/components/venue/booking-schedule-calendar";
 import {
   BookingSlotPicker,
@@ -31,7 +42,11 @@ import {
   parseScheduleBookings,
   type HourlySlotGrid,
 } from "@/lib/booking-calendar";
-import { formatDateAndTimeRange, formatPriceCents } from "@/lib/bookings";
+import {
+  formatDateAndTimeRange,
+  formatPaymentStatus,
+  formatPriceCents,
+} from "@/lib/bookings";
 import type { CoachWithAvailability } from "@/lib/coaching";
 import { useHydrated } from "@/lib/use-hydrated";
 import type { Database } from "@/lib/supabase/database.types";
@@ -42,6 +57,26 @@ type CoachingBookingRow =
   Database["public"]["Tables"]["coaching_bookings"]["Row"];
 
 const CARD = "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5";
+
+type HistoryEntry = {
+  key: string;
+  kind: "court" | "coaching";
+  id: string;
+  label: string;
+  bookedByName: string;
+  startsAt: number;
+  endsAt: number;
+  status: string;
+  priceCents: number | null;
+  paymentStatus: string;
+};
+
+function formatBookingStatus(status: string): string {
+  if (status === "confirmed") return "Confirmed";
+  if (status === "pending") return "Pending";
+  if (status === "cancelled") return "Cancelled";
+  return status;
+}
 
 function BookingSchedule({
   booking,
@@ -73,23 +108,27 @@ export function BookingsManager({
   venueId,
   courts,
   bookings,
+  bookingHistory = [],
   grid,
   timeZone,
   publicBookingUrl,
   bookingPath,
   coaches,
   coachingBookings,
+  coachingHistory = [],
   coachingGrid,
 }: {
   venueId: string;
   courts: CourtRow[];
   bookings: BookingRow[];
+  bookingHistory?: BookingRow[];
   grid: HourlySlotGrid;
   timeZone: string;
   publicBookingUrl: string;
   bookingPath: string;
   coaches: CoachWithAvailability[];
   coachingBookings: CoachingBookingRow[];
+  coachingHistory?: CoachingBookingRow[];
   coachingGrid: HourlySlotGrid;
 }) {
   const hydrated = useHydrated();
@@ -108,6 +147,11 @@ export function BookingsManager({
     const byId = new Map(courts.map((court) => [court.id, court.name]));
     return (id: string) => byId.get(id) ?? "Removed court";
   }, [courts]);
+
+  const coachName = useMemo(() => {
+    const byId = new Map(coaches.map((coach) => [coach.id, coach.name]));
+    return (id: string) => byId.get(id) ?? "Removed coach";
+  }, [coaches]);
 
   const selectionLabel = useMemo(() => {
     if (!selection || !hydrated) return null;
@@ -133,9 +177,43 @@ export function BookingsManager({
     [bookings, selectedScheduleId],
   );
 
+  const historyEntries = useMemo(() => {
+    const courtEntries: HistoryEntry[] = bookingHistory.map((booking) => ({
+      key: `court-${booking.id}`,
+      kind: "court",
+      id: booking.id,
+      label: courtName(booking.court_id),
+      bookedByName: booking.booked_by_name,
+      startsAt: new Date(booking.starts_at).getTime(),
+      endsAt: new Date(booking.ends_at).getTime(),
+      status: booking.status,
+      priceCents: booking.price_cents,
+      paymentStatus: booking.payment_status,
+    }));
+    const coachingEntries: HistoryEntry[] = coachingHistory.map((booking) => ({
+      key: `coaching-${booking.id}`,
+      kind: "coaching",
+      id: booking.id,
+      label: `${coachName(booking.coach_id)} · ${courtName(booking.court_id)}`,
+      bookedByName: booking.booked_by_name,
+      startsAt: new Date(booking.starts_at).getTime(),
+      endsAt: new Date(booking.ends_at).getTime(),
+      status: booking.status,
+      priceCents: booking.price_cents,
+      paymentStatus: booking.payment_status,
+    }));
+    return [...courtEntries, ...coachingEntries].sort(
+      (a, b) => b.startsAt - a.startsAt,
+    );
+  }, [bookingHistory, coachingHistory, coachName, courtName]);
+
   const activeBusyKey = pending ? busyKey : null;
 
-  function run(key: string, action: () => Promise<BookingActionResult>) {
+  function run(
+    key: string,
+    action: () => Promise<BookingActionResult>,
+    options?: { keepSelection?: boolean; successMessage?: string },
+  ) {
     setBusyKey(key);
     startTransition(async () => {
       const result = await action();
@@ -143,11 +221,30 @@ export function BookingsManager({
         toast.error(result.error);
         return;
       }
-      setSelectedScheduleId(null);
-      setShowDeclineForm(false);
-      setDeclineReason("");
-      setDeclineError(null);
-      toast.success("Bookings updated.");
+      if (!options?.keepSelection) {
+        setSelectedScheduleId(null);
+        setShowDeclineForm(false);
+        setDeclineReason("");
+        setDeclineError(null);
+      }
+      toast.success(options?.successMessage ?? "Bookings updated.");
+    });
+  }
+
+  function runCoachingPayment(
+    key: string,
+    formData: FormData,
+    successMessage: string,
+  ) {
+    setBusyKey(key);
+    startTransition(async () => {
+      const result: CoachingActionResult =
+        await setCoachingBookingPaymentStatusAction(formData);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(successMessage);
     });
   }
 
@@ -201,6 +298,10 @@ export function BookingsManager({
             Coaching
             <TabsBadge count={coaches.filter((c) => c.active).length} />
           </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="h-4 w-4 shrink-0" aria-hidden />
+            History
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="coaching">
           <div className="space-y-4">
@@ -236,6 +337,41 @@ export function BookingsManager({
             />
           </div>
         </TabsContent>
+        <TabsContent value="history">
+          <section className={CARD}>
+            <h2 className="mb-1 font-semibold">Booking history</h2>
+            <p className="mb-4 text-sm text-[var(--muted)]">
+              Past and cancelled coaching sessions from the last 90 days.
+            </p>
+            {historyEntries.length === 0 ? (
+              <p className="text-sm text-[var(--muted)]">
+                No booking history yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-[var(--border)]">
+                {historyEntries.map((entry) => (
+                  <li key={entry.key} className="py-3 text-sm">
+                    <div className="font-medium">
+                      {entry.kind === "coaching" ? "Coaching" : "Court"} ·{" "}
+                      {entry.label} · {entry.bookedByName}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">
+                      {hydrated
+                        ? formatDateAndTimeRange(entry.startsAt, entry.endsAt, {
+                            timeZone,
+                          })
+                        : "\u00a0"}
+                      {" · "}
+                      {formatPriceCents(entry.priceCents)} ·{" "}
+                      {formatPaymentStatus(entry.paymentStatus)} ·{" "}
+                      {formatBookingStatus(entry.status)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
       </Tabs>
     );
   }
@@ -257,6 +393,10 @@ export function BookingsManager({
           Requests & schedule
           <TabsBadge count={requests.length} tone="attention" />
           <TabsBadge count={upcoming.length} />
+        </TabsTrigger>
+        <TabsTrigger value="history">
+          <History className="h-4 w-4 shrink-0" aria-hidden />
+          History
         </TabsTrigger>
         <TabsTrigger value="share">
           <Link2 className="h-4 w-4 shrink-0" aria-hidden />
@@ -449,7 +589,9 @@ export function BookingsManager({
                 {selectedScheduleBooking.status === "confirmed" ? (
                   <p className="mt-1 text-xs text-[var(--muted)]">
                     {formatPriceCents(selectedScheduleBooking.price_cents)} ·{" "}
-                    {selectedScheduleBooking.payment_status}
+                    {formatPaymentStatus(
+                      selectedScheduleBooking.payment_status,
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -558,6 +700,56 @@ export function BookingsManager({
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
+                {selectedScheduleBooking.payment_status === "unpaid" ? (
+                  <Button
+                    size="sm"
+                    loading={
+                      activeBusyKey === `paid-${selectedScheduleBooking.id}`
+                    }
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        `paid-${selectedScheduleBooking.id}`,
+                        () =>
+                          setBookingPaymentStatusAction(
+                            selectedScheduleBooking.id,
+                            "paid",
+                          ),
+                        {
+                          keepSelection: true,
+                          successMessage: "Marked as paid.",
+                        },
+                      )
+                    }
+                  >
+                    Mark paid
+                  </Button>
+                ) : selectedScheduleBooking.payment_status === "paid" ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={
+                      activeBusyKey === `unpaid-${selectedScheduleBooking.id}`
+                    }
+                    disabled={pending}
+                    onClick={() =>
+                      run(
+                        `unpaid-${selectedScheduleBooking.id}`,
+                        () =>
+                          setBookingPaymentStatusAction(
+                            selectedScheduleBooking.id,
+                            "unpaid",
+                          ),
+                        {
+                          keepSelection: true,
+                          successMessage: "Marked as unpaid.",
+                        },
+                      )
+                    }
+                  >
+                    Mark unpaid
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="outline"
@@ -596,6 +788,114 @@ export function BookingsManager({
             )}
           </section>
         ) : null}
+      </TabsContent>
+
+      <TabsContent value="history">
+        <section className={CARD}>
+          <h2 className="mb-1 font-semibold">Booking history</h2>
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            Past and cancelled court rentals and coaching sessions from the last
+            90 days. You can still mark unpaid sessions as paid.
+          </p>
+          {historyEntries.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">
+              No booking history yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--border)]">
+              {historyEntries.map((entry) => (
+                <li
+                  key={entry.key}
+                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+                >
+                  <div>
+                    <div className="font-medium">
+                      {entry.kind === "coaching" ? "Coaching" : "Court"} ·{" "}
+                      {entry.label} · {entry.bookedByName}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">
+                      {hydrated
+                        ? formatDateAndTimeRange(entry.startsAt, entry.endsAt, {
+                            timeZone,
+                          })
+                        : "\u00a0"}
+                      {" · "}
+                      {formatPriceCents(entry.priceCents)} ·{" "}
+                      {formatPaymentStatus(entry.paymentStatus)} ·{" "}
+                      {formatBookingStatus(entry.status)}
+                    </div>
+                  </div>
+                  {entry.status === "confirmed" &&
+                  entry.paymentStatus === "unpaid" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      loading={activeBusyKey === `history-paid-${entry.key}`}
+                      disabled={pending}
+                      onClick={() => {
+                        if (entry.kind === "court") {
+                          run(
+                            `history-paid-${entry.key}`,
+                            () =>
+                              setBookingPaymentStatusAction(entry.id, "paid"),
+                            {
+                              keepSelection: true,
+                              successMessage: "Marked as paid.",
+                            },
+                          );
+                          return;
+                        }
+                        const data = new FormData();
+                        data.set("bookingId", entry.id);
+                        data.set("paymentStatus", "paid");
+                        runCoachingPayment(
+                          `history-paid-${entry.key}`,
+                          data,
+                          "Marked as paid.",
+                        );
+                      }}
+                    >
+                      Mark paid
+                    </Button>
+                  ) : entry.status === "confirmed" &&
+                    entry.paymentStatus === "paid" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      loading={activeBusyKey === `history-unpaid-${entry.key}`}
+                      disabled={pending}
+                      onClick={() => {
+                        if (entry.kind === "court") {
+                          run(
+                            `history-unpaid-${entry.key}`,
+                            () =>
+                              setBookingPaymentStatusAction(entry.id, "unpaid"),
+                            {
+                              keepSelection: true,
+                              successMessage: "Marked as unpaid.",
+                            },
+                          );
+                          return;
+                        }
+                        const data = new FormData();
+                        data.set("bookingId", entry.id);
+                        data.set("paymentStatus", "unpaid");
+                        runCoachingPayment(
+                          `history-unpaid-${entry.key}`,
+                          data,
+                          "Marked as unpaid.",
+                        );
+                      }}
+                    >
+                      Mark unpaid
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </TabsContent>
 
       <TabsContent value="share">

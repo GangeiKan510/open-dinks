@@ -19,7 +19,7 @@ import {
   busyRangesFromBookings,
   PUBLIC_BOOKING_LOOKAHEAD_DAYS,
 } from "@/lib/booking-calendar";
-import { venueBookingsFrom } from "@/lib/bookings";
+import { venueBookingsFrom, venueBookingHistoryFrom } from "@/lib/bookings";
 import { buildCoachHourlySlotGrid } from "@/lib/coaching";
 import {
   DEFAULT_COURT_COUNT,
@@ -95,6 +95,7 @@ export default async function DashboardPage() {
   }
 
   const bookingsFrom = venueBookingsFrom();
+  const bookingHistoryFrom = venueBookingHistoryFrom();
 
   const liveSession = await ensureSingleLiveSession(supabase, venue.id);
 
@@ -104,8 +105,10 @@ export default async function DashboardPage() {
     { data: sessions },
     { data: facilityRow },
     { data: bookings },
+    { data: bookingHistory },
     coachesResult,
     coachingBookingsResult,
+    coachingHistoryResult,
     availabilityResult,
   ] = await Promise.all([
     supabase
@@ -133,6 +136,14 @@ export default async function DashboardPage() {
       .neq("status", "cancelled")
       .gt("ends_at", bookingsFrom)
       .order("starts_at"),
+    supabase
+      .from("bookings")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .gte("starts_at", bookingHistoryFrom)
+      .or(`status.eq.cancelled,ends_at.lte."${bookingsFrom}"`)
+      .order("starts_at", { ascending: false })
+      .limit(100),
     supabase.from("coaches").select("*").eq("venue_id", venue.id).order("name"),
     supabase
       .from("coaching_bookings")
@@ -141,6 +152,14 @@ export default async function DashboardPage() {
       .neq("status", "cancelled")
       .gt("ends_at", bookingsFrom)
       .order("starts_at"),
+    supabase
+      .from("coaching_bookings")
+      .select("*")
+      .eq("venue_id", venue.id)
+      .gte("starts_at", bookingHistoryFrom)
+      .or(`status.eq.cancelled,ends_at.lte."${bookingsFrom}"`)
+      .order("starts_at", { ascending: false })
+      .limit(100),
     supabase.from("coach_availability").select("*"),
   ]);
 
@@ -149,15 +168,20 @@ export default async function DashboardPage() {
   const playerRows = players ?? [];
   const sessionRows = sessions ?? [];
   const bookingRows = bookings ?? [];
+  const bookingHistoryRows = bookingHistory ?? [];
 
   const coachingSchemaReady =
     !isMissingSchemaError(coachesResult.error) &&
     !isMissingSchemaError(coachingBookingsResult.error) &&
+    !isMissingSchemaError(coachingHistoryResult.error) &&
     !isMissingSchemaError(availabilityResult.error);
 
   const coachRows = coachingSchemaReady ? (coachesResult.data ?? []) : [];
   const coachingBookingRows = coachingSchemaReady
     ? (coachingBookingsResult.data ?? [])
+    : [];
+  const coachingHistoryRows = coachingSchemaReady
+    ? (coachingHistoryResult.data ?? [])
     : [];
   const availabilityRows = coachingSchemaReady
     ? (availabilityResult.data ?? [])
@@ -368,12 +392,14 @@ export default async function DashboardPage() {
             venueId={venue.id}
             courts={courtRows}
             bookings={bookingRows}
+            bookingHistory={bookingHistoryRows}
             grid={bookingGrid}
             timeZone={venue.timezone}
             publicBookingUrl={`${siteUrl()}${bookingPath}`}
             bookingPath={bookingPath}
             coaches={coachesWithAvailability}
             coachingBookings={coachingBookingRows}
+            coachingHistory={coachingHistoryRows}
             coachingGrid={coachingGrid}
           />
         }

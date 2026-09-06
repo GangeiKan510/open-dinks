@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   BOOKING_ERROR_MESSAGES,
   parseBookingTime,
+  parsePaymentStatus,
   parsePriceToCents,
   validateBookingWindow,
 } from "@/lib/bookings";
@@ -164,6 +165,45 @@ export async function setBookingStatusAction(
     .eq("id", bookingId);
 
   if (error) return bookingWriteError(error, "set status");
+
+  revalidateBooking();
+  return { ok: true };
+}
+
+/**
+ * Tag a booking paid or unpaid after the fact (e.g. cash collected at the desk).
+ */
+export async function setBookingPaymentStatusAction(
+  bookingId: string,
+  paymentStatus: string,
+): Promise<BookingActionResult> {
+  if (!bookingId) return { error: BOOKING_ERROR_MESSAGES.notFound };
+
+  const parsed = parsePaymentStatus(paymentStatus);
+  if (parsed === "invalid") return { error: BOOKING_ERROR_MESSAGES.payment };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: BOOKING_ERROR_MESSAGES.signIn };
+
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!existing) return { error: BOOKING_ERROR_MESSAGES.notFound };
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      payment_status: parsed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
+
+  if (error) return bookingWriteError(error, "set payment status");
 
   revalidateBooking();
   return { ok: true };

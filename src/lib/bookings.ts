@@ -22,6 +22,7 @@ export const BOOKING_ERROR_MESSAGES = {
   declineReason:
     "Add a short reason so the requester knows why it was declined.",
   price: "Enter the price as a number, or leave it blank.",
+  payment: "Choose unpaid or paid.",
   overlap: "That court is already booked for the selected time.",
   notFound: "That booking no longer exists.",
   save: "Could not save the booking. Try again.",
@@ -46,11 +47,28 @@ export function sessionBookingWindow(now: number = Date.now()): {
 }
 
 /**
- * Oldest booking the venue manager still lists. Bookings that ended over an
- * hour ago are history and are not actionable.
+ * Oldest booking the venue manager still lists as actionable. Bookings that
+ * ended over an hour ago move to history.
  */
 export function venueBookingsFrom(now: number = Date.now()): string {
   return new Date(now - 60 * 60 * 1000).toISOString();
+}
+
+/** How far back the Booking history tab looks. */
+export const BOOKING_HISTORY_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
+
+export function venueBookingHistoryFrom(now: number = Date.now()): string {
+  return new Date(now - BOOKING_HISTORY_LOOKBACK_MS).toISOString();
+}
+
+/** Cancelled or already ended → history, not the live schedule. */
+export function isBookingHistoryRow(
+  booking: { status: string; ends_at: string },
+  now: number = Date.now(),
+): boolean {
+  if (booking.status === "cancelled") return true;
+  const endsAt = new Date(booking.ends_at).getTime();
+  return Number.isFinite(endsAt) && endsAt <= now;
 }
 
 /**
@@ -79,6 +97,22 @@ export function parsePriceToCents(value: unknown): number | null | "invalid" {
 export function formatPriceCents(cents: number | null | undefined): string {
   if (cents == null) return "—";
   return `₱${(cents / 100).toFixed(2)}`;
+}
+
+export type BookingPaymentStatusValue = "unpaid" | "paid";
+
+export function parsePaymentStatus(
+  value: unknown,
+): BookingPaymentStatusValue | "invalid" {
+  const raw = String(value ?? "").trim();
+  if (raw === "unpaid" || raw === "paid") return raw;
+  return "invalid";
+}
+
+export function formatPaymentStatus(status: string): string {
+  if (status === "paid") return "Paid";
+  if (status === "refunded") return "Refunded";
+  return "Unpaid";
 }
 
 export function validateBookingWindow(

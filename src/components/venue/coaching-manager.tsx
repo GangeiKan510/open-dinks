@@ -7,6 +7,7 @@ import {
   createCoachAction,
   createCoachingBookingAction,
   setCoachActiveAction,
+  setCoachingBookingPaymentStatusAction,
   setCoachingBookingStatusAction,
   updateCoachAction,
   type CoachingActionResult,
@@ -32,7 +33,11 @@ import {
   bookingOpenHourOptions,
   formatBookingHourLabel,
 } from "@/lib/booking-hours";
-import { formatDateAndTimeRange, formatPriceCents } from "@/lib/bookings";
+import {
+  formatDateAndTimeRange,
+  formatPaymentStatus,
+  formatPriceCents,
+} from "@/lib/bookings";
 import {
   WEEKDAY_LABELS,
   courtsAvailableForRange,
@@ -907,30 +912,76 @@ export function CoachingManager({
                       : "\u00a0"}
                     {" · "}
                     {formatPriceCents(booking.price_cents)} ·{" "}
-                    {booking.payment_status}
+                    {formatPaymentStatus(booking.payment_status)}
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="text-red-700"
-                  loading={activeBusyKey === `cancel-${booking.id}`}
-                  disabled={pending}
-                  onClick={() => {
-                    const data = new FormData();
-                    data.set("bookingId", booking.id);
-                    runAction(
-                      `cancel-${booking.id}`,
-                      data,
-                      cancelCoachingBookingAction,
-                      () => toast.success("Session cancelled."),
-                      setBookingError,
-                    );
-                  }}
-                >
-                  Cancel
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {booking.payment_status === "unpaid" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      loading={activeBusyKey === `paid-${booking.id}`}
+                      disabled={pending}
+                      onClick={() => {
+                        const data = new FormData();
+                        data.set("bookingId", booking.id);
+                        data.set("paymentStatus", "paid");
+                        runAction(
+                          `paid-${booking.id}`,
+                          data,
+                          setCoachingBookingPaymentStatusAction,
+                          () => toast.success("Marked as paid."),
+                          setBookingError,
+                        );
+                      }}
+                    >
+                      Mark paid
+                    </Button>
+                  ) : booking.payment_status === "paid" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      loading={activeBusyKey === `unpaid-${booking.id}`}
+                      disabled={pending}
+                      onClick={() => {
+                        const data = new FormData();
+                        data.set("bookingId", booking.id);
+                        data.set("paymentStatus", "unpaid");
+                        runAction(
+                          `unpaid-${booking.id}`,
+                          data,
+                          setCoachingBookingPaymentStatusAction,
+                          () => toast.success("Marked as unpaid."),
+                          setBookingError,
+                        );
+                      }}
+                    >
+                      Mark unpaid
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-700"
+                    loading={activeBusyKey === `cancel-${booking.id}`}
+                    disabled={pending}
+                    onClick={() => {
+                      const data = new FormData();
+                      data.set("bookingId", booking.id);
+                      runAction(
+                        `cancel-${booking.id}`,
+                        data,
+                        cancelCoachingBookingAction,
+                        () => toast.success("Session cancelled."),
+                        setBookingError,
+                      );
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
