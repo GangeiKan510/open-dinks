@@ -4,6 +4,7 @@ import {
   buildHourlySlotGrid,
   PUBLIC_BOOKING_LOOKAHEAD_DAYS,
 } from "@/lib/booking-calendar";
+import { publicBookerFromUser } from "@/lib/auth-redirect";
 import { parsePublicBookingVenue } from "@/lib/bookings";
 import { formatBookingHoursRange } from "@/lib/booking-hours";
 import { buildCoachHourlySlotGrid, parsePublicCoaches } from "@/lib/coaching";
@@ -17,6 +18,11 @@ export default async function PublicBookingPage({
 }) {
   const { slug } = await params;
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const booker = user ? publicBookerFromUser(user) : null;
 
   // SECURITY DEFINER RPCs: anon has no table grants for bookings/coaches.
   const { data: venueJson } = await supabase.rpc("get_public_booking_venue", {
@@ -93,7 +99,8 @@ export default async function PublicBookingPage({
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Reserve a court or request a coaching session. Everything is in{" "}
-          {formatVenueTimezoneLabel(venue.timezone)}.
+          {formatVenueTimezoneLabel(venue.timezone)}. Sign in with Google before
+          sending a request.
         </p>
       </header>
 
@@ -109,6 +116,7 @@ export default async function PublicBookingPage({
         dayCount={PUBLIC_BOOKING_LOOKAHEAD_DAYS}
         hoursLabel={hoursLabel}
         timezoneLabel={formatVenueTimezoneLabel(venue.timezone)}
+        booker={booker}
       />
     </main>
   );

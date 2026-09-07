@@ -902,9 +902,9 @@ export function BookingsManager({
         <section className={CARD}>
           <h2 className="mb-1 font-semibold">Public booking link</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
-            Share this link so players can request a court. Requests arrive as
-            pending in Requests & schedule and only block open play once you
-            approve them.
+            Share this link so players can request a court after signing in with
+            Google. Requests arrive as pending in Requests & schedule and only
+            block open play once you approve them.
           </p>
           <code className="block break-all rounded-md bg-[var(--surface-2)] px-3 py-2 text-sm">
             {publicBookingUrl}

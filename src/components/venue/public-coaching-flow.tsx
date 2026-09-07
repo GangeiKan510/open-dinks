@@ -18,6 +18,7 @@ import {
   type PublicBookingCourt,
 } from "@/lib/bookings";
 import { courtsAvailableForRange, type PublicCoach } from "@/lib/coaching";
+import type { PublicBooker } from "@/lib/auth-redirect";
 import { useHydrated } from "@/lib/use-hydrated";
 
 export function PublicCoachingFlow({
@@ -29,6 +30,7 @@ export function PublicCoachingFlow({
   grid,
   timeZone,
   dayCount,
+  booker,
 }: {
   venueId: string;
   venueSlug: string;
@@ -38,6 +40,7 @@ export function PublicCoachingFlow({
   grid: HourlySlotGrid;
   timeZone: string;
   dayCount: number;
+  booker: PublicBooker | null;
 }) {
   const hydrated = useHydrated();
   const [selection, setSelection] = useState<SelectedBookingRange | null>(null);
@@ -240,6 +243,7 @@ export function PublicCoachingFlow({
             name="bookedByName"
             maxLength={120}
             required
+            defaultValue={booker?.displayName ?? ""}
             placeholder="Name for the session"
           />
         </div>
@@ -251,7 +255,12 @@ export function PublicCoachingFlow({
 
         <div className="space-y-1">
           <Label htmlFor="coach-request-email">Email</Label>
-          <Input id="coach-request-email" name="contactEmail" type="email" />
+          <Input
+            id="coach-request-email"
+            name="contactEmail"
+            type="email"
+            defaultValue={booker?.email ?? ""}
+          />
         </div>
 
         <div className="space-y-1 md:col-span-2">
@@ -274,9 +283,9 @@ export function PublicCoachingFlow({
           <Button
             type="submit"
             loading={pending}
-            disabled={!selection || !courtId}
+            disabled={!selection || !courtId || !booker}
           >
-            Request coaching
+            {booker ? "Request coaching" : "Sign in to request"}
           </Button>
         </div>
       </form>

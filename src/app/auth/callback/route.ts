@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeAuthNextPath } from "@/lib/auth-redirect";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = safeAuthNextPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();
@@ -14,5 +15,8 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  const errorTarget = next.startsWith("/book/")
+    ? `${next}${next.includes("?") ? "&" : "?"}error=auth`
+    : "/login?error=auth";
+  return NextResponse.redirect(`${origin}${errorTarget}`);
 }

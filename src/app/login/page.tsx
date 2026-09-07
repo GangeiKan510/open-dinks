@@ -105,8 +105,8 @@ export default function LoginPage() {
         {mode === "sign-in" ? "Host login" : "Create host account"}
       </h1>
       <p className="mb-6 text-[var(--muted)]">
-        Email and password for organizers. Players join sessions via QR — no
-        account needed.
+        Email and password for organizers. Players book courts with Google on
+        your public booking link — no host account needed.
       </p>
 
       <div className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1">

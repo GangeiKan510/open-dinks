@@ -41,6 +41,9 @@ function bookingWriteError(
     console.error(`[bookings] ${context}: schema missing`, error);
     return { error: BOOKING_ERROR_MESSAGES.migrations };
   }
+  if (error.code === "42501") {
+    return { error: BOOKING_ERROR_MESSAGES.signInGoogle };
+  }
   if (error.code === PG_EXCLUSION_VIOLATION) {
     return { error: BOOKING_ERROR_MESSAGES.overlap };
   }
@@ -317,8 +320,8 @@ export async function deleteBookingAction(
 }
 
 /**
- * Public request from the unauthenticated booking page. Goes through the
- * SECURITY DEFINER RPC so anon never needs table access, and always lands as
+ * Public request from the booking page. Requires a signed-in Auth user
+ * (Google). Goes through the SECURITY DEFINER RPC and always lands as
  * `pending` for staff to approve.
  */
 export async function requestBookingAction(
@@ -347,6 +350,10 @@ export async function requestBookingAction(
 
   const contact = readContact(formData);
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: BOOKING_ERROR_MESSAGES.signInGoogle };
 
   const { data: statusToken, error } = await supabase.rpc("request_booking", {
     p_venue_id: venueId,

@@ -13,6 +13,7 @@ import { parsePriceToCents } from "@/lib/bookings";
 
 export const COACHING_ERROR_MESSAGES = {
   signIn: "Sign in to manage coaching.",
+  signInGoogle: "Sign in with Google to send a coaching request.",
   venue: "Choose a venue before managing coaches.",
   coach: "Choose a coach.",
   court: "Choose a court for this coaching session.",

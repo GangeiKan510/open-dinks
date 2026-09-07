@@ -41,9 +41,10 @@ Open [http://localhost:3000/demo](http://localhost:3000/demo):
    You can also run the workflow manually from the Actions tab (**Supabase migrations** → **Run workflow**).
 
 4. Facility branding is per account: creating a venue creates a facility for that host. Edit name/tagline on the venue page; wallboard and player views load it from the venue.
-5. In Auth → URL configuration, add `{SITE_URL}/auth/callback` (used if email confirmation is enabled)
-6. Optional: Auth → Providers → Email → disable “Confirm email” for faster local sign-up
-7. `yarn dev` → `/login` → create account or sign in with email + password → create a venue → start open play
+5. In Auth → URL configuration, add `{SITE_URL}/auth/callback` (used for email confirmation and Google OAuth)
+6. Enable **Google** under Auth → Providers. Add your Google OAuth Client ID/secret from Google Cloud Console. Add `{SITE_URL}/auth/callback` to the authorized redirect URIs in both Google and Supabase.
+7. Optional: Auth → Providers → Email → disable “Confirm email” for faster local host sign-up
+8. `yarn dev` → `/login` → create a **host** account with email + password → create a venue → start open play. Public bookers on `/book/{slug}` sign in with Google before requesting a court or coaching session.
 
 ## Scripts
 
@@ -57,5 +58,5 @@ yarn build
 
 ## Product scope (v1)
 
-**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary  
-**Out:** bookings, memberships, payments, DUPR export, native apps
+**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests)  
+**Out:** memberships, online payments, DUPR export, native apps

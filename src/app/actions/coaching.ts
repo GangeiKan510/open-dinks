@@ -39,6 +39,9 @@ function coachingWriteError(
     console.error(`[coaching] ${context}: schema missing`, error);
     return { error: COACHING_ERROR_MESSAGES.migrations };
   }
+  if (error.code === "42501") {
+    return { error: COACHING_ERROR_MESSAGES.signInGoogle };
+  }
   if (error.code === PG_EXCLUSION_VIOLATION) {
     return { error: COACHING_ERROR_MESSAGES.overlap };
   }
@@ -447,7 +450,7 @@ export async function setCoachingBookingPaymentStatusAction(
 }
 
 /**
- * Public coaching request. Goes through SECURITY DEFINER RPC; always pending.
+ * Public coaching request. Requires Google sign-in; always pending for staff.
  */
 export async function requestCoachingBookingAction(
   formData: FormData,
@@ -478,6 +481,10 @@ export async function requestCoachingBookingAction(
 
   const contact = readContact(formData);
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: COACHING_ERROR_MESSAGES.signInGoogle };
 
   const { data: coachesJson } = await supabase.rpc("get_public_coaches", {
     p_venue_id: venueId,
