@@ -9,6 +9,7 @@ import { reduce, type SessionMode } from "@/engine";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { dbToEngineState } from "@/lib/session-mapper";
 import { loadSessionBundle } from "@/lib/session-bundle";
+import { planSessionPersist } from "@/lib/session-persist";
 
 /** Violation of sessions_one_live_per_venue. */
 const PG_UNIQUE_VIOLATION = "23505";
@@ -101,152 +102,122 @@ async function persistEngineDiff(
   const before = dbToEngineState(bundle);
   const after = mutate(before);
   const supabase = await createClient();
-  const idMap = new Map<string, string>();
+  const plan = planSessionPersist({
+    sessionId: bundle.session.id,
+    before,
+    after,
+    players: bundle.players,
+    matches: bundle.matches,
+    courts: bundle.courts,
+    pairings: bundle.pairings,
+  });
 
+  const idMap = new Map<string, string>();
   const mapId = (id: string) => idMap.get(id) ?? id;
   const mapIds = (ids: string[]) => ids.map(mapId);
 
-  for (const p of after.players) {
-    const existing = bundle.players.find((x) => x.id === p.id);
-    if (existing) {
-      idMap.set(p.id, p.id);
-      await supabase
-        .from("session_players")
-        .update({
-          display_name: p.name,
-          skill: p.skill,
-          status: p.status,
-          games_played: p.gamesPlayed,
-          last_played_at: p.lastPlayedAt
-            ? new Date(p.lastPlayedAt).toISOString()
-            : null,
-          avoid_ids: (p.avoidIds ?? []).map(mapId),
-          consecutive_wins: p.consecutiveWins ?? 0,
-          queue_order: p.queueOrder ?? null,
-          team_lock_group_id: p.teamLockGroupId ?? null,
-        })
-        .eq("id", p.id);
-    } else {
+  const inserted = await Promise.all(
+    plan.playerInserts.map(async (insert) => {
       const { data, error } = await supabase
         .from("session_players")
-        .insert({
-          session_id: bundle.session.id,
-          display_name: p.name,
-          skill: p.skill,
-          status: p.status,
-          games_played: p.gamesPlayed,
-          partner_lock_id: null,
-          avoid_ids: [],
-          queue_order: p.queueOrder ?? null,
-          team_lock_group_id: p.teamLockGroupId ?? null,
-        })
+        .insert(insert.row)
         .select("id")
         .single();
-      if (error || !data) {
-        return { error: error?.message ?? "Failed to check in player" };
-      }
-      idMap.set(p.id, data.id);
+      return { insert, data, error };
+    }),
+  );
+  for (const row of inserted) {
+    if (row.error || !row.data) {
+      return { error: row.error?.message ?? "Failed to check in player" };
     }
+    idMap.set(row.insert.tempId, row.data.id);
   }
 
-  // Second pass for partner locks now that all IDs exist
-  for (const p of after.players) {
-    const realId = mapId(p.id);
-    await supabase
-      .from("session_players")
-      .update({
-        partner_lock_id: p.partnerLockId ? mapId(p.partnerLockId) : null,
-        avoid_ids: (p.avoidIds ?? []).map(mapId),
-      })
-      .eq("id", realId);
-  }
+  const newPlayerLockUpdates = plan.playerInserts.flatMap((insert) => {
+    const player = after.players.find((row) => row.id === insert.tempId);
+    if (!player) return [];
+    const partnerLockId = player.partnerLockId
+      ? mapId(player.partnerLockId)
+      : null;
+    const avoidIds = (player.avoidIds ?? []).map(mapId);
+    if (!partnerLockId && avoidIds.length === 0) return [];
+    return [
+      {
+        id: mapId(insert.tempId),
+        patch: {
+          partner_lock_id: partnerLockId,
+          avoid_ids: avoidIds,
+        },
+      },
+    ];
+  });
 
-  const occupied = (status: string) =>
-    status === "active" || status === "ready";
-  const beforeOccupied = before.matches.filter((m) => occupied(m.status));
-  const afterOccupied = after.matches.filter((m) => occupied(m.status));
-  const afterCompleted = after.matches.filter((m) => m.status === "completed");
-
-  for (const m of afterCompleted) {
-    const wasOccupied = beforeOccupied.find((b) => b.id === m.id);
-    if (wasOccupied) {
-      await supabase
-        .from("matches")
+  await Promise.all([
+    ...plan.playerUpdates.map(({ id, patch }) =>
+      supabase
+        .from("session_players")
         .update({
-          status: "completed",
-          winner: m.winner ?? null,
-          ended_at: m.endedAt
-            ? new Date(m.endedAt).toISOString()
-            : new Date().toISOString(),
-          team_a: mapIds(m.teamA),
-          team_b: mapIds(m.teamB),
+          ...patch,
+          partner_lock_id: patch.partner_lock_id
+            ? mapId(patch.partner_lock_id)
+            : null,
+          avoid_ids: (patch.avoid_ids ?? []).map(mapId),
         })
-        .eq("id", m.id);
-    }
-  }
-
-  for (const m of afterOccupied) {
-    const exists = bundle.matches.find((x) => x.id === m.id);
-    const startedAt =
-      m.startedAt != null ? new Date(m.startedAt).toISOString() : null;
-    if (!exists) {
-      const court = bundle.courts.find((c) => c.id === m.courtId);
-      await supabase.from("matches").insert({
-        session_id: bundle.session.id,
-        court_id: court?.id ?? null,
-        court_name: m.courtName,
-        team_a: mapIds(m.teamA),
-        team_b: mapIds(m.teamB),
-        status: m.status,
-        started_at: startedAt,
-      });
-    } else {
-      await supabase
-        .from("matches")
-        .update({
-          team_a: mapIds(m.teamA),
-          team_b: mapIds(m.teamB),
-          status: m.status,
-          started_at: startedAt,
-        })
-        .eq("id", m.id);
-    }
-  }
-
-  for (const m of beforeOccupied) {
-    const still = after.matches.find((x) => x.id === m.id);
-    if (!still) {
-      await supabase.from("matches").delete().eq("id", m.id);
-    }
-  }
-
-  await supabase
-    .from("sessions")
-    .update({
-      mode: after.mode,
-      max_game_minutes: after.maxGameMinutes,
-    })
-    .eq("id", bundle.session.id);
-
-  // Persist pairing history from engine maps
-  const partnerKeys = new Set([
-    ...Object.keys(after.partnerHistory),
-    ...Object.keys(after.opponentHistory),
+        .eq("id", mapId(id)),
+    ),
+    ...newPlayerLockUpdates.map(({ id, patch }) =>
+      supabase.from("session_players").update(patch).eq("id", id),
+    ),
   ]);
-  for (const key of partnerKeys) {
-    const [a, b] = key.split("|");
-    if (!a || !b) continue;
-    const playerA = mapId(a);
-    const playerB = mapId(b);
-    const [low, high] =
-      playerA < playerB ? [playerA, playerB] : [playerB, playerA];
-    await supabase.from("pairing_history").upsert({
-      session_id: bundle.session.id,
-      player_a: low,
-      player_b: high,
-      as_partners: after.partnerHistory[key] ?? 0,
-      as_opponents: after.opponentHistory[key] ?? 0,
-    });
+
+  await Promise.all(
+    plan.matchUpdates.map(({ id, patch }) =>
+      supabase
+        .from("matches")
+        .update({
+          ...patch,
+          team_a: patch.team_a ? mapIds(patch.team_a) : patch.team_a,
+          team_b: patch.team_b ? mapIds(patch.team_b) : patch.team_b,
+        })
+        .eq("id", id),
+    ),
+  );
+
+  if (plan.matchDeletes.length > 0) {
+    await supabase.from("matches").delete().in("id", plan.matchDeletes);
+  }
+
+  if (plan.matchInserts.length > 0) {
+    await supabase.from("matches").insert(
+      plan.matchInserts.map((row) => ({
+        ...row,
+        team_a: mapIds(row.team_a),
+        team_b: mapIds(row.team_b),
+      })),
+    );
+  }
+
+  if (plan.sessionPatch) {
+    await supabase
+      .from("sessions")
+      .update(plan.sessionPatch)
+      .eq("id", bundle.session.id);
+  }
+
+  if (plan.pairingUpserts.length > 0) {
+    await supabase.from("pairing_history").upsert(
+      plan.pairingUpserts.map((row) => {
+        const playerA = mapId(row.player_a);
+        const playerB = mapId(row.player_b);
+        const [low, high] =
+          playerA < playerB ? [playerA, playerB] : [playerB, playerA];
+        return {
+          ...row,
+          player_a: low,
+          player_b: high,
+        };
+      }),
+    );
   }
 
   revalidatePath(`/s/${token}`);

@@ -2,7 +2,7 @@ import type { FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { loadFacilityForSession } from "@/lib/facility-server";
-import { sessionBookingWindow } from "@/lib/bookings";
+import { loadSessionLiveRows } from "@/lib/session-live-rows";
 
 type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 type SessionPlayerRow = Database["public"]["Tables"]["session_players"]["Row"];
@@ -36,42 +36,8 @@ export async function loadSessionBundle(
     .single();
   if (!session) return null;
 
-  const bookingWindow = sessionBookingWindow();
-
-  const [
-    { data: players },
-    { data: matches },
-    { data: courts },
-    { data: pairings },
-    { data: bookings },
-    coachingResult,
-    { data: venue },
-    facility,
-  ] = await Promise.all([
-    supabase.from("session_players").select("*").eq("session_id", session.id),
-    supabase.from("matches").select("*").eq("session_id", session.id),
-    supabase
-      .from("courts")
-      .select("*")
-      .eq("venue_id", session.venue_id)
-      .order("sort_order"),
-    supabase.from("pairing_history").select("*").eq("session_id", session.id),
-    supabase
-      .from("bookings")
-      .select("*")
-      .eq("venue_id", session.venue_id)
-      .eq("status", "confirmed")
-      .gt("ends_at", bookingWindow.from)
-      .lt("starts_at", bookingWindow.to)
-      .order("starts_at"),
-    supabase
-      .from("coaching_bookings")
-      .select("*")
-      .eq("venue_id", session.venue_id)
-      .eq("status", "confirmed")
-      .gt("ends_at", bookingWindow.from)
-      .lt("starts_at", bookingWindow.to)
-      .order("starts_at"),
+  const [rows, { data: venue }, facility] = await Promise.all([
+    loadSessionLiveRows(supabase, session),
     supabase
       .from("venues")
       .select("timezone")
@@ -82,12 +48,7 @@ export async function loadSessionBundle(
 
   return {
     session,
-    players: players ?? [],
-    matches: matches ?? [],
-    courts: courts ?? [],
-    pairings: pairings ?? [],
-    bookings: bookings ?? [],
-    coachingBookings: coachingResult.error ? [] : (coachingResult.data ?? []),
+    ...rows,
     facility,
     venueTimezone: venue?.timezone ?? "UTC",
   };

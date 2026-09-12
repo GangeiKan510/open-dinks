@@ -104,6 +104,21 @@ function ContactLine({ booking }: { booking: BookingRow }) {
   return <div className="text-xs text-[var(--muted)]">{parts.join(" · ")}</div>;
 }
 
+export type BookingsManagerProps = {
+  venueId: string;
+  courts: CourtRow[];
+  bookings: BookingRow[];
+  bookingHistory?: BookingRow[];
+  grid: HourlySlotGrid;
+  timeZone: string;
+  publicBookingUrl: string;
+  bookingPath: string;
+  coaches: CoachWithAvailability[];
+  coachingBookings: CoachingBookingRow[];
+  coachingHistory?: CoachingBookingRow[];
+  coachingGrid: HourlySlotGrid;
+};
+
 export function BookingsManager({
   venueId,
   courts,
@@ -117,20 +132,7 @@ export function BookingsManager({
   coachingBookings,
   coachingHistory = [],
   coachingGrid,
-}: {
-  venueId: string;
-  courts: CourtRow[];
-  bookings: BookingRow[];
-  bookingHistory?: BookingRow[];
-  grid: HourlySlotGrid;
-  timeZone: string;
-  publicBookingUrl: string;
-  bookingPath: string;
-  coaches: CoachWithAvailability[];
-  coachingBookings: CoachingBookingRow[];
-  coachingHistory?: CoachingBookingRow[];
-  coachingGrid: HourlySlotGrid;
-}) {
+}: BookingsManagerProps) {
   const hydrated = useHydrated();
   const [pending, startTransition] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);

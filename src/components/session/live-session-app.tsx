@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -26,8 +27,14 @@ import {
   type SessionMode,
 } from "@/engine";
 import { createClient } from "@/lib/supabase/client";
+import { createCoalescedAsync } from "@/lib/coalesce-async";
 import { dbToEngineState } from "@/lib/session-mapper";
-import { BOOKING_TICK_MS, sessionBookingWindow } from "@/lib/bookings";
+import { BOOKING_TICK_MS } from "@/lib/bookings";
+import { loadSessionLiveRows } from "@/lib/session-live-rows";
+import {
+  isLiveSessionRealtimeEvent,
+  LIVE_SESSION_REALTIME_TABLES,
+} from "@/lib/session-realtime";
 import { formatSkillTier } from "@/lib/skill-tier";
 import type { FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
@@ -91,6 +98,17 @@ export function LiveSessionApp({
     return { ...mapped, now };
   }, [bundle, now]);
 
+  const sessionScopeRef = useRef({
+    id: bundle.session.id,
+    venue_id: bundle.session.venue_id,
+  });
+  useEffect(() => {
+    sessionScopeRef.current = {
+      id: bundle.session.id,
+      venue_id: bundle.session.venue_id,
+    };
+  }, [bundle.session.id, bundle.session.venue_id]);
+
   const refresh = useCallback(async () => {
     const supabase = createClient();
     const { data: session } = await supabase
@@ -100,101 +118,52 @@ export function LiveSessionApp({
       .single();
     if (!session) return;
 
-    const bookingWindow = sessionBookingWindow();
-
-    const [
-      { data: players },
-      { data: matches },
-      { data: courts },
-      { data: pairings },
-      { data: bookings },
-      coachingResult,
-    ] = await Promise.all([
-      supabase.from("session_players").select("*").eq("session_id", session.id),
-      supabase.from("matches").select("*").eq("session_id", session.id),
-      supabase
-        .from("courts")
-        .select("*")
-        .eq("venue_id", session.venue_id)
-        .order("sort_order"),
-      supabase.from("pairing_history").select("*").eq("session_id", session.id),
-      supabase
-        .from("bookings")
-        .select("*")
-        .eq("venue_id", session.venue_id)
-        .eq("status", "confirmed")
-        .gt("ends_at", bookingWindow.from)
-        .lt("starts_at", bookingWindow.to)
-        .order("starts_at"),
-      supabase
-        .from("coaching_bookings")
-        .select("*")
-        .eq("venue_id", session.venue_id)
-        .eq("status", "confirmed")
-        .gt("ends_at", bookingWindow.from)
-        .lt("starts_at", bookingWindow.to)
-        .order("starts_at"),
-    ]);
+    const rows = await loadSessionLiveRows(supabase, session);
 
     setBundle((prev) => ({
       session,
-      players: players ?? [],
-      matches: matches ?? [],
-      courts: courts ?? [],
-      pairings: pairings ?? [],
-      bookings: bookings ?? [],
-      coachingBookings: coachingResult.error ? [] : (coachingResult.data ?? []),
+      ...rows,
       facility: prev.facility,
       venueTimezone: prev.venueTimezone,
     }));
     setEnded(session.status === "completed");
   }, [token]);
 
+  const scheduleRefresh = useMemo(
+    () => createCoalescedAsync(refresh, 120),
+    [refresh],
+  );
+
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`session:${token}`)
-      .on(
+    let channel = supabase.channel(`session:${token}`);
+    for (const table of LIVE_SESSION_REALTIME_TABLES) {
+      channel = channel.on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "session_players" },
-        () => {
-          void refresh();
+        { event: "*", schema: "public", table },
+        (payload) => {
+          if (
+            !isLiveSessionRealtimeEvent(
+              {
+                table,
+                new: payload.new as Record<string, unknown> | undefined,
+                old: payload.old as Record<string, unknown> | undefined,
+              },
+              sessionScopeRef.current,
+            )
+          ) {
+            return;
+          }
+          void scheduleRefresh();
         },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "matches" },
-        () => {
-          void refresh();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sessions" },
-        () => {
-          void refresh();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookings" },
-        () => {
-          void refresh();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "coaching_bookings" },
-        () => {
-          void refresh();
-        },
-      )
-      .subscribe();
+      );
+    }
+    channel.subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [token, refresh]);
+  }, [token, scheduleRefresh]);
 
   function dispatch(action: EngineAction) {
     startTransition(async () => {
@@ -289,7 +258,7 @@ export function LiveSessionApp({
         toast.error(result.error);
         return;
       }
-      await refresh();
+      await scheduleRefresh();
     });
   }
 
@@ -304,7 +273,7 @@ export function LiveSessionApp({
       toast.error(result.error);
       return;
     }
-    await refresh();
+    await scheduleRefresh();
   }
 
   if (ended && mode !== "board") {
@@ -367,7 +336,7 @@ export function LiveSessionApp({
           startTransition(async () => {
             await endSessionAction(token);
             setEnded(true);
-            await refresh();
+            await scheduleRefresh();
           });
         }}
       />

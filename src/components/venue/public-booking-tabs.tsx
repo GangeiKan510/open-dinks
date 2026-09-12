@@ -1,14 +1,26 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useState } from "react";
 import { CalendarDays, GraduationCap } from "lucide-react";
 import { BookerGoogleSignIn } from "@/components/venue/booker-google-sign-in";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PublicBookingFlow } from "@/components/venue/public-booking-flow";
-import { PublicCoachingFlow } from "@/components/venue/public-coaching-flow";
 import type { HourlySlotGrid } from "@/lib/booking-calendar";
 import type { PublicBooker } from "@/lib/auth-redirect";
 import type { PublicBookingCourt } from "@/lib/bookings";
 import type { PublicCoach } from "@/lib/coaching";
+
+const PublicBookingFlow = dynamic(() =>
+  import("@/components/venue/public-booking-flow").then(
+    (mod) => mod.PublicBookingFlow,
+  ),
+);
+
+const PublicCoachingFlow = dynamic(() =>
+  import("@/components/venue/public-coaching-flow").then(
+    (mod) => mod.PublicCoachingFlow,
+  ),
+);
 
 export function PublicBookingTabs({
   venueId,
@@ -40,6 +52,7 @@ export function PublicBookingTabs({
   const showCourts = courts.length > 0;
   const showCoaching = coaches.length > 0;
   const defaultTab = showCourts ? "courts" : "coaching";
+  const [tab, setTab] = useState(defaultTab);
   const nextPath = `/book/${venueSlug}`;
 
   if (!showCourts && !showCoaching) {
@@ -54,7 +67,7 @@ export function PublicBookingTabs({
     <div className="space-y-4">
       <BookerGoogleSignIn nextPath={nextPath} booker={booker} />
 
-      <Tabs defaultValue={defaultTab}>
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList aria-label="Booking type">
           {showCourts ? (
             <TabsTrigger value="courts">
@@ -77,15 +90,17 @@ export function PublicBookingTabs({
               Bookings are available {hoursLabel} in {timezoneLabel}. The venue
               confirms every request before the court is held for you.
             </p>
-            <PublicBookingFlow
-              venueId={venueId}
-              venueSlug={venueSlug}
-              courts={courts}
-              grid={courtGrid}
-              timeZone={timeZone}
-              dayCount={dayCount}
-              booker={booker}
-            />
+            {tab === "courts" ? (
+              <PublicBookingFlow
+                venueId={venueId}
+                venueSlug={venueSlug}
+                courts={courts}
+                grid={courtGrid}
+                timeZone={timeZone}
+                dayCount={dayCount}
+                booker={booker}
+              />
+            ) : null}
           </TabsContent>
         ) : null}
 
@@ -96,17 +111,19 @@ export function PublicBookingTabs({
               then pick a free court. Estimated price uses their hourly rate.
               The venue confirms every request before the session is held.
             </p>
-            <PublicCoachingFlow
-              venueId={venueId}
-              venueSlug={venueSlug}
-              coaches={coaches}
-              courts={courts}
-              courtBusy={courtBusy}
-              grid={coachingGrid}
-              timeZone={timeZone}
-              dayCount={dayCount}
-              booker={booker}
-            />
+            {tab === "coaching" ? (
+              <PublicCoachingFlow
+                venueId={venueId}
+                venueSlug={venueSlug}
+                coaches={coaches}
+                courts={courts}
+                courtBusy={courtBusy}
+                grid={coachingGrid}
+                timeZone={timeZone}
+                dayCount={dayCount}
+                booker={booker}
+              />
+            ) : null}
           </TabsContent>
         ) : null}
       </Tabs>

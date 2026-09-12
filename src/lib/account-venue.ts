@@ -51,8 +51,9 @@ function accountVenueFromRow(venue: VenueRow): AccountVenue {
 
 export async function loadAccountVenue(
   userId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
 ): Promise<AccountVenue | null> {
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
 
   const { data: memberships } = await supabase
     .from("venue_members")

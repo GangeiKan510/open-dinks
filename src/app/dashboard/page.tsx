@@ -6,9 +6,7 @@ import {
   createSessionAction,
   signOutAction,
 } from "@/app/actions/session";
-import { BookingsManager } from "@/components/venue/bookings-manager";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
-import { FacilitySettings } from "@/components/venue/facility-settings";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +71,7 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const venue = await loadAccountVenue(user.id);
+  const venue = await loadAccountVenue(user.id, supabase);
 
   if (!venue) {
     return (
@@ -109,7 +107,6 @@ export default async function DashboardPage() {
     coachesResult,
     coachingBookingsResult,
     coachingHistoryResult,
-    availabilityResult,
   ] = await Promise.all([
     supabase
       .from("courts")
@@ -160,7 +157,6 @@ export default async function DashboardPage() {
       .or(`status.eq.cancelled,ends_at.lte."${bookingsFrom}"`)
       .order("starts_at", { ascending: false })
       .limit(100),
-    supabase.from("coach_availability").select("*"),
   ]);
 
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
@@ -173,8 +169,7 @@ export default async function DashboardPage() {
   const coachingSchemaReady =
     !isMissingSchemaError(coachesResult.error) &&
     !isMissingSchemaError(coachingBookingsResult.error) &&
-    !isMissingSchemaError(coachingHistoryResult.error) &&
-    !isMissingSchemaError(availabilityResult.error);
+    !isMissingSchemaError(coachingHistoryResult.error);
 
   const coachRows = coachingSchemaReady ? (coachesResult.data ?? []) : [];
   const coachingBookingRows = coachingSchemaReady
@@ -183,9 +178,17 @@ export default async function DashboardPage() {
   const coachingHistoryRows = coachingSchemaReady
     ? (coachingHistoryResult.data ?? [])
     : [];
-  const availabilityRows = coachingSchemaReady
-    ? (availabilityResult.data ?? [])
-    : [];
+  const coachIds = coachRows.map((coach) => coach.id);
+  const availabilityResult =
+    coachingSchemaReady && coachIds.length > 0
+      ? await supabase
+          .from("coach_availability")
+          .select("*")
+          .in("coach_id", coachIds)
+      : { data: [], error: null };
+  const availabilityRows = isMissingSchemaError(availabilityResult.error)
+    ? []
+    : (availabilityResult.data ?? []);
 
   const availabilityByCoach = new Map<
     string,
@@ -387,22 +390,20 @@ export default async function DashboardPage() {
             </section>
           </>
         }
-        bookings={
-          <BookingsManager
-            venueId={venue.id}
-            courts={courtRows}
-            bookings={bookingRows}
-            bookingHistory={bookingHistoryRows}
-            grid={bookingGrid}
-            timeZone={venue.timezone}
-            publicBookingUrl={`${siteUrl()}${bookingPath}`}
-            bookingPath={bookingPath}
-            coaches={coachesWithAvailability}
-            coachingBookings={coachingBookingRows}
-            coachingHistory={coachingHistoryRows}
-            coachingGrid={coachingGrid}
-          />
-        }
+        bookings={{
+          venueId: venue.id,
+          courts: courtRows,
+          bookings: bookingRows,
+          bookingHistory: bookingHistoryRows,
+          grid: bookingGrid,
+          timeZone: venue.timezone,
+          publicBookingUrl: `${siteUrl()}${bookingPath}`,
+          bookingPath,
+          coaches: coachesWithAvailability,
+          coachingBookings: coachingBookingRows,
+          coachingHistory: coachingHistoryRows,
+          coachingGrid,
+        }}
         roster={
           <section className={CARD}>
             <h2 className="mb-1 font-semibold">Roster</h2>
@@ -448,23 +449,24 @@ export default async function DashboardPage() {
           </section>
         }
         settings={
-          facility ? (
-            <FacilitySettings
-              facility={facility}
-              courts={courtRows}
-              venueTimezone={venue.timezone}
-              bookingHours={{
-                openHour: venue.bookingOpenHour,
-                closeHour: venue.bookingCloseHour,
-              }}
-            />
-          ) : (
-            <section className={CARD}>
-              <p className="text-sm text-[var(--muted)]">
-                Facility settings are unavailable right now.
-              </p>
-            </section>
-          )
+          facility
+            ? {
+                facility,
+                courts: courtRows,
+                venueTimezone: venue.timezone,
+                bookingHours: {
+                  openHour: venue.bookingOpenHour,
+                  closeHour: venue.bookingCloseHour,
+                },
+              }
+            : null
+        }
+        settingsFallback={
+          <section className={CARD}>
+            <p className="text-sm text-[var(--muted)]">
+              Facility settings are unavailable right now.
+            </p>
+          </section>
         }
       />
     </main>

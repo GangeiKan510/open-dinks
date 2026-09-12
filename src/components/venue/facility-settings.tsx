@@ -30,17 +30,19 @@ import type { Database } from "@/lib/supabase/database.types";
 
 type CourtRow = Database["public"]["Tables"]["courts"]["Row"];
 
+export type FacilitySettingsProps = {
+  facility: FacilityConfig;
+  courts: CourtRow[];
+  venueTimezone: string;
+  bookingHours: BookingHours;
+};
+
 export function FacilitySettings({
   facility,
   courts,
   venueTimezone,
   bookingHours,
-}: {
-  facility: FacilityConfig;
-  courts: CourtRow[];
-  venueTimezone: string;
-  bookingHours: BookingHours;
-}) {
+}: FacilitySettingsProps) {
   const [pending, startTransition] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [brandingError, setBrandingError] = useState<string | null>(null);
