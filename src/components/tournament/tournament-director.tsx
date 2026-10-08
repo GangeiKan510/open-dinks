@@ -558,6 +558,26 @@ function SetupForm({
               run(() => setDrawSettings(state, { gamesPerMatch }))
             }
           />
+          <NumberSetting
+            id="points-to-quarters"
+            label="Points to quarters"
+            min={1}
+            max={99}
+            value={state.pointsToQuarters}
+            onChange={(pointsToQuarters) =>
+              run(() => setDrawSettings(state, { pointsToQuarters }))
+            }
+          />
+          <NumberSetting
+            id="points-semis-final"
+            label="Semis and final"
+            min={1}
+            max={99}
+            value={state.pointsSemisFinal}
+            onChange={(pointsSemisFinal) =>
+              run(() => setDrawSettings(state, { pointsSemisFinal }))
+            }
+          />
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <NumberSetting
@@ -594,7 +614,9 @@ function SetupForm({
         <p className="text-sm text-[var(--muted)]">
           Teams per bracket is the round-robin group, not the final. Advance per
           bracket is how many teams from each one move into a separate final
-          bracket. Games per match is how many scores you enter.
+          bracket. Games per match is how many scores you enter. Groups and
+          every round through the quarterfinals play to the first point total.
+          Semifinals and the final play to the second.
         </p>
       </section>
 

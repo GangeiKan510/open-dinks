@@ -79,6 +79,10 @@ export interface TournamentState {
   courtCount: number;
   /** Score columns on each match. One game is a single box per team. */
   gamesPerMatch: number;
+  /** Points a game is played to, from the groups through the quarterfinals. */
+  pointsToQuarters: number;
+  /** Points a game is played to in the semifinals and the final. */
+  pointsSemisFinal: number;
   /** How many round-robin brackets to build. */
   bracketCount: number;
   /** How many teams sit in each round-robin bracket. */
@@ -107,6 +111,8 @@ export interface CreateTournamentInput {
   division?: string;
   courtCount?: number;
   gamesPerMatch?: number;
+  pointsToQuarters?: number;
+  pointsSemisFinal?: number;
   bracketCount?: number;
   teamsPerBracket?: number;
   advancePerGroup?: number;
@@ -114,6 +120,8 @@ export interface CreateTournamentInput {
 
 export interface DrawSettings {
   gamesPerMatch?: number;
+  pointsToQuarters?: number;
+  pointsSemisFinal?: number;
   bracketCount?: number;
   teamsPerBracket?: number;
   advancePerGroup?: number;
@@ -160,6 +168,8 @@ export function createTournament(
     division: clip(input.division ?? "Mixed 3.5", MAX_NAME),
     courtCount: normalizeCourtCount(input.courtCount, 4),
     gamesPerMatch: clampGames(input.gamesPerMatch ?? 1),
+    pointsToQuarters: clampRallyPoints(input.pointsToQuarters, 11),
+    pointsSemisFinal: clampRallyPoints(input.pointsSemisFinal, 15),
     bracketCount: clampBracketCount(input.bracketCount ?? 2),
     teamsPerBracket: clampTeamsPerBracket(input.teamsPerBracket ?? 4),
     advancePerGroup: clampAdvance(
@@ -252,6 +262,14 @@ export function setDrawSettings(
           3,
           "A match is 1, 2, or 3 games.",
         );
+  const pointsToQuarters =
+    settings.pointsToQuarters === undefined
+      ? state.pointsToQuarters
+      : requireInt(settings.pointsToQuarters, 1, 99, "Play to 1 to 99 points.");
+  const pointsSemisFinal =
+    settings.pointsSemisFinal === undefined
+      ? state.pointsSemisFinal
+      : requireInt(settings.pointsSemisFinal, 1, 99, "Play to 1 to 99 points.");
   const advanceGiven = settings.advancePerGroup !== undefined;
   let advancePerGroup = advanceGiven
     ? requireInt(
@@ -272,6 +290,8 @@ export function setDrawSettings(
   return {
     ...state,
     gamesPerMatch,
+    pointsToQuarters,
+    pointsSemisFinal,
     bracketCount,
     teamsPerBracket,
     advancePerGroup,
@@ -295,6 +315,8 @@ export function normalizeTournamentState(
         ? state.id.trim()
         : "category-1",
     gamesPerMatch: clampGames(state.gamesPerMatch),
+    pointsToQuarters: clampRallyPoints(state.pointsToQuarters, 11),
+    pointsSemisFinal: clampRallyPoints(state.pointsSemisFinal, 15),
     bracketCount,
     teamsPerBracket,
     advancePerGroup: clampAdvance(state.advancePerGroup, teamsPerBracket),
@@ -501,6 +523,7 @@ export function reportMatchScore(
     match.teamAId,
     match.teamBId,
     state.gamesPerMatch,
+    pointsToWin(state, match),
   );
   const matches = state.matches.map((item) =>
     item.id === matchId
@@ -807,6 +830,10 @@ export function umpireFinishGame(
   if (live.scoreA === live.scoreB) {
     throw new TournamentError("A game can't end in a tie.");
   }
+  const target = pointsToWin(state, match);
+  if (Math.max(live.scoreA, live.scoreB) < target) {
+    throw new TournamentError(`This game is played to ${target}.`);
+  }
   const games = [...match.games, { a: live.scoreA, b: live.scoreB }];
   if (games.length < state.gamesPerMatch) {
     return writeLive(
@@ -1094,6 +1121,8 @@ export function startOverEvent(event: TournamentEvent): TournamentEvent {
         division: category.division,
         courtCount: event.courtCount,
         gamesPerMatch: category.gamesPerMatch,
+        pointsToQuarters: category.pointsToQuarters,
+        pointsSemisFinal: category.pointsSemisFinal,
         bracketCount: category.bracketCount,
         teamsPerBracket: category.teamsPerBracket,
         advancePerGroup: category.advancePerGroup,
@@ -1261,6 +1290,8 @@ export function startOver(state: TournamentState): TournamentState {
     division: state.division,
     courtCount: state.courtCount,
     gamesPerMatch: state.gamesPerMatch,
+    pointsToQuarters: state.pointsToQuarters,
+    pointsSemisFinal: state.pointsSemisFinal,
     bracketCount: state.bracketCount,
     teamsPerBracket: state.teamsPerBracket,
     advancePerGroup: state.advancePerGroup,
@@ -1508,6 +1539,23 @@ export function formatDiff(diff: number): string {
   return String(diff);
 }
 
+/** Groups and rounds through the quarterfinals, then semis and the final. */
+export function pointsToWin(
+  state: TournamentState,
+  match: TournamentMatch,
+): number {
+  if (match.stage !== "bracket") return state.pointsToQuarters;
+  let lastRound = 1;
+  for (const item of state.matches) {
+    if (item.stage === "bracket" && item.round > lastRound) {
+      lastRound = item.round;
+    }
+  }
+  return match.round >= lastRound - 1
+    ? state.pointsSemisFinal
+    : state.pointsToQuarters;
+}
+
 export function roundLabel(
   matchCount: number,
   round: number,
@@ -1623,6 +1671,7 @@ function assertGames(
   teamAId: string | null,
   teamBId: string | null,
   gamesPerMatch: number,
+  points: number,
 ): GameScore[] {
   if (!teamAId || !teamBId) {
     throw new TournamentError(
@@ -1644,6 +1693,9 @@ function assertGames(
     }
     if (game.a === game.b)
       throw new TournamentError("A game can't end in a tie.");
+    if (Math.max(game.a, game.b) < points) {
+      throw new TournamentError(`This game is played to ${points}.`);
+    }
     return { a: game.a, b: game.b };
   });
   const winner = matchWinnerId({
@@ -1910,6 +1962,11 @@ function groupLetter(index: number): string {
 
 function clip(value: string, max: number): string {
   return value.slice(0, max);
+}
+
+function clampRallyPoints(value: number | undefined, fallback: number): number {
+  if (value == null || !Number.isInteger(value)) return fallback;
+  return Math.min(99, Math.max(1, value));
 }
 
 function clampGames(value: number | undefined): number {

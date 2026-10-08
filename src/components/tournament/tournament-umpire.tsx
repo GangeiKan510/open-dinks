@@ -11,6 +11,7 @@ import {
   commitCategory,
   displayDivision,
   matchClaimHeldByOther,
+  pointsToWin,
   teamName,
   TournamentError,
   umpireChooseSide,
@@ -508,6 +509,8 @@ function UmpireMatch({
   const canScore = serving != null;
   const canUndo = (live?.past.length ?? 0) > 0;
   const tied = scoreA === scoreB;
+  const target = pointsToWin(category, match);
+  const reached = Math.max(scoreA, scoreB) >= target;
   const playersA = teamPlayers(category, match.teamAId);
   const playersB = teamPlayers(category, match.teamBId);
   const servingPlayers =
@@ -535,7 +538,7 @@ function UmpireMatch({
           </h1>
           <p className="text-sm text-white/60">
             {displayDivision(category)} · Game {gameNumber} of{" "}
-            {category.gamesPerMatch}
+            {category.gamesPerMatch} · to {target}
           </p>
         </div>
         {canSwitch ? (
@@ -657,7 +660,7 @@ function UmpireMatch({
                 type="button"
                 variant="secondary"
                 className="h-12 bg-white/10 text-[var(--paper)] hover:bg-white/15"
-                disabled={!canScore || tied}
+                disabled={!canScore || tied || !reached}
                 onClick={() => setConfirmEnd(true)}
               >
                 End game

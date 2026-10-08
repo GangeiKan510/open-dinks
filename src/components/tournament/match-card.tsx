@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   matchWinnerId,
+  pointsToWin,
   teamName,
   TournamentError,
   type GameScore,
@@ -67,11 +68,12 @@ export function MatchCard({
         </div>
       ) : (
         <>
-          {match.live ? (
-            <p className="mb-3 text-sm tabular-nums text-[var(--accent)]">
-              Live {match.live.scoreA}–{match.live.scoreB}
-            </p>
-          ) : null}
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            Play to {pointsToWin(state, match)}
+            {match.live
+              ? ` · live ${match.live.scoreA}–${match.live.scoreB}`
+              : ""}
+          </p>
           <ScoreForm
             key={`${match.id}:${match.teamAId}:${match.teamBId}:${match.status}:${state.gamesPerMatch}:${match.games.map((game) => `${game.a}-${game.b}`).join(",")}`}
             match={match}

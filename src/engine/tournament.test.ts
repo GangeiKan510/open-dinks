@@ -22,6 +22,7 @@ import {
   matchWinnerId,
   normalizeTournamentEvent,
   normalizeTournamentState,
+  pointsToWin,
   removeCategory,
   reportMatchScore,
   resetDraw,
@@ -515,12 +516,12 @@ describe("tournament bracket", () => {
     expect([final!.teamAId, final!.teamBId]).toContain(matchWinnerId(bye!));
     expect(final!.teamAId == null || final!.teamBId == null).toBe(true);
 
-    state = reportMatchScore(state, playable!.id, [{ a: 11, b: 5 }]);
-    state = reportMatchScore(state, finalMatch()!.id, [{ a: 11, b: 8 }]);
+    state = reportMatchScore(state, playable!.id, [{ a: 15, b: 5 }]);
+    state = reportMatchScore(state, finalMatch()!.id, [{ a: 15, b: 8 }]);
     expect(bracketChampion(state)?.id).toBeTruthy();
 
     const flipped = playable!.teamBId;
-    state = reportMatchScore(state, playable!.id, [{ a: 5, b: 11 }]);
+    state = reportMatchScore(state, playable!.id, [{ a: 5, b: 15 }]);
     const finalAfter = finalMatch()!;
     expect(finalAfter.games).toEqual([]);
     expect(finalAfter.status).toBe("unreported");
@@ -529,6 +530,47 @@ describe("tournament bracket", () => {
       playable!.teamAId,
     );
     expect(bracketChampion(state)).toBeNull();
+  });
+
+  it("plays groups and quarters to 11, and semis and the final to 15", () => {
+    const base = scored("group", "g1", "a", "b", 0, 0);
+    const quarter = {
+      ...base,
+      id: "quarter",
+      stage: "bracket" as const,
+      round: 1,
+      games: [],
+      status: "unreported" as const,
+    };
+    const semi = { ...quarter, id: "semi", round: 2 };
+    const final = { ...quarter, id: "final", round: 3 };
+    let state: TournamentState = {
+      ...createTournament(),
+      phase: "bracket",
+      teams: [team("a", "Alpha"), team("b", "Bravo")],
+      matches: [quarter, semi, final],
+    };
+    expect(pointsToWin(state, quarter)).toBe(11);
+    expect(pointsToWin(state, semi)).toBe(15);
+    expect(pointsToWin(state, final)).toBe(15);
+    expect(() => reportMatchScore(state, "quarter", [{ a: 10, b: 8 }])).toThrow(
+      /played to 11/i,
+    );
+    expect(() => reportMatchScore(state, "semi", [{ a: 11, b: 9 }])).toThrow(
+      /played to 15/i,
+    );
+    state = reportMatchScore(state, "quarter", [{ a: 11, b: 7 }]);
+    state = reportMatchScore(state, "semi", [{ a: 15, b: 13 }]);
+    expect(state.matches.find((match) => match.id === "semi")?.status).toBe(
+      "reported",
+    );
+
+    const custom = setDrawSettings(createTournament(), {
+      pointsToQuarters: 15,
+      pointsSemisFinal: 21,
+    });
+    expect(custom.pointsToQuarters).toBe(15);
+    expect(custom.pointsSemisFinal).toBe(21);
   });
 
   it("locks pool scores while a bracket exists and unlocks them when it is discarded", () => {
@@ -589,7 +631,7 @@ describe("tournament bracket", () => {
         match.round === 1 &&
         match.status === "unreported",
     )!;
-    state = reportMatchScore(state, playable.id, [{ a: 11, b: 4 }]);
+    state = reportMatchScore(state, playable.id, [{ a: 15, b: 4 }]);
     const bracketFinal = (current: TournamentState) =>
       current.matches.find(
         (match) => match.stage === "bracket" && match.round === 2,
@@ -653,6 +695,7 @@ describe("umpire rally", () => {
       bracketCount: 1,
       teamsPerBracket: 2,
       gamesPerMatch: 2,
+      pointsToQuarters: 1,
     });
     state = addNamed(state, [
       ["Ada", "Bea"],

@@ -7,6 +7,7 @@ import {
   displayDivision,
   formatDiff,
   groupStandings,
+  pointsToWin,
   roundLabel,
   stageProgress,
   teamName,
@@ -184,6 +185,9 @@ function CourtTile({
           {group ? ` · ${group.name}` : ` · M${match.number}`}
         </span>
       </div>
+      <p className="text-sm text-white/50">
+        Play to {pointsToWin(state, match)}
+      </p>
       <p className="text-lg">{teamName(state, match.teamAId)}</p>
       <p className="text-lg text-white/80">{teamName(state, match.teamBId)}</p>
       {match.live?.serving ? (
