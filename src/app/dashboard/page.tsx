@@ -58,9 +58,14 @@ export default async function DashboardPage() {
           project URL and anon key, then run the migration in{" "}
           <code>supabase/migrations</code>.
         </p>
-        <Button asChild>
-          <Link href="/demo">Open local demo</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link href="/demo">Open local demo</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/tournament">Tournament mode</Link>
+          </Button>
+        </div>
       </main>
     );
   }
@@ -271,11 +276,16 @@ export default async function DashboardPage() {
             {facility?.name ?? venue.name}
           </h1>
         </div>
-        <form action={signOutAction}>
-          <Button variant="outline" type="submit">
-            Sign out
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/tournament">Tournament</Link>
           </Button>
-        </form>
+          <form action={signOutAction}>
+            <Button variant="outline" type="submit">
+              Sign out
+            </Button>
+          </form>
+        </div>
       </header>
 
       {liveSession ? (

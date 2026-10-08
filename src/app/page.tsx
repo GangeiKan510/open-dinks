@@ -46,6 +46,9 @@ export default async function HomePage() {
             <Button size="lg" asChild>
               <Link href={ctaHref}>{ctaLabel}</Link>
             </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/tournament">Tournament mode</Link>
+            </Button>
           </div>
         </div>
 

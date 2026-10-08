@@ -6,3 +6,4 @@ export * from "./timer";
 export * from "./locks";
 export * from "./reducer";
 export * from "./queue";
+export * from "./tournament";

@@ -35,6 +35,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      tournaments: {
+        Row: {
+          id: string;
+          created_by: string;
+          public_token: string;
+          document: Json;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          created_by: string;
+          public_token?: string;
+          document: Json;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          created_by?: string;
+          public_token?: string;
+          document?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       facilities: {
         Row: {
           id: string;
@@ -560,6 +584,18 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      director_umpire_token: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      umpire_load_tournament: {
+        Args: { p_token: string };
+        Returns: { id: string; document: Json }[];
+      };
+      umpire_save_tournament: {
+        Args: { p_token: string; p_document: Json };
+        Returns: undefined;
+      };
       get_public_booking_venue: {
         Args: { p_slug: string };
         Returns: Json;

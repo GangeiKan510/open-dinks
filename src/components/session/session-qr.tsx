@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
-export function SessionQr({ url }: { url: string }) {
+export function SessionQr({
+  url,
+  alt = "Session QR code",
+}: {
+  url: string;
+  alt?: string;
+}) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,7 +36,7 @@ export function SessionQr({ url }: { url: string }) {
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={dataUrl}
-      alt="Session QR code"
+      alt={alt}
       className="h-[220px] w-[220px] rounded-lg bg-white p-2"
     />
   );

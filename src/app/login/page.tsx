@@ -8,11 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_ERROR_MESSAGES, mapAuthError } from "@/lib/auth-errors";
+import { safeAuthNextPath } from "@/lib/auth-redirect";
 import { PRODUCT_NAME } from "@/lib/facility";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 type Mode = "sign-in" | "sign-up";
+
+function authNextPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return safeAuthNextPath(next);
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -50,7 +56,7 @@ export default function LoginPage() {
             toast.error(mapAuthError(error, "SIGN_IN_FAILED"));
             return;
           }
-          router.push("/dashboard");
+          router.push(authNextPath());
           router.refresh();
           return;
         }
@@ -63,7 +69,7 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            emailRedirectTo: `${siteUrl}/auth/callback`,
+            emailRedirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(authNextPath())}`,
           },
         });
 
@@ -74,7 +80,7 @@ export default function LoginPage() {
         }
 
         if (data.session) {
-          router.push("/dashboard");
+          router.push(authNextPath());
           router.refresh();
           return;
         }
@@ -196,6 +202,10 @@ export default function LoginPage() {
         No Supabase yet?{" "}
         <Link href="/demo" className="text-[var(--accent)] underline">
           Try the local demo
+        </Link>{" "}
+        or{" "}
+        <Link href="/tournament" className="text-[var(--accent)] underline">
+          run a tournament
         </Link>
         .
       </p>
