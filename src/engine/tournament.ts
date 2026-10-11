@@ -11,6 +11,8 @@ export interface TournamentTeam {
   players: [string, string];
   /** Round-robin bracket during setup. Null until the director assigns one. */
   bracketIndex: number | null;
+  /** Club this team scores for. Null until the director assigns one. */
+  club: string | null;
 }
 
 export interface GameScore {
@@ -133,6 +135,14 @@ export interface TournamentEvent {
   courtCount: number;
   activeCategoryId: string;
   categories: TournamentState[];
+  /** Club names shared by every category. The scoreboard totals their wins. */
+  clubs: string[];
+}
+
+export interface ClubStanding {
+  club: string;
+  wins: number;
+  losses: number;
 }
 
 export class TournamentError extends Error {
@@ -147,6 +157,8 @@ const MAX_TEAMS = 64;
 const MAX_CATEGORIES = 8;
 const MAX_NAME = 80;
 const MAX_PLAYER = 40;
+const MAX_CLUB = 40;
+const MAX_CLUBS = 32;
 
 export const SAMPLE_TEAMS: readonly (readonly [string, string])[] = [
   ["Smith", "Crozier"],
@@ -323,6 +335,7 @@ export function normalizeTournamentState(
     teams: state.teams.map((team) => ({
       ...team,
       bracketIndex: keptBracketIndex(team.bracketIndex, bracketCount),
+      club: sanitizeClub(team.club),
     })),
     matches: state.matches.map((match) => ({
       ...match,
@@ -362,6 +375,7 @@ export function addTeam(
         name,
         players: [a, b],
         bracketIndex: null,
+        club: null,
       },
     ],
   };
@@ -414,6 +428,65 @@ export function autoAssignBrackets(state: TournamentState): TournamentState {
     teams: state.teams.map((team) => ({
       ...team,
       bracketIndex: indexById.get(team.id) ?? null,
+    })),
+  };
+}
+
+/** Tags a team with a club from the tournament list. Pass null to clear it. */
+export function assignTeamClub(
+  state: TournamentState,
+  teamId: string,
+  club: string | null,
+  clubs: readonly string[],
+): TournamentState {
+  if (!state.teams.some((team) => team.id === teamId)) {
+    throw new TournamentError("That team is not in the draw.");
+  }
+  const nextClub =
+    club === null
+      ? null
+      : (clubs.find(
+          (item) => item.toLowerCase() === club.trim().toLowerCase(),
+        ) ?? null);
+  if (club !== null && nextClub === null) {
+    throw new TournamentError("Pick a club from the list.");
+  }
+  return {
+    ...state,
+    teams: state.teams.map((team) =>
+      team.id === teamId ? { ...team, club: nextClub } : team,
+    ),
+  };
+}
+
+export function addClub(event: TournamentEvent, name: string): TournamentEvent {
+  const club = clip(name.trim(), MAX_CLUB);
+  if (!club) throw new TournamentError("Enter a club name.");
+  if (event.clubs.some((item) => item.toLowerCase() === club.toLowerCase())) {
+    throw new TournamentError("That club is already on this tournament.");
+  }
+  if (event.clubs.length >= MAX_CLUBS) {
+    throw new TournamentError("This tournament already has 32 clubs.");
+  }
+  return { ...event, clubs: [...event.clubs, club] };
+}
+
+export function removeClub(
+  event: TournamentEvent,
+  name: string,
+): TournamentEvent {
+  const key = name.trim().toLowerCase();
+  if (!event.clubs.some((item) => item.toLowerCase() === key)) {
+    throw new TournamentError("That club is not on this tournament.");
+  }
+  return {
+    ...event,
+    clubs: event.clubs.filter((item) => item.toLowerCase() !== key),
+    categories: event.categories.map((category) => ({
+      ...category,
+      teams: category.teams.map((team) =>
+        team.club?.toLowerCase() === key ? { ...team, club: null } : team,
+      ),
     })),
   };
 }
@@ -954,6 +1027,7 @@ export function createTournamentEvent(
     courtCount: category.courtCount,
     activeCategoryId: category.id,
     categories: [category],
+    clubs: [],
   };
 }
 
@@ -990,6 +1064,9 @@ export function tournamentEventFromState(
     courtCount: category.courtCount,
     activeCategoryId: category.id,
     categories: [category],
+    clubs: sanitizeClubs(
+      (state as TournamentState & { clubs?: unknown }).clubs,
+    ),
   };
 }
 
@@ -1006,6 +1083,7 @@ export function normalizeTournamentEvent(
     used.add(id);
     return { ...normalized, id };
   });
+  const clubs = clubsOnEvent(event.clubs, categories);
   const courtCount = normalizeCourtCount(event.courtCount, 4);
   const name = clip(event.name, MAX_NAME);
   const activeCategoryId = categories.some(
@@ -1017,10 +1095,15 @@ export function normalizeTournamentEvent(
     name,
     courtCount,
     activeCategoryId,
+    clubs,
     categories: categories.map((category) => ({
       ...category,
       name,
       courtCount,
+      teams: category.teams.map((team) => ({
+        ...team,
+        club: canonicalClub(team.club, clubs),
+      })),
     })),
   });
 }
@@ -1423,6 +1506,34 @@ export function groupStandings(
 
   rows.sort((a, b) => compareStandings(a, b, rows, headToHead));
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+/** Match wins for each club, across every category. Byes do not count. */
+export function clubStandings(event: TournamentEvent): ClubStanding[] {
+  const totals = new Map<string, { wins: number; losses: number }>();
+  for (const club of event.clubs) {
+    totals.set(club, { wins: 0, losses: 0 });
+  }
+  for (const category of event.categories) {
+    for (const match of category.matches) {
+      if (match.status !== "reported") continue;
+      const winnerId = matchWinnerId(match);
+      if (!winnerId) continue;
+      const loserId =
+        winnerId === match.teamAId ? match.teamBId : match.teamAId;
+      addClubResult(totals, clubOf(category, winnerId), "wins");
+      addClubResult(totals, clubOf(category, loserId), "losses");
+    }
+  }
+  return event.clubs
+    .map((club) => {
+      const total = totals.get(club) ?? { wins: 0, losses: 0 };
+      return { club, wins: total.wins, losses: total.losses };
+    })
+    .sort(
+      (a, b) =>
+        b.wins - a.wins || a.losses - b.losses || a.club.localeCompare(b.club),
+    );
 }
 
 export function matchWinnerId(match: TournamentMatch): string | null {
@@ -1962,6 +2073,66 @@ function groupLetter(index: number): string {
 
 function clip(value: string, max: number): string {
   return value.slice(0, max);
+}
+
+function sanitizeClub(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const club = clip(value.trim(), MAX_CLUB);
+  return club || null;
+}
+
+function sanitizeClubs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const clubs: string[] = [];
+  for (const item of value) {
+    const club = sanitizeClub(item);
+    if (!club) continue;
+    if (
+      clubs.some((existing) => existing.toLowerCase() === club.toLowerCase())
+    ) {
+      continue;
+    }
+    if (clubs.length >= MAX_CLUBS) break;
+    clubs.push(club);
+  }
+  return clubs;
+}
+
+function clubsOnEvent(
+  listed: unknown,
+  categories: TournamentState[],
+): string[] {
+  const clubs = sanitizeClubs(listed);
+  if (clubs.length > 0) return clubs;
+  return sanitizeClubs(
+    categories.flatMap((category) => category.teams.map((team) => team.club)),
+  );
+}
+
+function canonicalClub(
+  club: string | null,
+  clubs: readonly string[],
+): string | null {
+  if (!club) return null;
+  return (
+    clubs.find((item) => item.toLowerCase() === club.toLowerCase()) ?? null
+  );
+}
+
+function clubOf(state: TournamentState, teamId: string | null): string | null {
+  if (!teamId) return null;
+  return state.teams.find((team) => team.id === teamId)?.club ?? null;
+}
+
+function addClubResult(
+  totals: Map<string, { wins: number; losses: number }>,
+  club: string | null,
+  field: "wins" | "losses",
+): void {
+  if (!club) return;
+  const total = totals.get(club);
+  if (!total) return;
+  total[field] += 1;
 }
 
 function clampRallyPoints(value: number | undefined, fallback: number): number {

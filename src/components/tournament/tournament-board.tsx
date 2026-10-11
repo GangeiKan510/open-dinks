@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   bracketChampion,
+  clubStandings,
   displayDivision,
   formatDiff,
   groupStandings,
@@ -49,6 +50,7 @@ export function TournamentBoard({
       void supabase.removeChannel(channel);
     };
   }, [tournamentId]);
+  const clubs = clubStandings(event);
   const playing = event.categories.filter(
     (category) => category.phase !== "setup",
   );
@@ -98,6 +100,8 @@ export function TournamentBoard({
             </Link>
           </div>
         </header>
+
+        {clubs.length > 0 ? <ClubWins rows={clubs} /> : null}
 
         {playing.length === 0 ? (
           <p className="text-2xl text-white/70">
@@ -165,6 +169,51 @@ export function TournamentBoard({
         )}
       </div>
     </div>
+  );
+}
+
+function ClubWins({
+  rows,
+}: {
+  rows: Array<{ club: string; wins: number; losses: number }>;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-white/10">
+      <h2 className="border-b border-white/10 px-4 py-3 font-[family-name:var(--font-display)] text-3xl">
+        Club wins
+      </h2>
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs uppercase tracking-[0.14em] text-white/40">
+          <tr>
+            <th className="px-4 py-2 font-medium" scope="col">
+              Club
+            </th>
+            {["W", "L"].map((label) => (
+              <th
+                key={label}
+                className="px-4 py-2 text-right font-medium"
+                scope="col"
+              >
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.club} className="border-t border-white/10">
+              <td className="px-4 py-3 text-lg">{row.club}</td>
+              <td className="px-4 py-3 text-right text-lg tabular-nums text-[var(--lime)]">
+                {row.wins}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                {row.losses}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

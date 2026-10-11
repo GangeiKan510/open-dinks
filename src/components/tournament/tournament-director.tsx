@@ -6,9 +6,11 @@ import { Monitor, QrCode, Trophy } from "lucide-react";
 import {
   activeCategory,
   addCategory,
+  addClub,
   addSampleTeams,
   addTeam,
   assignTeamBracket,
+  assignTeamClub,
   autoAssignBrackets,
   bracketAssignmentIssue,
   bracketBlockReason,
@@ -24,6 +26,7 @@ import {
   groupStandings,
   planBracketSizes,
   removeCategory,
+  removeClub,
   removeTeam,
   reportMatchScore,
   resetDraw,
@@ -284,7 +287,13 @@ export function TournamentDirector({
       ) : null}
 
       {state.phase === "setup" ? (
-        <SetupForm state={state} run={run} />
+        <SetupForm
+          state={state}
+          clubs={event.clubs}
+          run={run}
+          onAddClub={(name) => runEvent(() => addClub(event, name))}
+          onRemoveClub={(name) => runEvent(() => removeClub(event, name))}
+        />
       ) : (
         <Tabs
           value={view}
@@ -462,13 +471,20 @@ function CategoryBar({
 
 function SetupForm({
   state,
+  clubs,
   run,
+  onAddClub,
+  onRemoveClub,
 }: {
   state: TournamentState;
+  clubs: string[];
   run: (action: () => TournamentState) => boolean;
+  onAddClub: (name: string) => boolean;
+  onRemoveClub: (name: string) => boolean;
 }) {
   const [playerA, setPlayerA] = useState("");
   const [playerB, setPlayerB] = useState("");
+  const [clubName, setClubName] = useState("");
   let planMessage = "";
   let planReady = false;
   if (state.teams.length >= 2) {
@@ -659,6 +675,51 @@ function SetupForm({
           </div>
           <Button type="submit">Add team</Button>
         </form>
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(submit) => {
+            submit.preventDefault();
+            if (!onAddClub(clubName)) return;
+            setClubName("");
+          }}
+        >
+          <div className="min-w-[8rem] flex-1 space-y-1">
+            <Label htmlFor="club-name">Club</Label>
+            <Input
+              id="club-name"
+              value={clubName}
+              onChange={(event) => setClubName(event.target.value)}
+              placeholder="Haraya"
+            />
+          </div>
+          <Button type="submit" variant="secondary">
+            Add club
+          </Button>
+        </form>
+        {clubs.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {clubs.map((club) => (
+              <li
+                key={club}
+                className="flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-sm"
+              >
+                {club}
+                <button
+                  type="button"
+                  className="text-[var(--muted)] underline"
+                  aria-label={`Remove ${club}`}
+                  onClick={() => onRemoveClub(club)}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="text-sm text-[var(--muted)]">
+          Add each club once, then pick it on the team. The scoreboard totals
+          match wins for that club across every category.
+        </p>
         {state.teams.length === 0 ? (
           <Button
             variant="secondary"
@@ -704,6 +765,32 @@ function SetupForm({
                     {Array.from({ length: state.bracketCount }, (_, slot) => (
                       <option key={slot} value={slot}>
                         {bracketName(slot)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="sr-only" htmlFor={`club-${team.id}`}>
+                    Club for {team.name}
+                  </label>
+                  <select
+                    id={`club-${team.id}`}
+                    value={team.club ?? ""}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      run(() =>
+                        assignTeamClub(
+                          state,
+                          team.id,
+                          raw === "" ? null : raw,
+                          clubs,
+                        ),
+                      );
+                    }}
+                    className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    <option value="">No club</option>
+                    {clubs.map((club) => (
+                      <option key={club} value={club}>
+                        {club}
                       </option>
                     ))}
                   </select>

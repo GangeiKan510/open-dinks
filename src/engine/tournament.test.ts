@@ -3,14 +3,17 @@ import { pairKey } from "@/lib/utils";
 import {
   activeCategory,
   addCategory,
+  addClub,
   addTeam,
   assignCourts,
   assignTeamBracket,
+  assignTeamClub,
   autoAssignBrackets,
   bracketAssignmentIssue,
   bracketBlockReason,
   bracketChampion,
   clearMatchScore,
+  clubStandings,
   commitCategory,
   createTournament,
   createTournamentEvent,
@@ -24,6 +27,7 @@ import {
   normalizeTournamentState,
   pointsToWin,
   removeCategory,
+  removeClub,
   reportMatchScore,
   resetDraw,
   setDrawSettings,
@@ -53,7 +57,13 @@ function addNamed(
 }
 
 function team(id: string, name: string): TournamentTeam {
-  return { id, name, players: [name, "Partner"], bracketIndex: null };
+  return {
+    id,
+    name,
+    players: [name, "Partner"],
+    bracketIndex: null,
+    club: null,
+  };
 }
 
 function scored(
@@ -782,6 +792,85 @@ describe("umpire rally", () => {
   });
 });
 
+describe("club wins", () => {
+  it("tallies reported match wins by club across categories", () => {
+    let event = addClub(
+      createTournamentEvent({ name: "HARAYA CUP" }),
+      "Haraya",
+    );
+    event = addClub(event, "Dinks");
+    const mens = {
+      ...createTournament({ division: "Mens" }),
+      id: "category-1",
+      phase: "groups" as const,
+      teams: [
+        { ...team("a", "Alpha"), club: "Haraya" },
+        { ...team("b", "Bravo"), club: "Dinks" },
+        team("c", "Gamma"),
+      ],
+      matches: [
+        scored("m1", "g1", "a", "b", 11, 5),
+        {
+          ...scored("bye", "g1", "a", "c", 0, 0),
+          status: "bye" as const,
+          games: [],
+        },
+        {
+          ...scored("open", "g1", "b", "c", 11, 3),
+          status: "unreported" as const,
+        },
+      ],
+    };
+    event = commitCategory(event, "category-1", mens);
+    event = addCategory(event, "Womens");
+    const womensId = event.categories[1]?.id ?? "";
+    event = commitCategory(event, womensId, {
+      ...createTournament({ division: "Womens" }),
+      id: womensId,
+      phase: "groups",
+      teams: [
+        { ...team("a", "Wynn"), club: "Haraya" },
+        { ...team("b", "West"), club: "Dinks" },
+      ],
+      matches: [scored("w1", "g1", "a", "b", 11, 9)],
+    });
+    expect(clubStandings(event)).toEqual([
+      { club: "Haraya", wins: 2, losses: 0 },
+      { club: "Dinks", wins: 0, losses: 2 },
+    ]);
+  });
+
+  it("keeps the list spelling and clears a club when it is removed", () => {
+    let event = addClub(createTournamentEvent(), "Haraya");
+    let state = addTeam(activeCategory(event), "Ada", "Bea");
+    expect(() => assignTeamClub(state, "team-1", "Other", event.clubs)).toThrow(
+      /club/i,
+    );
+    state = assignTeamClub(state, "team-1", "haraya", event.clubs);
+    expect(state.teams[0]?.club).toBe("Haraya");
+    event = commitCategory(event, state.id, state);
+    event = removeClub(event, "Haraya");
+    expect(event.clubs).toEqual([]);
+    expect(event.categories[0]?.teams[0]?.club).toBeNull();
+    expect(() => addClub(event, "  ")).toThrow(/club name/i);
+  });
+
+  it("rebuilds the club list from teams on an older save", () => {
+    const saved = createTournamentEvent();
+    const category = {
+      ...saved.categories[0],
+      teams: [{ ...team("a", "Alpha"), club: "Haraya" }],
+    };
+    const event = normalizeTournamentEvent({
+      ...saved,
+      clubs: undefined as unknown as string[],
+      categories: [category],
+    });
+    expect(event.clubs).toEqual(["Haraya"]);
+    expect(event.categories[0]?.teams[0]?.club).toBe("Haraya");
+  });
+});
+
 describe("tournament categories", () => {
   it("keeps an older single-division save as the first category", () => {
     const saved = {
@@ -803,6 +892,8 @@ describe("tournament categories", () => {
     expect(event.categories).toHaveLength(1);
     expect(event.categories[0]?.division).toBe("Mens Beginners");
     expect(event.categories[0]?.teams[0]?.bracketIndex).toBeNull();
+    expect(event.categories[0]?.teams[0]?.club).toBeNull();
+    expect(event.clubs).toEqual([]);
     expect(event.categories[0]?.gamesPerMatch).toBe(1);
   });
 
