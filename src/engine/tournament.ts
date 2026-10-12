@@ -79,6 +79,11 @@ export interface TournamentState {
   name: string;
   division: string;
   courtCount: number;
+  /**
+   * Courts this category may use. Empty means every court.
+   * A venue split keeps one category on courts 1–3 and another on 4–7.
+   */
+  courtNumbers: number[];
   /** Score columns on each match. One game is a single box per team. */
   gamesPerMatch: number;
   /** Points a game is played to, from the groups through the quarterfinals. */
@@ -137,6 +142,38 @@ export interface TournamentEvent {
   categories: TournamentState[];
   /** Club names shared by every category. The scoreboard totals their wins. */
   clubs: string[];
+  /** Logos shown on the public scoreboard. */
+  sponsors: TournamentSponsor[];
+}
+
+export const SPONSOR_TIERS = [
+  "platinum",
+  "gold",
+  "silver",
+  "bronze",
+  "nickel",
+] as const;
+
+export type SponsorTier = (typeof SPONSOR_TIERS)[number];
+
+export interface TournamentSponsor {
+  id: string;
+  name: string;
+  url: string;
+  /** Platinum leads the scoreboard ticker. Nickel follows it. */
+  tier: SponsorTier;
+}
+
+export const SPONSOR_TIER_LABELS: Record<SponsorTier, string> = {
+  platinum: "Platinum",
+  gold: "Gold",
+  silver: "Silver",
+  bronze: "Bronze",
+  nickel: "Nickel",
+};
+
+export function isSponsorTier(value: string): value is SponsorTier {
+  return (SPONSOR_TIERS as readonly string[]).includes(value);
 }
 
 export interface ClubStanding {
@@ -159,6 +196,10 @@ const MAX_NAME = 80;
 const MAX_PLAYER = 40;
 const MAX_CLUB = 40;
 const MAX_CLUBS = 32;
+export const MAX_SPONSOR_LOGOS = 80;
+const MAX_SPONSOR_URL = 1024;
+const SPONSOR_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const SAMPLE_TEAMS: readonly (readonly [string, string])[] = [
   ["Smith", "Crozier"],
@@ -179,6 +220,7 @@ export function createTournament(
     name: clip(input.name ?? "Saturday mixer", MAX_NAME),
     division: clip(input.division ?? "Mixed 3.5", MAX_NAME),
     courtCount: normalizeCourtCount(input.courtCount, 4),
+    courtNumbers: [],
     gamesPerMatch: clampGames(input.gamesPerMatch ?? 1),
     pointsToQuarters: clampRallyPoints(input.pointsToQuarters, 11),
     pointsSemisFinal: clampRallyPoints(input.pointsSemisFinal, 15),
@@ -228,6 +270,10 @@ export function updateTournamentDetails(
   state: TournamentState,
   details: { name?: string; division?: string; courtCount?: number },
 ): TournamentState {
+  const courtCount =
+    details.courtCount === undefined
+      ? state.courtCount
+      : normalizeCourtCount(details.courtCount, state.courtCount);
   const next: TournamentState = {
     ...state,
     name:
@@ -236,13 +282,27 @@ export function updateTournamentDetails(
       details.division === undefined
         ? state.division
         : clip(details.division, MAX_NAME),
-    courtCount:
-      details.courtCount === undefined
-        ? state.courtCount
-        : normalizeCourtCount(details.courtCount, state.courtCount),
+    courtCount,
+    courtNumbers: sanitizeCourtList(state.courtNumbers, courtCount),
   };
   if (next.phase === "setup") return next;
   return assignCourts(next);
+}
+
+/** Limits a category to these court numbers. Pass every court to clear the limit. */
+export function setCategoryCourts(
+  state: TournamentState,
+  courtNumbers: number[],
+): TournamentState {
+  const unique = sanitizeCourtList(courtNumbers, state.courtCount);
+  if (unique.length === 0) {
+    throw new TournamentError("Keep at least one court for this category.");
+  }
+  const all = everyCourt(state.courtCount);
+  return {
+    ...state,
+    courtNumbers: unique.length === all.length ? [] : unique,
+  };
 }
 
 export function setDrawSettings(
@@ -326,6 +386,11 @@ export function normalizeTournamentState(
       typeof state.id === "string" && state.id.trim()
         ? state.id.trim()
         : "category-1",
+    courtCount: normalizeCourtCount(state.courtCount, 4),
+    courtNumbers: sanitizeCourtList(
+      state.courtNumbers,
+      normalizeCourtCount(state.courtCount, 4),
+    ),
     gamesPerMatch: clampGames(state.gamesPerMatch),
     pointsToQuarters: clampRallyPoints(state.pointsToQuarters, 11),
     pointsSemisFinal: clampRallyPoints(state.pointsSemisFinal, 15),
@@ -455,6 +520,63 @@ export function assignTeamClub(
     ...state,
     teams: state.teams.map((team) =>
       team.id === teamId ? { ...team, club: nextClub } : team,
+    ),
+  };
+}
+
+export function isSponsorLogoUrl(value: string): boolean {
+  if (value.length > MAX_SPONSOR_URL) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function addSponsor(
+  event: TournamentEvent,
+  sponsor: TournamentSponsor,
+): TournamentEvent {
+  if (event.sponsors.length >= MAX_SPONSOR_LOGOS) {
+    throw new TournamentError(
+      `This tournament already has ${MAX_SPONSOR_LOGOS} sponsor logos.`,
+    );
+  }
+  const next = sanitizeSponsor(sponsor);
+  if (!next) throw new TournamentError("That logo could not be saved.");
+  if (event.sponsors.some((item) => item.id === next.id)) {
+    throw new TournamentError("That logo is already on this tournament.");
+  }
+  return { ...event, sponsors: [...event.sponsors, next] };
+}
+
+export function removeSponsor(
+  event: TournamentEvent,
+  sponsorId: string,
+): TournamentEvent {
+  if (!event.sponsors.some((item) => item.id === sponsorId)) {
+    throw new TournamentError("That logo is not on this tournament.");
+  }
+  return {
+    ...event,
+    sponsors: event.sponsors.filter((item) => item.id !== sponsorId),
+  };
+}
+
+export function setSponsorTier(
+  event: TournamentEvent,
+  sponsorId: string,
+  tier: SponsorTier,
+): TournamentEvent {
+  if (!event.sponsors.some((item) => item.id === sponsorId)) {
+    throw new TournamentError("That logo is not on this tournament.");
+  }
+  return {
+    ...event,
+    sponsors: event.sponsors.map((item) =>
+      item.id === sponsorId
+        ? { ...item, tier: sanitizeSponsorTier(tier) }
+        : item,
     ),
   };
 }
@@ -1028,6 +1150,7 @@ export function createTournamentEvent(
     activeCategoryId: category.id,
     categories: [category],
     clubs: [],
+    sponsors: [],
   };
 }
 
@@ -1067,6 +1190,9 @@ export function tournamentEventFromState(
     clubs: sanitizeClubs(
       (state as TournamentState & { clubs?: unknown }).clubs,
     ),
+    sponsors: sanitizeSponsors(
+      (state as TournamentState & { sponsors?: unknown }).sponsors,
+    ),
   };
 }
 
@@ -1084,6 +1210,7 @@ export function normalizeTournamentEvent(
     return { ...normalized, id };
   });
   const clubs = clubsOnEvent(event.clubs, categories);
+  const sponsors = sanitizeSponsors(event.sponsors);
   const courtCount = normalizeCourtCount(event.courtCount, 4);
   const name = clip(event.name, MAX_NAME);
   const activeCategoryId = categories.some(
@@ -1096,6 +1223,7 @@ export function normalizeTournamentEvent(
     courtCount,
     activeCategoryId,
     clubs,
+    sponsors,
     categories: categories.map((category) => ({
       ...category,
       name,
@@ -1215,6 +1343,25 @@ export function startOverEvent(event: TournamentEvent): TournamentEvent {
   };
 }
 
+function everyCourt(courtCount: number): number[] {
+  return Array.from({ length: courtCount }, (_, index) => index + 1);
+}
+
+function sanitizeCourtList(value: unknown, courtCount: number): number[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<number>();
+  for (const item of value) {
+    if (!Number.isInteger(item) || item < 1 || item > courtCount) continue;
+    seen.add(item);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+function courtsForCategory(category: TournamentState): number[] {
+  const listed = sanitizeCourtList(category.courtNumbers, category.courtCount);
+  return listed.length === 0 ? everyCourt(category.courtCount) : listed;
+}
+
 function courtsInUse(category: TournamentState): number {
   return category.matches.filter((match) => match.courtNumber != null).length;
 }
@@ -1242,6 +1389,7 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
       ...category,
       name: event.name,
       courtCount: event.courtCount,
+      courtNumbers: sanitizeCourtList(category.courtNumbers, event.courtCount),
       matches: cloneMatches(category.matches).map((match) => {
         if (category.phase === "setup" || match.stage !== stage) {
           return { ...match, courtNumber: null };
@@ -1249,10 +1397,15 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         if (match.status === "reported" || match.status === "bye") {
           return { ...match, courtNumber: null };
         }
+        const allowed = courtsForCategory({
+          ...category,
+          courtCount: event.courtCount,
+        });
         if (
           match.courtNumber != null &&
           (match.courtNumber > event.courtCount ||
             match.courtNumber < 1 ||
+            !allowed.includes(match.courtNumber) ||
             !match.teamAId ||
             !match.teamBId)
         ) {
@@ -1292,17 +1445,29 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
   // A category that is ready to play should not sit at zero courts
   // while another category is using more than one.
   for (let guard = 0; guard < event.courtCount; guard += 1) {
-    const needy = prepared.some(
+    const needy = prepared.filter(
       (category) =>
         categoryHasReadyMatch(category) && courtsInUse(category) === 0,
     );
-    if (!needy) break;
+    if (needy.length === 0) break;
+    const needed = new Set(
+      needy.flatMap((category) => courtsForCategory(category)),
+    );
     const donor = prepared
-      .filter((category) => courtsInUse(category) > 1)
+      .filter(
+        (category) =>
+          courtsInUse(category) > 1 &&
+          category.matches.some(
+            (match) =>
+              match.courtNumber != null && needed.has(match.courtNumber),
+          ),
+      )
       .sort((a, b) => courtsInUse(b) - courtsInUse(a))[0];
     if (!donor) break;
     const released = donor.matches
-      .filter((match) => match.courtNumber != null)
+      .filter(
+        (match) => match.courtNumber != null && needed.has(match.courtNumber),
+      )
       .sort(
         (a, b) =>
           b.number - a.number || (b.courtNumber ?? 0) - (a.courtNumber ?? 0),
@@ -1349,14 +1514,15 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
     const teamA = `${slot.category.id}:${slot.match.teamAId}`;
     const teamB = `${slot.category.id}:${slot.match.teamBId}`;
     if (busy.has(teamA) || busy.has(teamB)) continue;
+    const allowed = new Set(courtsForCategory(slot.category));
     let court: number | null = null;
     for (let number = 1; number <= event.courtCount; number += 1) {
-      if (!occupied.has(number)) {
+      if (allowed.has(number) && !occupied.has(number)) {
         court = number;
         break;
       }
     }
-    if (court == null) break;
+    if (court == null) continue;
     slot.match.courtNumber = court;
     occupied.add(court);
     busy.add(teamA);
@@ -1396,6 +1562,7 @@ export function assignCourts(state: TournamentState): TournamentState {
       match.courtNumber != null &&
       (match.courtNumber > state.courtCount ||
         match.courtNumber < 1 ||
+        !courtsForCategory(state).includes(match.courtNumber) ||
         !match.teamAId ||
         !match.teamBId)
     ) {
@@ -1427,14 +1594,15 @@ export function assignCourts(state: TournamentState): TournamentState {
   for (const match of waiting) {
     if (!match.teamAId || !match.teamBId) continue;
     if (busy.has(match.teamAId) || busy.has(match.teamBId)) continue;
+    const allowed = new Set(courtsForCategory(state));
     let court: number | null = null;
     for (let number = 1; number <= state.courtCount; number += 1) {
-      if (!occupied.has(number)) {
+      if (allowed.has(number) && !occupied.has(number)) {
         court = number;
         break;
       }
     }
-    if (court == null) break;
+    if (court == null) continue;
     match.courtNumber = court;
     occupied.add(court);
     busy.add(match.teamAId);
@@ -2073,6 +2241,45 @@ function groupLetter(index: number): string {
 
 function clip(value: string, max: number): string {
   return value.slice(0, max);
+}
+
+function sanitizeSponsor(value: unknown): TournamentSponsor | null {
+  if (!value || typeof value !== "object") return null;
+  const sponsor = value as TournamentSponsor;
+  if (typeof sponsor.id !== "string" || !SPONSOR_ID.test(sponsor.id)) {
+    return null;
+  }
+  if (typeof sponsor.url !== "string" || !isSponsorLogoUrl(sponsor.url)) {
+    return null;
+  }
+  const name =
+    typeof sponsor.name === "string" ? clip(sponsor.name.trim(), MAX_NAME) : "";
+  return {
+    id: sponsor.id,
+    name,
+    url: sponsor.url,
+    tier: sanitizeSponsorTier(sponsor.tier),
+  };
+}
+
+function sanitizeSponsorTier(value: unknown): SponsorTier {
+  if (typeof value === "string" && isSponsorTier(value)) return value;
+  if (value === "major") return "platinum";
+  if (value === "minor") return "gold";
+  return "nickel";
+}
+
+function sanitizeSponsors(value: unknown): TournamentSponsor[] {
+  if (!Array.isArray(value)) return [];
+  const sponsors: TournamentSponsor[] = [];
+  for (const item of value) {
+    const sponsor = sanitizeSponsor(item);
+    if (!sponsor) continue;
+    if (sponsors.some((existing) => existing.id === sponsor.id)) continue;
+    if (sponsors.length >= MAX_SPONSOR_LOGOS) break;
+    sponsors.push(sponsor);
+  }
+  return sponsors;
 }
 
 function sanitizeClub(value: unknown): string | null {

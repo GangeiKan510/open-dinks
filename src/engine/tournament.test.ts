@@ -4,6 +4,7 @@ import {
   activeCategory,
   addCategory,
   addClub,
+  addSponsor,
   addTeam,
   assignCourts,
   assignTeamBracket,
@@ -28,8 +29,11 @@ import {
   pointsToWin,
   removeCategory,
   removeClub,
+  removeSponsor,
+  setSponsorTier,
   reportMatchScore,
   resetDraw,
+  setCategoryCourts,
   setDrawSettings,
   startOverEvent,
   umpireChooseSide,
@@ -44,6 +48,7 @@ import {
   UMPIRE_CLAIM_STALE_MS,
   TournamentError,
   tournamentEventFromState,
+  type TournamentEvent,
   type TournamentMatch,
   type TournamentState,
   type TournamentTeam,
@@ -871,6 +876,86 @@ describe("club wins", () => {
   });
 });
 
+describe("sponsor logos", () => {
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const logo = "https://example.com/logo.png";
+
+  it("stores an https logo and drops an unsafe one", () => {
+    let event = addSponsor(createTournamentEvent(), {
+      id,
+      name: "  Ace  ",
+      url: logo,
+      tier: "nickel",
+    });
+    expect(event.sponsors).toEqual([
+      { id, name: "Ace", url: logo, tier: "nickel" },
+    ]);
+    expect(() =>
+      addSponsor(event, { id, name: "Ace", url: logo, tier: "nickel" }),
+    ).toThrow(/already/i);
+    expect(() =>
+      addSponsor(createTournamentEvent(), {
+        id,
+        name: "Ace",
+        url: "http://example.com/logo.png",
+        tier: "nickel",
+      }),
+    ).toThrow(/logo/i);
+    event = removeSponsor(event, id);
+    expect(event.sponsors).toEqual([]);
+
+    const loaded = normalizeTournamentEvent({
+      ...createTournamentEvent(),
+      sponsors: [
+        { id: "nope", name: "Bad", url: logo },
+        { id, name: "Ace", url: logo },
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          name: "Http",
+          url: "http://example.com/a.png",
+        },
+      ],
+    } as unknown as TournamentEvent);
+    expect(loaded.sponsors).toEqual([
+      { id, name: "Ace", url: logo, tier: "nickel" },
+    ]);
+  });
+
+  it("keeps platinum through nickel and maps the earlier levels", () => {
+    const gold = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const silver = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let event = addSponsor(createTournamentEvent(), {
+      id,
+      name: "Ace",
+      url: logo,
+      tier: "platinum",
+    });
+    expect(event.sponsors[0]?.tier).toBe("platinum");
+    event = setSponsorTier(event, id, "gold");
+    expect(event.sponsors[0]?.tier).toBe("gold");
+    const loaded = normalizeTournamentEvent({
+      ...createTournamentEvent(),
+      sponsors: [
+        { id, name: "Ace", url: logo, tier: "major" },
+        { id: gold, name: "Bee", url: logo, tier: "minor" },
+        { id: silver, name: "Cee", url: logo, tier: "standard" },
+        {
+          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          name: "Dee",
+          url: logo,
+          tier: "headline",
+        },
+      ],
+    } as unknown as TournamentEvent);
+    expect(loaded.sponsors.map((sponsor) => sponsor.tier)).toEqual([
+      "platinum",
+      "gold",
+      "nickel",
+      "nickel",
+    ]);
+  });
+});
+
 describe("tournament categories", () => {
   it("keeps an older single-division save as the first category", () => {
     const saved = {
@@ -894,6 +979,7 @@ describe("tournament categories", () => {
     expect(event.categories[0]?.teams[0]?.bracketIndex).toBeNull();
     expect(event.categories[0]?.teams[0]?.club).toBeNull();
     expect(event.clubs).toEqual([]);
+    expect(event.sponsors).toEqual([]);
     expect(event.categories[0]?.gamesPerMatch).toBe(1);
   });
 
@@ -975,6 +1061,49 @@ describe("tournament categories", () => {
         (match) => match.id === mensMatch!.id,
       )?.status,
     ).toBe("reported");
+  });
+
+  it("keeps each category on the courts assigned to its venue", () => {
+    let event = createTournamentEvent({ courtCount: 7, name: "HARAYA CUP" });
+    let mens = addNamed(activeCategory(event), [
+      ["Smith", "Crozier"],
+      ["Torres", "Doris"],
+      ["Fernandez", "McDonald"],
+      ["Murrieta", "Bierer"],
+    ]);
+    mens = setCategoryCourts(
+      generateGroups(
+        setDrawSettings(mens, { bracketCount: 1, teamsPerBracket: 4 }),
+      ),
+      [1, 2, 3],
+    );
+    event = commitCategory(event, mens.id, mens);
+
+    event = addCategory(event, "Womens Open");
+    let womens = addNamed(activeCategory(event), [
+      ["Ann", "Bea"],
+      ["Cia", "Dee"],
+      ["Eve", "Fay"],
+      ["Gia", "Hal"],
+    ]);
+    womens = setCategoryCourts(
+      generateGroups(
+        setDrawSettings(womens, { bracketCount: 1, teamsPerBracket: 4 }),
+      ),
+      [4, 5, 6, 7],
+    );
+    event = commitCategory(event, womens.id, womens);
+
+    const courtsFor = (division: string) =>
+      event.categories
+        .find((category) => category.division === division)
+        ?.matches.map((match) => match.courtNumber)
+        .filter((court): court is number => court != null) ?? [];
+    expect(courtsFor("Mixed 3.5").every((court) => court <= 3)).toBe(true);
+    expect(courtsFor("Womens Open").every((court) => court >= 4)).toBe(true);
+    expect(courtsFor("Mixed 3.5").length).toBeGreaterThan(0);
+    expect(courtsFor("Womens Open").length).toBeGreaterThan(0);
+    expect(() => setCategoryCourts(mens, [])).toThrow(/at least one court/i);
   });
 
   it("clears every category and keeps their names", () => {

@@ -8,12 +8,17 @@ import {
   displayDivision,
   formatDiff,
   groupStandings,
+  isSponsorLogoUrl,
   pointsToWin,
+  SPONSOR_TIER_LABELS,
+  SPONSOR_TIERS,
+  type SponsorTier,
   roundLabel,
   stageProgress,
   teamName,
   type TournamentEvent,
   type TournamentMatch,
+  type TournamentSponsor,
   type TournamentState,
 } from "@/engine/tournament";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
@@ -74,7 +79,13 @@ export function TournamentBoard({
 
   return (
     <div className="min-h-screen bg-[var(--ink)] text-[var(--paper)]">
-      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-8 p-6 md:p-10">
+      <div
+        className={
+          event.sponsors.length > 0
+            ? "mx-auto flex min-h-screen max-w-[1600px] flex-col gap-8 px-6 pb-28 pt-6 md:px-10 md:pt-10"
+            : "mx-auto flex min-h-screen max-w-[1600px] flex-col gap-8 p-6 md:p-10"
+        }
+      >
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
             <p className="text-sm tracking-wide text-[var(--lime)]">
@@ -168,7 +179,89 @@ export function TournamentBoard({
           </>
         )}
       </div>
+      {event.sponsors.length > 0 ? (
+        <SponsorTicker sponsors={event.sponsors} />
+      ) : null}
     </div>
+  );
+}
+
+const TIER_SECTION: Record<SponsorTier, string> = {
+  platinum: "bg-white text-[#102018]",
+  gold: "bg-[#e6b325] text-[#2a1d00]",
+  silver: "bg-[#8d99a3] text-white",
+  bronze: "bg-[#c47b3a] text-[#1c1208]",
+  nickel: "bg-[#3d474e] text-[#f4f7f8]",
+};
+
+function SponsorTicker({ sponsors }: { sponsors: TournamentSponsor[] }) {
+  const logos = sponsors.filter((sponsor) => isSponsorLogoUrl(sponsor.url));
+  const groups = SPONSOR_TIERS.map((tier) => ({
+    tier,
+    logos: logos.filter((sponsor) => sponsor.tier === tier),
+  })).filter((group) => group.logos.length > 0);
+  if (groups.length === 0) return null;
+  const seconds = Math.max(24, logos.length * 8);
+  return (
+    <section
+      aria-label="Sponsors"
+      className="fixed inset-x-0 bottom-0 z-30 overflow-hidden border-t border-white/10 bg-[var(--ink)]"
+    >
+      <div
+        className="sponsor-ticker-track flex w-max items-stretch"
+        style={{ ["--ticker-duration" as string]: `${seconds}s` }}
+      >
+        <TickerSequence groups={groups} />
+        <TickerSequence groups={groups} copy />
+      </div>
+    </section>
+  );
+}
+
+function TickerSequence({
+  groups,
+  copy = false,
+}: {
+  groups: Array<{ tier: SponsorTier; logos: TournamentSponsor[] }>;
+  copy?: boolean;
+}) {
+  return (
+    <div
+      className={copy ? "sponsor-ticker-copy flex" : "flex"}
+      aria-hidden={copy || undefined}
+    >
+      {groups.map((group) => (
+        <div
+          key={group.tier}
+          className={`flex shrink-0 items-stretch ${TIER_SECTION[group.tier]}`}
+        >
+          <p className="flex items-center border-r border-black/15 px-4 text-xs font-semibold uppercase tracking-[0.16em]">
+            {SPONSOR_TIER_LABELS[group.tier]} sponsors
+          </p>
+          {group.logos.map((sponsor) => (
+            <SponsorLogo key={sponsor.id} sponsor={sponsor} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SponsorLogo({ sponsor }: { sponsor: TournamentSponsor }) {
+  const [hidden, setHidden] = useState(false);
+  if (hidden) return null;
+  const name = sponsor.name.trim() || "Sponsor";
+  return (
+    <span className="flex items-center border-r border-black/10 px-4">
+      {/* Sponsor files are already small uploads on the tournament's storage host. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={sponsor.url}
+        alt={name}
+        className="h-12 w-auto max-w-[9rem] object-contain"
+        onError={() => setHidden(true)}
+      />
+    </span>
   );
 }
 

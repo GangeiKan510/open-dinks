@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { Monitor, QrCode, Trophy } from "lucide-react";
 import {
   activeCategory,
   addCategory,
   addClub,
+  addSponsor,
   addSampleTeams,
   addTeam,
   assignTeamBracket,
@@ -24,14 +31,21 @@ import {
   generateBracket,
   generateGroups,
   groupStandings,
+  MAX_SPONSOR_LOGOS,
   planBracketSizes,
   removeCategory,
   removeClub,
+  removeSponsor,
   removeTeam,
+  isSponsorTier,
+  setSponsorTier,
+  SPONSOR_TIER_LABELS,
+  SPONSOR_TIERS,
   reportMatchScore,
   resetDraw,
   roundLabel,
   selectCategory,
+  setCategoryCourts,
   setDrawSettings,
   stageProgress,
   startOverEvent,
@@ -39,6 +53,8 @@ import {
   updateTournamentDetails,
   type GameScore,
   type TournamentEvent,
+  type SponsorTier,
+  type TournamentSponsor,
   type TournamentState,
 } from "@/engine/tournament";
 import { MatchCard } from "@/components/tournament/match-card";
@@ -48,6 +64,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { deleteSponsorLogo, uploadSponsorLogo } from "@/lib/sponsor-logo";
 import { saveTournamentDocument } from "@/lib/tournament-client";
 import {
   LEGACY_TOURNAMENT_STORAGE_KEY,
@@ -83,16 +100,17 @@ export function TournamentDirector({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [showUmpire, setShowUmpire] = useState(false);
   const [umpireUrl, setUmpireUrl] = useState<string | null>(null);
+  const [desk, setDesk] = useState<"tournament" | "sponsors">("tournament");
   const view = state.phase === "bracket" ? (picked ?? "bracket") : "groups";
 
   const commit = useCallback(
-    (next: TournamentEvent) => {
+    (next: TournamentEvent): Promise<boolean> => {
       setEvent(next);
       const seq = ++saveSeq.current;
       pendingRef.current += 1;
-      void saveTournamentDocument(tournamentId, next).then((result) => {
+      return saveTournamentDocument(tournamentId, next).then((result) => {
         pendingRef.current = Math.max(0, pendingRef.current - 1);
-        if (seq !== saveSeq.current) return;
+        if (seq !== saveSeq.current) return true;
         if (!result.ok) {
           setError(
             result.missingSchema
@@ -100,12 +118,13 @@ export function TournamentDirector({
               : "Could not save the tournament. Check your connection and try again.",
           );
           setEvent(savedRef.current);
-          return;
+          return false;
         }
         savedRef.current = next;
+        return true;
       });
     },
-    [tournamentId],
+    [tournamentId, setError],
   );
 
   useEffect(() => {
@@ -264,6 +283,97 @@ export function TournamentDirector({
         </p>
       ) : null}
 
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Director views"
+      >
+        <Button
+          type="button"
+          variant={desk === "tournament" ? "default" : "outline"}
+          aria-pressed={desk === "tournament"}
+          onClick={() => setDesk("tournament")}
+        >
+          Tournament
+        </Button>
+        <Button
+          type="button"
+          variant={desk === "sponsors" ? "default" : "outline"}
+          aria-pressed={desk === "sponsors"}
+          onClick={() => setDesk("sponsors")}
+        >
+          Sponsors
+          {event.sponsors.length > 0 ? (
+            <span className="tabular-nums">{event.sponsors.length}</span>
+          ) : null}
+        </Button>
+      </div>
+
+      {desk === "sponsors" ? (
+        <SponsorLogos
+          tournamentId={tournamentId}
+          event={event}
+          onSave={commit}
+          onError={setError}
+        />
+      ) : (
+        <TournamentPanels
+          event={event}
+          state={state}
+          view={view}
+          filter={filter}
+          confirm={confirm}
+          confirmRemove={confirmRemove}
+          champion={champion}
+          run={run}
+          runEvent={runEvent}
+          report={report}
+          clear={clear}
+          setPicked={setPicked}
+          setFilter={setFilter}
+          setConfirm={setConfirm}
+          setConfirmRemove={setConfirmRemove}
+        />
+      )}
+    </main>
+  );
+}
+
+function TournamentPanels({
+  event,
+  state,
+  view,
+  filter,
+  confirm,
+  confirmRemove,
+  champion,
+  run,
+  runEvent,
+  report,
+  clear,
+  setPicked,
+  setFilter,
+  setConfirm,
+  setConfirmRemove,
+}: {
+  event: TournamentEvent;
+  state: TournamentState;
+  view: "groups" | "bracket";
+  filter: MatchFilter;
+  confirm: "edit" | "start" | null;
+  confirmRemove: boolean;
+  champion: ReturnType<typeof bracketChampion>;
+  run: (action: () => TournamentState) => boolean;
+  runEvent: (action: () => TournamentEvent) => boolean;
+  report: (matchId: string, games: GameScore[]) => void;
+  clear: (matchId: string) => void;
+  setPicked: (picked: "groups" | "bracket" | null) => void;
+  setFilter: (filter: MatchFilter) => void;
+  setConfirm: (confirm: "edit" | "start" | null) => void;
+  setConfirmRemove: (confirm: boolean) => void;
+}) {
+  return (
+    <>
       <CategoryBar
         event={event}
         confirmRemove={confirmRemove}
@@ -285,6 +395,8 @@ export function TournamentDirector({
           {champion.name} won {displayDivision(state)}
         </p>
       ) : null}
+
+      <CategoryCourts state={state} run={run} />
 
       {state.phase === "setup" ? (
         <SetupForm
@@ -371,7 +483,7 @@ export function TournamentDirector({
           </TabsContent>
         </Tabs>
       )}
-    </main>
+    </>
   );
 }
 
@@ -387,6 +499,255 @@ function Progress({
     <span className="tabular-nums text-[var(--muted)]">
       {progress.reported}/{progress.total}
     </span>
+  );
+}
+
+function sponsorLabel(sponsor: TournamentSponsor): string {
+  return sponsor.name.trim();
+}
+
+function SponsorLogos({
+  tournamentId,
+  event,
+  onSave,
+  onError,
+}: {
+  tournamentId: string;
+  event: TournamentEvent;
+  onSave: (next: TournamentEvent) => Promise<boolean>;
+  onError: (message: string | null) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState("");
+  const [tier, setTier] = useState<SponsorTier>("platinum");
+  const [busy, setBusy] = useState(false);
+  const full = event.sponsors.length >= MAX_SPONSOR_LOGOS;
+
+  async function upload(submit: FormEvent) {
+    submit.preventDefault();
+    const file = fileRef.current?.files?.[0];
+    if (!file) {
+      onError("Choose an image to upload.");
+      return;
+    }
+    setBusy(true);
+    onError(null);
+    const uploaded = await uploadSponsorLogo(tournamentId, file);
+    if (!uploaded.ok) {
+      onError(uploaded.message);
+      setBusy(false);
+      return;
+    }
+    let next: TournamentEvent;
+    try {
+      next = addSponsor(event, {
+        id: uploaded.id,
+        name,
+        url: uploaded.url,
+        tier,
+      });
+    } catch (caught) {
+      await deleteSponsorLogo(tournamentId, uploaded.url);
+      onError(
+        caught instanceof TournamentError
+          ? caught.message
+          : "Could not save the logo.",
+      );
+      setBusy(false);
+      return;
+    }
+    const saved = await onSave(next);
+    if (!saved) await deleteSponsorLogo(tournamentId, uploaded.url);
+    if (saved) {
+      setName("");
+      if (fileRef.current) fileRef.current.value = "";
+      onError(null);
+    }
+    setBusy(false);
+  }
+
+  async function remove(sponsor: TournamentSponsor) {
+    setBusy(true);
+    onError(null);
+    let next: TournamentEvent;
+    try {
+      next = removeSponsor(event, sponsor.id);
+    } catch (caught) {
+      onError(
+        caught instanceof TournamentError
+          ? caught.message
+          : "Could not remove the logo.",
+      );
+      setBusy(false);
+      return;
+    }
+    const saved = await onSave(next);
+    if (saved) await deleteSponsorLogo(tournamentId, sponsor.url);
+    setBusy(false);
+  }
+
+  async function changeTier(sponsor: TournamentSponsor, nextTier: SponsorTier) {
+    if (sponsor.tier === nextTier) return;
+    setBusy(true);
+    onError(null);
+    let next: TournamentEvent;
+    try {
+      next = setSponsorTier(event, sponsor.id, nextTier);
+    } catch (caught) {
+      onError(
+        caught instanceof TournamentError
+          ? caught.message
+          : "Could not update the logo.",
+      );
+      setBusy(false);
+      return;
+    }
+    await onSave(next);
+    setBusy(false);
+  }
+
+  return (
+    <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium">Sponsors</h2>
+        <p className="text-sm text-[var(--muted)]">
+          Logos scroll in a bar along the bottom of the scoreboard. Platinum
+          leads and nickel follows. PNG, JPEG, or WebP, up to 2 MB.
+        </p>
+      </div>
+      <form className="flex flex-wrap items-end gap-2" onSubmit={upload}>
+        <div className="min-w-[12rem] flex-1 space-y-1">
+          <Label htmlFor="sponsor-logo">Logo</Label>
+          <Input
+            ref={fileRef}
+            id="sponsor-logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            disabled={busy || full}
+          />
+        </div>
+        <div className="min-w-[10rem] flex-1 space-y-1">
+          <Label htmlFor="sponsor-name">Name</Label>
+          <Input
+            id="sponsor-name"
+            value={name}
+            onChange={(change) => setName(change.target.value)}
+            placeholder="Ace Paddles"
+            disabled={busy || full}
+          />
+        </div>
+        <div className="min-w-[8rem] space-y-1">
+          <Label htmlFor="sponsor-tier">Level</Label>
+          <select
+            id="sponsor-tier"
+            value={tier}
+            disabled={busy || full}
+            onChange={(change) => {
+              const next = change.target.value;
+              if (isSponsorTier(next)) setTier(next);
+            }}
+            className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            {SPONSOR_TIERS.map((level) => (
+              <option key={level} value={level}>
+                {SPONSOR_TIER_LABELS[level]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button type="submit" disabled={busy || full}>
+          {busy ? "Saving…" : "Upload logo"}
+        </Button>
+      </form>
+      {full ? (
+        <p className="text-sm text-[var(--muted)]">
+          This tournament already has {MAX_SPONSOR_LOGOS} sponsor logos.
+        </p>
+      ) : null}
+      {event.sponsors.length > 0 ? (
+        <div className="space-y-5">
+          {SPONSOR_TIERS.map((level) => {
+            const logos = event.sponsors
+              .filter((sponsor) => sponsor.tier === level)
+              .slice()
+              .sort((a, b) => {
+                const left = sponsorLabel(a);
+                const right = sponsorLabel(b);
+                if (!left && right) return 1;
+                if (left && !right) return -1;
+                return left.localeCompare(right);
+              });
+            if (logos.length === 0) return null;
+            return (
+              <div key={level} className="space-y-2">
+                <h3 className="text-sm font-medium">
+                  {SPONSOR_TIER_LABELS[level]}
+                  <span className="ml-2 tabular-nums text-[var(--muted)]">
+                    {logos.length}
+                  </span>
+                </h3>
+                <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-white">
+                  {logos.map((sponsor) => (
+                    <li
+                      key={sponsor.id}
+                      className="grid grid-cols-[4.5rem_minmax(0,1fr)_8.5rem_4.5rem] items-center gap-3 px-3 py-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={sponsor.url}
+                        alt=""
+                        className="h-10 w-[4.5rem] object-contain object-left"
+                      />
+                      <p className="truncate text-sm">
+                        {sponsorLabel(sponsor) || (
+                          <span className="text-[var(--muted)]">No name</span>
+                        )}
+                      </p>
+                      <div>
+                        <label
+                          className="sr-only"
+                          htmlFor={`sponsor-tier-${sponsor.id}`}
+                        >
+                          Level for {sponsorLabel(sponsor) || "sponsor"}
+                        </label>
+                        <select
+                          id={`sponsor-tier-${sponsor.id}`}
+                          value={sponsor.tier}
+                          disabled={busy}
+                          onChange={(change) => {
+                            const next = change.target.value;
+                            if (isSponsorTier(next))
+                              void changeTier(sponsor, next);
+                          }}
+                          className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        >
+                          {SPONSOR_TIERS.map((option) => (
+                            <option key={option} value={option}>
+                              {SPONSOR_TIER_LABELS[option]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-right text-sm text-[var(--muted)] underline"
+                        aria-label={`Remove ${sponsorLabel(sponsor) || "sponsor"} logo`}
+                        disabled={busy}
+                        onClick={() => void remove(sponsor)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--muted)]">No sponsor logos yet.</p>
+      )}
+    </section>
   );
 }
 
@@ -465,6 +826,60 @@ function CategoryBar({
           </Button>
         ) : null}
       </form>
+    </section>
+  );
+}
+
+function CategoryCourts({
+  state,
+  run,
+}: {
+  state: TournamentState;
+  run: (action: () => TournamentState) => boolean;
+}) {
+  const selected =
+    state.courtNumbers.length === 0
+      ? Array.from({ length: state.courtCount }, (_, index) => index + 1)
+      : state.courtNumbers;
+  return (
+    <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium">
+          Courts for {displayDivision(state)}
+        </h2>
+        <p className="text-sm text-[var(--muted)]">
+          Check the courts this category plays on. Courts 1–3 can stay at one
+          venue and the rest at another.
+        </p>
+      </div>
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={`Courts for ${displayDivision(state)}`}
+      >
+        {Array.from({ length: state.courtCount }, (_, index) => {
+          const number = index + 1;
+          const checked = selected.includes(number);
+          return (
+            <label
+              key={number}
+              className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => {
+                  const next = checked
+                    ? selected.filter((court) => court !== number)
+                    : [...selected, number];
+                  run(() => setCategoryCourts(state, next));
+                }}
+              />
+              Court {number}
+            </label>
+          );
+        })}
+      </div>
     </section>
   );
 }
