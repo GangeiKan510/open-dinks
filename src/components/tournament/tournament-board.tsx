@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   bracketChampion,
+  bracketColumns,
   clubStandings,
   displayDivision,
   formatDiff,
@@ -13,7 +14,6 @@ import {
   SPONSOR_TIER_LABELS,
   SPONSOR_TIERS,
   type SponsorTier,
-  roundLabel,
   stageProgress,
   teamName,
   type TournamentEvent,
@@ -397,11 +397,7 @@ function GroupCard({
 }
 
 function BracketStrip({ state }: { state: TournamentState }) {
-  const matches = state.matches.filter((match) => match.stage === "bracket");
-  const rounds = [...new Set(matches.map((match) => match.round))].sort(
-    (a, b) => a - b,
-  );
-  const lastRound = rounds[rounds.length - 1] ?? 1;
+  const columns = bracketColumns(state);
 
   return (
     <section className="space-y-3">
@@ -409,41 +405,38 @@ function BracketStrip({ state }: { state: TournamentState }) {
         Finals
       </h2>
       <div className="flex gap-4 overflow-x-auto pb-2">
-        {rounds.map((round) => {
-          const inRound = matches
-            .filter((match) => match.round === round)
-            .sort((a, b) => a.slot - b.slot);
-          return (
-            <div key={round} className="w-64 shrink-0 space-y-2">
-              <h3 className="text-sm text-white/60">
-                {roundLabel(inRound.length, round, lastRound)}
-              </h3>
-              {inRound.map((match) => (
-                <article
-                  key={match.id}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
-                >
-                  {match.status === "bye" ? (
-                    <p>
-                      {teamName(state, match.teamAId ?? match.teamBId)} · bye
-                    </p>
-                  ) : (
-                    <>
-                      <BoardSide
-                        name={teamName(state, match.teamAId)}
-                        scores={match.games.map((game) => game.a)}
-                      />
-                      <BoardSide
-                        name={teamName(state, match.teamBId)}
-                        scores={match.games.map((game) => game.b)}
-                      />
-                    </>
-                  )}
-                </article>
-              ))}
-            </div>
-          );
-        })}
+        {columns.map((column) => (
+          <div key={column.key} className="w-64 shrink-0 space-y-4">
+            {column.groups.map((group) => (
+              <div key={group.label} className="space-y-2">
+                <h3 className="text-sm text-white/60">{group.label}</h3>
+                {group.matches.map((match) => (
+                  <article
+                    key={match.id}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                  >
+                    {match.status === "bye" ? (
+                      <p>
+                        {teamName(state, match.teamAId ?? match.teamBId)} · bye
+                      </p>
+                    ) : (
+                      <>
+                        <BoardSide
+                          name={teamName(state, match.teamAId)}
+                          scores={match.games.map((game) => game.a)}
+                        />
+                        <BoardSide
+                          name={teamName(state, match.teamBId)}
+                          scores={match.games.map((game) => game.b)}
+                        />
+                      </>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
     </section>
   );

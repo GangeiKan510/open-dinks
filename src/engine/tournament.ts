@@ -60,6 +60,11 @@ export interface TournamentMatch {
   status: TournamentMatchStatus;
   nextMatchId: string | null;
   nextSlot: "a" | "b" | null;
+  /** Semifinal losers feed the third-place match. */
+  loserNextMatchId?: string | null;
+  loserNextSlot?: "a" | "b" | null;
+  /** Set on the match between the semifinal losers. */
+  placement?: "third";
   /** Present while an umpire is calling the current game. */
   live?: RallyLive | null;
   /** Phone that currently has this court. Other umpires cannot take it. */
@@ -88,7 +93,7 @@ export interface TournamentState {
   gamesPerMatch: number;
   /** Points a game is played to, from the groups through the quarterfinals. */
   pointsToQuarters: number;
-  /** Points a game is played to in the semifinals and the final. */
+  /** Points a game is played to in the semifinals, the final, and third place. */
   pointsSemisFinal: number;
   /** How many round-robin brackets to build. */
   bracketCount: number;
@@ -190,6 +195,7 @@ export class TournamentError extends Error {
 }
 
 const BYE = "__bye__";
+const THIRD_PLACE_MATCH_ID = "bracket-third";
 const MAX_TEAMS = 64;
 const MAX_CATEGORIES = 8;
 const MAX_NAME = 80;
@@ -380,7 +386,7 @@ export function normalizeTournamentState(
 ): TournamentState {
   const teamsPerBracket = clampTeamsPerBracket(state.teamsPerBracket);
   const bracketCount = clampBracketCount(state.bracketCount);
-  return {
+  const normalized: TournamentState = {
     ...state,
     id:
       typeof state.id === "string" && state.id.trim()
@@ -408,6 +414,8 @@ export function normalizeTournamentState(
       claim: sanitizeClaim(match.claim),
     })),
   };
+  if (normalized.phase !== "bracket") return normalized;
+  return syncBracket(normalized);
 }
 
 export function addTeam(
@@ -712,6 +720,9 @@ export function reportMatchScore(
   }
   if (match.status === "bye") {
     throw new TournamentError("A bye does not need a score.");
+  }
+  if (thirdPlaceFollowsFinal(state, match)) {
+    throw new TournamentError("Play the final before the third-place match.");
   }
   const clean = assertGames(
     games,
@@ -1374,7 +1385,8 @@ function categoryHasReadyMatch(category: TournamentState): boolean {
       match.stage === stage &&
       match.status === "unreported" &&
       match.teamAId &&
-      match.teamBId,
+      match.teamBId &&
+      !thirdPlaceFollowsFinal(category, match),
   );
 }
 
@@ -1394,7 +1406,11 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         if (category.phase === "setup" || match.stage !== stage) {
           return { ...match, courtNumber: null };
         }
-        if (match.status === "reported" || match.status === "bye") {
+        if (
+          match.status === "reported" ||
+          match.status === "bye" ||
+          thirdPlaceFollowsFinal(category, match)
+        ) {
           return { ...match, courtNumber: null };
         }
         const allowed = courtsForCategory({
@@ -1496,7 +1512,8 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         match.status === "unreported" &&
         match.courtNumber == null &&
         match.teamAId &&
-        match.teamBId
+        match.teamBId &&
+        !thirdPlaceFollowsFinal(category, match)
       ) {
         waiting.push({ category, match });
       }
@@ -1556,7 +1573,11 @@ export function assignCourts(state: TournamentState): TournamentState {
 
   for (const match of matches) {
     if (match.stage !== active) continue;
-    if (match.status === "reported" || match.status === "bye") {
+    if (
+      match.status === "reported" ||
+      match.status === "bye" ||
+      thirdPlaceFollowsFinal(state, match)
+    ) {
       match.courtNumber = null;
     } else if (
       match.courtNumber != null &&
@@ -1587,7 +1608,8 @@ export function assignCourts(state: TournamentState): TournamentState {
         match.status === "unreported" &&
         match.courtNumber == null &&
         match.teamAId &&
-        match.teamBId,
+        match.teamBId &&
+        !thirdPlaceFollowsFinal(state, match),
     )
     .sort((a, b) => a.round - b.round || a.number - b.number);
 
@@ -1783,10 +1805,7 @@ export function stageProgress(
 }
 
 export function bracketChampion(state: TournamentState): TournamentTeam | null {
-  const finals = state.matches
-    .filter((match) => match.stage === "bracket")
-    .sort((a, b) => b.round - a.round || a.slot - b.slot);
-  const final = finals[0];
+  const final = championshipMatch(state.matches);
   if (!final || final.status !== "reported") return null;
   const winnerId = matchWinnerId(final);
   if (!winnerId) return null;
@@ -1818,12 +1837,13 @@ export function formatDiff(diff: number): string {
   return String(diff);
 }
 
-/** Groups and rounds through the quarterfinals, then semis and the final. */
+/** Groups and rounds through the quarterfinals, then semis, the final, and third place. */
 export function pointsToWin(
   state: TournamentState,
   match: TournamentMatch,
 ): number {
   if (match.stage !== "bracket") return state.pointsToQuarters;
+  if (isThirdPlaceMatch(match)) return state.pointsSemisFinal;
   let lastRound = 1;
   for (const item of state.matches) {
     if (item.stage === "bracket" && item.round > lastRound) {
@@ -1845,6 +1865,66 @@ export function roundLabel(
   if (matchCount === 4) return "Quarterfinals";
   if (matchCount === 8) return "Round of 16";
   return `Round ${round}`;
+}
+
+export function isThirdPlaceMatch(match: TournamentMatch): boolean {
+  return match.placement === "third" || match.id === THIRD_PLACE_MATCH_ID;
+}
+
+/** True while the championship final still has to be played. */
+export function thirdPlaceFollowsFinal(
+  state: TournamentState,
+  match: TournamentMatch,
+): boolean {
+  if (!isThirdPlaceMatch(match)) return false;
+  const final = championshipMatch(state.matches);
+  return !final || (final.status !== "reported" && final.status !== "bye");
+}
+
+export interface BracketColumnGroup {
+  label: string;
+  matches: TournamentMatch[];
+}
+
+export interface BracketColumn {
+  key: string;
+  groups: BracketColumnGroup[];
+}
+
+/** Championship rounds. Third place sits under the final and is played after it. */
+export function bracketColumns(state: TournamentState): BracketColumn[] {
+  const matches = state.matches.filter((match) => match.stage === "bracket");
+  const main = matches.filter((match) => !isThirdPlaceMatch(match));
+  const third = matches
+    .filter(isThirdPlaceMatch)
+    .sort((a, b) => a.slot - b.slot || a.number - b.number);
+  const rounds = [...new Set(main.map((match) => match.round))].sort(
+    (a, b) => a - b,
+  );
+  const lastRound = rounds[rounds.length - 1] ?? 1;
+  return rounds.map((round) => {
+    const inRound = main
+      .filter((match) => match.round === round)
+      .sort((a, b) => a.slot - b.slot);
+    const groups: BracketColumnGroup[] = [
+      {
+        label: roundLabel(inRound.length, round, lastRound),
+        matches: inRound,
+      },
+    ];
+    if (round === lastRound && third.length > 0) {
+      groups.push({ label: "Third place", matches: third });
+    }
+    return { key: `round-${round}`, groups };
+  });
+}
+
+function championshipMatch(
+  matches: TournamentMatch[],
+): TournamentMatch | undefined {
+  return matches
+    .filter((match) => match.stage === "bracket" && !isThirdPlaceMatch(match))
+    .sort((a, b) => b.round - a.round || a.slot - b.slot)[0];
 }
 
 function compareStandings(
@@ -1910,32 +1990,123 @@ function seedPositions(size: number): number[] {
 }
 
 function syncBracket(state: TournamentState): TournamentState {
-  const matches = cloneMatches(state.matches);
+  const matches = attachThirdPlace(cloneMatches(state.matches));
   const byId = new Map(matches.map((match) => [match.id, match]));
   const bracket = matches
     .filter((match) => match.stage === "bracket")
     .sort((a, b) => a.round - b.round || a.slot - b.slot);
 
   for (const match of bracket) {
-    if (!match.nextMatchId || !match.nextSlot) continue;
-    const next = byId.get(match.nextMatchId);
-    if (!next) continue;
-    const winner =
-      match.status === "bye"
-        ? (match.teamAId ?? match.teamBId)
-        : matchWinnerId(match);
-    if (match.nextSlot === "a") {
-      if (next.teamAId !== winner) {
-        next.teamAId = winner;
-        clearDownstream(next);
+    if (match.nextMatchId && match.nextSlot) {
+      const next = byId.get(match.nextMatchId);
+      if (next) {
+        const winner =
+          match.status === "bye"
+            ? (match.teamAId ?? match.teamBId)
+            : matchWinnerId(match);
+        placeTeam(next, match.nextSlot, winner);
       }
-    } else if (next.teamBId !== winner) {
-      next.teamBId = winner;
-      clearDownstream(next);
+    }
+    if (match.loserNextMatchId && match.loserNextSlot) {
+      const next = byId.get(match.loserNextMatchId);
+      if (next) {
+        const loser = match.status === "bye" ? null : matchLoserId(match);
+        placeTeam(next, match.loserNextSlot, loser);
+      }
     }
   }
 
+  holdThirdPlace(matches);
   return { ...state, matches };
+}
+
+function holdThirdPlace(matches: TournamentMatch[]) {
+  const final = championshipMatch(matches);
+  const open =
+    !final || (final.status !== "reported" && final.status !== "bye");
+  if (!open) return;
+  for (const match of matches) {
+    if (!isThirdPlaceMatch(match) || match.status === "bye") continue;
+    match.games = [];
+    match.status = "unreported";
+    match.courtNumber = null;
+    match.live = null;
+    match.claim = null;
+  }
+}
+
+function attachThirdPlace(matches: TournamentMatch[]): TournamentMatch[] {
+  const main = matches.filter(
+    (match) => match.stage === "bracket" && !isThirdPlaceMatch(match),
+  );
+  if (main.length === 0) return matches;
+  let lastRound = 1;
+  for (const match of main) {
+    if (match.round > lastRound) lastRound = match.round;
+  }
+  if (lastRound < 2) return matches;
+  const semis = main
+    .filter((match) => match.round === lastRound - 1)
+    .sort((a, b) => a.slot - b.slot);
+  if (semis.length !== 2 || semis.some((match) => match.status === "bye")) {
+    return matches;
+  }
+
+  const linked = matches.map((match) => {
+    const semi = semis.find((item) => item.id === match.id);
+    if (!semi) return match;
+    return {
+      ...match,
+      loserNextMatchId: THIRD_PLACE_MATCH_ID,
+      loserNextSlot: semi.slot % 2 === 0 ? ("a" as const) : ("b" as const),
+    };
+  });
+  if (linked.some(isThirdPlaceMatch)) return linked;
+
+  const number =
+    linked.reduce((max, match) => Math.max(max, match.number), 0) + 1;
+  linked.push({
+    id: THIRD_PLACE_MATCH_ID,
+    stage: "bracket",
+    groupId: null,
+    round: lastRound,
+    slot: 1,
+    number,
+    courtNumber: null,
+    teamAId: null,
+    teamBId: null,
+    games: [],
+    status: "unreported",
+    nextMatchId: null,
+    nextSlot: null,
+    placement: "third",
+  });
+  return linked;
+}
+
+function placeTeam(
+  next: TournamentMatch,
+  slot: "a" | "b",
+  teamId: string | null,
+) {
+  if (slot === "a") {
+    if (next.teamAId !== teamId) {
+      next.teamAId = teamId;
+      clearDownstream(next);
+    }
+    return;
+  }
+  if (next.teamBId !== teamId) {
+    next.teamBId = teamId;
+    clearDownstream(next);
+  }
+}
+
+function matchLoserId(match: TournamentMatch): string | null {
+  const winnerId = matchWinnerId(match);
+  if (!winnerId) return null;
+  if (winnerId === match.teamAId) return match.teamBId;
+  return winnerId === match.teamBId ? match.teamAId : null;
 }
 
 function clearDownstream(match: TournamentMatch) {

@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import {
+  isThirdPlaceMatch,
   matchWinnerId,
   pointsToWin,
   teamName,
+  thirdPlaceFollowsFinal,
   TournamentError,
   type GameScore,
   type TournamentMatch,
@@ -45,14 +47,15 @@ export function MatchCard({
   }
 
   const waiting = !match.teamAId || !match.teamBId;
+  const afterFinal = thirdPlaceFollowsFinal(state, match);
 
   return (
     <article className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{label}</h3>
-        <CourtBadge match={match} />
+        {afterFinal ? null : <CourtBadge match={match} />}
       </div>
-      {waiting ? (
+      {waiting || afterFinal ? (
         <div className="space-y-2 text-sm">
           <TeamLine
             name={teamName(state, match.teamAId)}
@@ -64,7 +67,13 @@ export function MatchCard({
             won={false}
             pending={!match.teamBId}
           />
-          <p className="text-[var(--muted)]">Waiting for the other match.</p>
+          <p className="text-[var(--muted)]">
+            {waiting
+              ? isThirdPlaceMatch(match)
+                ? "Waiting for the semifinals."
+                : "Waiting for the other match."
+              : "Played after the final."}
+          </p>
         </div>
       ) : (
         <>

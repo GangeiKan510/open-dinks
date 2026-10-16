@@ -27,6 +27,8 @@ import {
   normalizeTournamentEvent,
   normalizeTournamentState,
   pointsToWin,
+  bracketColumns,
+  isThirdPlaceMatch,
   removeCategory,
   removeClub,
   removeSponsor,
@@ -658,7 +660,151 @@ describe("tournament bracket", () => {
     const finalAfter = bracketFinal(state);
     expect([finalAfter.teamAId, finalAfter.teamBId]).toContain(null);
   });
+
+  it("plays semifinal losers for third and crowns the final winner", () => {
+    let state = knockout(4);
+    const semis = state.matches
+      .filter((match) => match.stage === "bracket" && match.round === 1)
+      .sort((a, b) => a.slot - b.slot);
+    const final = () =>
+      state.matches.find(
+        (match) =>
+          match.stage === "bracket" &&
+          match.round === 2 &&
+          !isThirdPlaceMatch(match),
+      )!;
+    const third = () => state.matches.find(isThirdPlaceMatch)!;
+
+    expect(semis).toHaveLength(2);
+    expect(third().teamAId).toBeNull();
+    expect(pointsToWin(state, third())).toBe(state.pointsSemisFinal);
+    expect(
+      bracketColumns(state).map((column) =>
+        column.groups.map((group) => group.label),
+      ),
+    ).toEqual([["Semifinals"], ["Final", "Third place"]]);
+
+    state = reportMatchScore(state, semis[0]!.id, [{ a: 15, b: 8 }]);
+    state = reportMatchScore(state, semis[1]!.id, [{ a: 15, b: 6 }]);
+    expect([third().teamAId, third().teamBId].sort()).toEqual(
+      [semis[0]!.teamBId, semis[1]!.teamBId].sort(),
+    );
+    expect([final().teamAId, final().teamBId].sort()).toEqual(
+      [semis[0]!.teamAId, semis[1]!.teamAId].sort(),
+    );
+    expect(third().courtNumber).toBeNull();
+    expect(() =>
+      reportMatchScore(state, third().id, [{ a: 15, b: 10 }]),
+    ).toThrow(/final before the third-place/i);
+
+    state = reportMatchScore(state, final().id, [{ a: 15, b: 12 }]);
+    expect(bracketChampion(state)?.id).toBe(final().teamAId);
+    expect(third().courtNumber).not.toBeNull();
+    state = reportMatchScore(state, third().id, [{ a: 15, b: 10 }]);
+    expect(third().status).toBe("reported");
+
+    state = clearMatchScore(state, semis[0]!.id);
+    expect(third().games).toEqual([]);
+    expect(third().status).toBe("unreported");
+    expect([third().teamAId, third().teamBId]).toContain(null);
+    expect(bracketChampion(state)).toBeNull();
+  });
+
+  it("skips third place when a semifinal is a bye", () => {
+    const state = knockout(3);
+    expect(state.matches.some(isThirdPlaceMatch)).toBe(false);
+    expect(
+      bracketColumns(state).map((column) =>
+        column.groups.map((group) => group.label),
+      ),
+    ).toEqual([["Semifinals"], ["Final"]]);
+  });
+
+  it("sends only semifinal losers to the third-place match", () => {
+    const state = knockout(8);
+    const quarters = state.matches.filter(
+      (match) => match.stage === "bracket" && match.round === 1,
+    );
+    const semis = state.matches.filter(
+      (match) => match.stage === "bracket" && match.round === 2,
+    );
+    expect(quarters).toHaveLength(4);
+    expect(quarters.every((match) => !match.loserNextMatchId)).toBe(true);
+    expect(
+      semis.every((match) => match.loserNextMatchId === "bracket-third"),
+    ).toBe(true);
+    expect(
+      bracketColumns(state).map((column) =>
+        column.groups.map((group) => group.label),
+      ),
+    ).toEqual([["Quarterfinals"], ["Semifinals"], ["Final", "Third place"]]);
+  });
+
+  it("restores the third-place match when a saved bracket is loaded", () => {
+    let state = knockout(4);
+    const semis = state.matches.filter(
+      (match) => match.stage === "bracket" && match.round === 1,
+    );
+    for (const semi of semis) {
+      state = reportMatchScore(state, semi.id, [{ a: 15, b: 4 }]);
+    }
+    const final = state.matches.find(
+      (match) =>
+        match.stage === "bracket" &&
+        match.round === 2 &&
+        !isThirdPlaceMatch(match),
+    )!;
+    state = reportMatchScore(state, final.id, [{ a: 15, b: 9 }]);
+    const scoredFinal = state.matches.find((match) => match.id === final.id)!;
+    const championId = bracketChampion(state)?.id;
+    const stripped: TournamentState = {
+      ...state,
+      matches: state.matches
+        .filter((match) => !isThirdPlaceMatch(match))
+        .map((match) => ({
+          ...match,
+          loserNextMatchId: null,
+          loserNextSlot: null,
+        })),
+    };
+
+    const loaded = normalizeTournamentState(stripped);
+    const third = loaded.matches.find(isThirdPlaceMatch);
+    expect(third?.teamAId && third.teamBId).toBeTruthy();
+    expect(third?.status).toBe("unreported");
+    expect(bracketChampion(loaded)?.id).toBe(championId);
+    expect(
+      loaded.matches.find((match) => match.id === scoredFinal.id)?.games,
+    ).toEqual(scoredFinal.games);
+  });
 });
+
+function knockout(teamCount: number): TournamentState {
+  const roster: Array<[string, string]> = [
+    ["Ada", "Bea"],
+    ["Cy", "Dee"],
+    ["Eve", "Fay"],
+    ["Gus", "Hal"],
+    ["Ivy", "Jo"],
+    ["Kim", "Lee"],
+    ["Mo", "Ned"],
+    ["Ora", "Pia"],
+  ];
+  let state = addNamed(
+    createTournament({ courtCount: 4 }),
+    roster.slice(0, teamCount),
+  );
+  state = setDrawSettings(state, {
+    bracketCount: 1,
+    teamsPerBracket: teamCount,
+    advancePerGroup: teamCount,
+  });
+  state = generateGroups(state);
+  for (const match of state.matches) {
+    state = reportMatchScore(state, match.id, [{ a: 11, b: 7 }]);
+  }
+  return generateBracket(state);
+}
 
 describe("umpire rally", () => {
   function started() {

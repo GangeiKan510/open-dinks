@@ -23,6 +23,7 @@ import {
   bracketBlockReason,
   bracketName,
   bracketChampion,
+  bracketColumns,
   clearMatchScore,
   commitCategory,
   discardBracket,
@@ -43,7 +44,6 @@ import {
   SPONSOR_TIERS,
   reportMatchScore,
   resetDraw,
-  roundLabel,
   selectCategory,
   setCategoryCourts,
   setDrawSettings,
@@ -73,7 +73,6 @@ import {
   tournamentEventFromDocument,
 } from "@/lib/tournament-document";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
 
 type MatchFilter = "unreported" | "court" | "all";
 
@@ -465,8 +464,8 @@ function TournamentPanels({
           <TabsContent value="bracket" className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-[var(--muted)]">
-                Winners move forward. Changing a score pulls that team back out
-                of the next round.
+                Winners move forward. The final is played before third place.
+                Changing a score pulls that team back out of the next round.
               </p>
               <Button
                 variant="outline"
@@ -1460,41 +1459,28 @@ function BracketBoard({
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
 }) {
-  const matches = state.matches.filter((match) => match.stage === "bracket");
-  const rounds = [...new Set(matches.map((match) => match.round))].sort(
-    (a, b) => a - b,
-  );
-  const lastRound = rounds[rounds.length - 1] ?? 1;
+  const columns = bracketColumns(state);
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-2">
-      {rounds.map((round) => {
-        const inRound = matches
-          .filter((match) => match.round === round)
-          .sort((a, b) => a.slot - b.slot);
-        return (
-          <div
-            key={round}
-            className={cn(
-              "flex w-80 shrink-0 flex-col gap-3",
-              round === lastRound && "justify-center",
-            )}
-          >
-            <h2 className="text-sm font-medium">
-              {roundLabel(inRound.length, round, lastRound)}
-            </h2>
-            {inRound.map((match) => (
-              <MatchCard
-                key={match.id}
-                state={state}
-                match={match}
-                onReport={onReport}
-                onClear={onClear}
-              />
-            ))}
-          </div>
-        );
-      })}
+      {columns.map((column) => (
+        <div key={column.key} className="flex w-80 shrink-0 flex-col gap-3">
+          {column.groups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-3">
+              <h2 className="text-sm font-medium">{group.label}</h2>
+              {group.matches.map((match) => (
+                <MatchCard
+                  key={match.id}
+                  state={state}
+                  match={match}
+                  onReport={onReport}
+                  onClear={onClear}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
