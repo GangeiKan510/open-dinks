@@ -30,6 +30,7 @@ import {
   type TournamentState,
 } from "@/engine/tournament";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { saveUmpireDocument } from "@/lib/tournament-client";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import { createClient } from "@/lib/supabase/client";
@@ -81,6 +82,7 @@ export function TournamentUmpire({
   const saveSeq = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [court, setCourt] = useState<number | null>(null);
+  const [pickerCategoryId, setPickerCategoryId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const umpireId = useSyncExternalStore(
     subscribeUmpireId,
@@ -146,13 +148,27 @@ export function TournamentUmpire({
   }, []);
 
   const assignments = onCourtAssignments(event);
+  const playing = playingCategories(event);
   const owned = assignments.find(
     (item) => umpireId !== "" && item.match.claim?.umpireId === umpireId,
   );
+  const selectedCategoryId = playing.some(
+    (category) => category.id === pickerCategoryId,
+  )
+    ? pickerCategoryId
+    : (owned?.category.id ??
+      playing.find((category) =>
+        assignments.some((item) => item.category.id === category.id),
+      )?.id ??
+      playing[0]?.id ??
+      null);
   const selectedCourt = court ?? owned?.match.courtNumber ?? null;
   const active =
-    assignments.find((item) => item.match.courtNumber === selectedCourt) ??
-    null;
+    assignments.find(
+      (item) =>
+        item.match.courtNumber === selectedCourt &&
+        (selectedCategoryId == null || item.category.id === selectedCategoryId),
+    ) ?? null;
   const heldByOther = active
     ? matchClaimHeldByOther(active.match, umpireId, now)
     : false;
@@ -323,32 +339,38 @@ export function TournamentUmpire({
         ) : (
           <CourtPicker
             eventName={event.name.trim() || "Club tournament"}
+            categories={playing}
+            categoryId={selectedCategoryId}
+            onCategory={setPickerCategoryId}
             assignments={assignments}
             umpireId={umpireId}
             now={now}
-            onPick={(courtNumber) => {
-              const item = assignments.find(
-                (assignment) => assignment.match.courtNumber === courtNumber,
-              );
-              if (!item) return;
+            onPick={(assignment) => {
               const claimed = apply(
-                item.category.id,
-                item.match.id,
+                assignment.category.id,
+                assignment.match.id,
                 (category) =>
                   umpireClaimMatch(
                     category,
-                    item.match.id,
+                    assignment.match.id,
                     umpireId,
                     Date.now(),
                   ),
               );
-              if (claimed) setCourt(courtNumber);
+              if (claimed && assignment.match.courtNumber != null) {
+                setPickerCategoryId(assignment.category.id);
+                setCourt(assignment.match.courtNumber);
+              }
             }}
           />
         )}
       </div>
     </div>
   );
+}
+
+function playingCategories(event: TournamentEvent): TournamentState[] {
+  return event.categories.filter((category) => category.phase !== "setup");
 }
 
 function onCourtAssignments(event: TournamentEvent): CourtAssignment[] {
@@ -375,17 +397,28 @@ function onCourtAssignments(event: TournamentEvent): CourtAssignment[] {
 
 function CourtPicker({
   eventName,
+  categories,
+  categoryId,
+  onCategory,
   assignments,
   umpireId,
   now,
   onPick,
 }: {
   eventName: string;
+  categories: TournamentState[];
+  categoryId: string | null;
+  onCategory: (categoryId: string) => void;
   assignments: CourtAssignment[];
   umpireId: string;
   now: number;
-  onPick: (court: number) => void;
+  onPick: (assignment: CourtAssignment) => void;
 }) {
+  const showTabs = categories.length > 1 && categoryId != null;
+  const visible = showTabs
+    ? assignments.filter((item) => item.category.id === categoryId)
+    : assignments;
+
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
       <header>
@@ -397,44 +430,99 @@ function CourtPicker({
         </h1>
         <p className="mt-1 text-white/60">Choose the court you are calling.</p>
       </header>
-      {assignments.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-8 text-center text-white/70">
-          No match is on a court yet. The desk assigns the next one.
-        </p>
+      {showTabs ? (
+        <Tabs value={categoryId} onValueChange={onCategory}>
+          <TabsList
+            aria-label="Categories"
+            className="border-white/10 bg-white/5"
+          >
+            {categories.map((category) => (
+              <TabsTrigger
+                key={category.id}
+                value={category.id}
+                className="text-white/60 hover:text-[var(--paper)] data-[state=active]:bg-[var(--ink)] data-[state=active]:text-[var(--lime)] data-[state=active]:shadow-none"
+              >
+                {displayDivision(category)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value={categoryId} className="mt-4">
+            <CourtChoices
+              assignments={visible}
+              showDivision={false}
+              umpireId={umpireId}
+              now={now}
+              onPick={onPick}
+            />
+          </TabsContent>
+        </Tabs>
       ) : (
-        <ul className="space-y-3">
-          {assignments.map(({ category, match }) => {
-            const taken = matchClaimHeldByOther(match, umpireId, now);
-            return (
-              <li key={`${category.id}:${match.id}`}>
-                <button
-                  type="button"
-                  disabled={taken}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left disabled:opacity-50"
-                  onClick={() => {
-                    if (match.courtNumber != null) onPick(match.courtNumber);
-                  }}
-                >
-                  <p className="text-sm text-[var(--lime)]">
-                    Court {match.courtNumber}
-                    {taken ? " · Being called" : ""}
-                  </p>
-                  <p className="mt-1 text-lg">
-                    {teamName(category, match.teamAId)}
-                  </p>
-                  <p className="text-lg text-white/70">
-                    {teamName(category, match.teamBId)}
-                  </p>
-                  <p className="mt-1 text-sm text-white/50">
-                    {displayDivision(category)}
-                  </p>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <CourtChoices
+          assignments={visible}
+          showDivision
+          umpireId={umpireId}
+          now={now}
+          onPick={onPick}
+        />
       )}
     </div>
+  );
+}
+
+function CourtChoices({
+  assignments,
+  showDivision,
+  umpireId,
+  now,
+  onPick,
+}: {
+  assignments: CourtAssignment[];
+  showDivision: boolean;
+  umpireId: string;
+  now: number;
+  onPick: (assignment: CourtAssignment) => void;
+}) {
+  if (assignments.length === 0) {
+    return (
+      <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-8 text-center text-white/70">
+        No match is on a court yet. The desk assigns the next one.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-3">
+      {assignments.map((assignment) => {
+        const { category, match } = assignment;
+        const taken = matchClaimHeldByOther(match, umpireId, now);
+        return (
+          <li key={`${category.id}:${match.id}`}>
+            <button
+              type="button"
+              disabled={taken}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left disabled:opacity-50"
+              onClick={() => onPick(assignment)}
+            >
+              <p className="text-sm text-[var(--lime)]">
+                Court {match.courtNumber}
+                {taken ? " · Being called" : ""}
+              </p>
+              <p className="mt-1 text-lg">
+                {teamName(category, match.teamAId)}
+              </p>
+              <p className="text-lg text-white/70">
+                {teamName(category, match.teamBId)}
+              </p>
+              {showDivision ? (
+                <p className="mt-1 text-sm text-white/50">
+                  {displayDivision(category)}
+                </p>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
