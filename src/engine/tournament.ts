@@ -1151,6 +1151,28 @@ export function resetDraw(state: TournamentState): TournamentState {
   };
 }
 
+/** True while this stage has a draw and no saved score. */
+export function canUndoDraw(state: TournamentState): boolean {
+  if (state.phase !== "groups" && state.phase !== "bracket") return false;
+  const stage = state.phase === "bracket" ? "bracket" : "groups";
+  return !state.matches.some(
+    (match) => match.stage === stage && match.status === "reported",
+  );
+}
+
+/** Drops an unscored draw. A reported score stays put. */
+export function undoUnscoredDraw(state: TournamentState): TournamentState {
+  if (!canUndoDraw(state)) {
+    throw new TournamentError(
+      state.phase === "setup"
+        ? "There is no draw to undo."
+        : "A reported score has to stay.",
+    );
+  }
+  if (state.phase === "bracket") return discardBracket(state);
+  return resetDraw(state);
+}
+
 export function createTournamentEvent(
   input: CreateTournamentInput = {},
 ): TournamentEvent {

@@ -24,9 +24,9 @@ import {
   bracketName,
   bracketChampion,
   bracketColumns,
+  canUndoDraw,
   clearMatchScore,
   commitCategory,
-  discardBracket,
   displayDivision,
   displayTournamentName,
   generateBracket,
@@ -49,6 +49,7 @@ import {
   setDrawSettings,
   stageProgress,
   startOverEvent,
+  undoUnscoredDraw,
   TournamentError,
   updateTournamentDetails,
   type GameScore,
@@ -61,6 +62,14 @@ import { MatchCard } from "@/components/tournament/match-card";
 import { SessionQr } from "@/components/session/session-qr";
 import { StandingsTable } from "@/components/tournament/standings-table";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -97,6 +106,7 @@ export function TournamentDirector({
   const [filter, setFilter] = useState<MatchFilter>("unreported");
   const [confirm, setConfirm] = useState<"edit" | "start" | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [undoOpen, setUndoOpen] = useState(false);
   const [showUmpire, setShowUmpire] = useState(false);
   const [umpireUrl, setUmpireUrl] = useState<string | null>(null);
   const [desk, setDesk] = useState<"tournament" | "sponsors">("tournament");
@@ -332,6 +342,8 @@ export function TournamentDirector({
           setFilter={setFilter}
           setConfirm={setConfirm}
           setConfirmRemove={setConfirmRemove}
+          undoOpen={undoOpen}
+          setUndoOpen={setUndoOpen}
         />
       )}
     </main>
@@ -354,6 +366,8 @@ function TournamentPanels({
   setFilter,
   setConfirm,
   setConfirmRemove,
+  undoOpen,
+  setUndoOpen,
 }: {
   event: TournamentEvent;
   state: TournamentState;
@@ -370,6 +384,8 @@ function TournamentPanels({
   setFilter: (filter: MatchFilter) => void;
   setConfirm: (confirm: "edit" | "start" | null) => void;
   setConfirmRemove: (confirm: boolean) => void;
+  undoOpen: boolean;
+  setUndoOpen: (open: boolean) => void;
 }) {
   return (
     <>
@@ -406,83 +422,143 @@ function TournamentPanels({
           onRemoveClub={(name) => runEvent(() => removeClub(event, name))}
         />
       ) : (
-        <Tabs
-          value={view}
-          onValueChange={(value) =>
-            setPicked(value === "bracket" ? "bracket" : "groups")
-          }
-        >
-          <TabsList aria-label="Tournament stages">
-            <TabsTrigger value="groups">
-              Brackets
-              <Progress state={state} stage="groups" />
-            </TabsTrigger>
-            <TabsTrigger value="bracket" disabled={state.phase !== "bracket"}>
-              Finals
-              {state.phase === "bracket" ? (
-                <Progress state={state} stage="bracket" />
-              ) : null}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="groups" className="space-y-6">
-            <StageToolbar
-              state={state}
-              filter={filter}
-              onFilter={setFilter}
-              onCourts={(courtCount) =>
-                run(() => updateTournamentDetails(state, { courtCount }))
-              }
-              onEdit={() => {
-                if (confirm === "edit") run(() => resetDraw(state));
-                else setConfirm("edit");
-              }}
-              onStart={() => {
-                if (confirm === "start") runEvent(() => startOverEvent(event));
-                else setConfirm("start");
-              }}
-              confirm={confirm}
-              onCancelConfirm={() => setConfirm(null)}
-            />
-            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-              <MatchColumn
-                state={state}
-                stage="groups"
-                filter={filter}
-                onReport={report}
-                onClear={clear}
-              />
-              <StandingsColumn
-                state={state}
-                onBuild={() => {
-                  if (run(() => generateBracket(state))) setPicked(null);
-                }}
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="bracket" className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-6">
+          {canUndoDraw(state) ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
               <p className="text-sm text-[var(--muted)]">
-                Winners move forward. The final is played before third place.
-                Changing a score pulls that team back out of the next round.
+                No scores yet. Undo this draw to change courts or the setup.
               </p>
               <Button
+                type="button"
                 variant="outline"
-                size="sm"
-                onClick={() => {
-                  setPicked(null);
-                  run(() => discardBracket(state));
-                }}
+                onClick={() => setUndoOpen(true)}
               >
-                Discard bracket
+                {state.phase === "bracket" ? "Undo final" : "Undo brackets"}
               </Button>
             </div>
-            <BracketBoard state={state} onReport={report} onClear={clear} />
-          </TabsContent>
-        </Tabs>
+          ) : null}
+          <Tabs
+            value={view}
+            onValueChange={(value) =>
+              setPicked(value === "bracket" ? "bracket" : "groups")
+            }
+          >
+            <TabsList aria-label="Tournament stages">
+              <TabsTrigger value="groups">
+                Brackets
+                <Progress state={state} stage="groups" />
+              </TabsTrigger>
+              <TabsTrigger value="bracket" disabled={state.phase !== "bracket"}>
+                Finals
+                {state.phase === "bracket" ? (
+                  <Progress state={state} stage="bracket" />
+                ) : null}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="groups" className="space-y-6">
+              <StageToolbar
+                state={state}
+                filter={filter}
+                onFilter={setFilter}
+                onCourts={(courtCount) =>
+                  run(() => updateTournamentDetails(state, { courtCount }))
+                }
+                onEdit={() => {
+                  if (confirm === "edit") run(() => resetDraw(state));
+                  else setConfirm("edit");
+                }}
+                onStart={() => {
+                  if (confirm === "start")
+                    runEvent(() => startOverEvent(event));
+                  else setConfirm("start");
+                }}
+                confirm={confirm}
+                onCancelConfirm={() => setConfirm(null)}
+              />
+              <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                <MatchColumn
+                  state={state}
+                  stage="groups"
+                  filter={filter}
+                  onReport={report}
+                  onClear={clear}
+                />
+                <StandingsColumn
+                  state={state}
+                  onBuild={() => {
+                    if (run(() => generateBracket(state))) setPicked(null);
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="bracket" className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-[var(--muted)]">
+                  Winners move forward. The final is played before third place.
+                  Changing a score pulls that team back out of the next round.
+                </p>
+              </div>
+              <BracketBoard state={state} onReport={report} onClear={clear} />
+            </TabsContent>
+          </Tabs>
+        </div>
       )}
+      <UndoBracketDialog
+        open={undoOpen}
+        phase={state.phase}
+        onOpenChange={setUndoOpen}
+        onConfirm={() => {
+          const undone = run(() => undoUnscoredDraw(state));
+          if (!undone) return;
+          setPicked(null);
+          setUndoOpen(false);
+        }}
+      />
     </>
+  );
+}
+
+function UndoBracketDialog({
+  open,
+  phase,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  phase: TournamentState["phase"];
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  const final = phase === "bracket";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {final ? "Undo the final bracket?" : "Undo these brackets?"}
+          </DialogTitle>
+          <DialogDescription>
+            {final
+              ? "No final score has been saved. The final and the third-place match are removed. Scores from these brackets stay, so you can change this category's courts and build the final again."
+              : "No score has been saved. This category goes back to setup. Teams and its court choices stay, so you can change the courts and build the draw again."}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="button" variant="danger" onClick={onConfirm}>
+            {final ? "Undo final" : "Undo brackets"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

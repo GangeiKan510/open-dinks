@@ -28,7 +28,9 @@ import {
   normalizeTournamentState,
   pointsToWin,
   bracketColumns,
+  canUndoDraw,
   isThirdPlaceMatch,
+  undoUnscoredDraw,
   removeCategory,
   removeClub,
   removeSponsor,
@@ -622,6 +624,52 @@ describe("tournament bracket", () => {
     expect(resetDraw(pools).phase).toBe("setup");
     expect(resetDraw(pools).teams).toHaveLength(3);
     expect(resetDraw(pools).matches).toHaveLength(0);
+  });
+
+  it("undoes a draw only before a score is reported", () => {
+    let state = setDrawSettings(createTournament(), {
+      bracketCount: 1,
+      teamsPerBracket: 2,
+    });
+    state = addNamed(state, [
+      ["Ada", "Bea"],
+      ["Cy", "Dee"],
+    ]);
+    state = generateGroups(state);
+    expect(canUndoDraw(state)).toBe(true);
+
+    const undone = undoUnscoredDraw(state);
+    expect(undone.phase).toBe("setup");
+    expect(undone.teams).toHaveLength(2);
+    expect(undone.matches).toHaveLength(0);
+    expect(undone.courtNumbers).toEqual(state.courtNumbers);
+
+    state = generateGroups(undone);
+    state = reportMatchScore(state, state.matches[0]!.id, [{ a: 11, b: 7 }]);
+    expect(canUndoDraw(state)).toBe(false);
+    expect(() => undoUnscoredDraw(state)).toThrow(/reported score/i);
+  });
+
+  it("undoes an unscored final and keeps the bracket scores", () => {
+    let state = knockout(4);
+    expect(canUndoDraw(state)).toBe(true);
+    const pools = undoUnscoredDraw(state);
+    expect(pools.phase).toBe("groups");
+    expect(pools.matches.every((match) => match.status === "reported")).toBe(
+      true,
+    );
+
+    state = generateBracket(pools);
+    const playable = state.matches.find(
+      (match) =>
+        match.stage === "bracket" &&
+        match.status === "unreported" &&
+        match.teamAId &&
+        match.teamBId,
+    )!;
+    state = reportMatchScore(state, playable.id, [{ a: 15, b: 8 }]);
+    expect(canUndoDraw(state)).toBe(false);
+    expect(() => undoUnscoredDraw(state)).toThrow(/reported score/i);
   });
 
   it("removes a bracket finalist when their semifinal score is cleared", () => {
