@@ -721,9 +721,6 @@ export function reportMatchScore(
   if (match.status === "bye") {
     throw new TournamentError("A bye does not need a score.");
   }
-  if (thirdPlaceFollowsFinal(state, match)) {
-    throw new TournamentError("Play the final before the third-place match.");
-  }
   const clean = assertGames(
     games,
     match.teamAId,
@@ -1407,8 +1404,7 @@ function categoryHasReadyMatch(category: TournamentState): boolean {
       match.stage === stage &&
       match.status === "unreported" &&
       match.teamAId &&
-      match.teamBId &&
-      !thirdPlaceFollowsFinal(category, match),
+      match.teamBId,
   );
 }
 
@@ -1428,11 +1424,7 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         if (category.phase === "setup" || match.stage !== stage) {
           return { ...match, courtNumber: null };
         }
-        if (
-          match.status === "reported" ||
-          match.status === "bye" ||
-          thirdPlaceFollowsFinal(category, match)
-        ) {
+        if (match.status === "reported" || match.status === "bye") {
           return { ...match, courtNumber: null };
         }
         const allowed = courtsForCategory({
@@ -1534,8 +1526,7 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         match.status === "unreported" &&
         match.courtNumber == null &&
         match.teamAId &&
-        match.teamBId &&
-        !thirdPlaceFollowsFinal(category, match)
+        match.teamBId
       ) {
         waiting.push({ category, match });
       }
@@ -1595,11 +1586,7 @@ export function assignCourts(state: TournamentState): TournamentState {
 
   for (const match of matches) {
     if (match.stage !== active) continue;
-    if (
-      match.status === "reported" ||
-      match.status === "bye" ||
-      thirdPlaceFollowsFinal(state, match)
-    ) {
+    if (match.status === "reported" || match.status === "bye") {
       match.courtNumber = null;
     } else if (
       match.courtNumber != null &&
@@ -1630,8 +1617,7 @@ export function assignCourts(state: TournamentState): TournamentState {
         match.status === "unreported" &&
         match.courtNumber == null &&
         match.teamAId &&
-        match.teamBId &&
-        !thirdPlaceFollowsFinal(state, match),
+        match.teamBId,
     )
     .sort((a, b) => a.round - b.round || a.number - b.number);
 
@@ -1893,16 +1879,6 @@ export function isThirdPlaceMatch(match: TournamentMatch): boolean {
   return match.placement === "third" || match.id === THIRD_PLACE_MATCH_ID;
 }
 
-/** True while the championship final still has to be played. */
-export function thirdPlaceFollowsFinal(
-  state: TournamentState,
-  match: TournamentMatch,
-): boolean {
-  if (!isThirdPlaceMatch(match)) return false;
-  const final = championshipMatch(state.matches);
-  return !final || (final.status !== "reported" && final.status !== "bye");
-}
-
 export interface BracketColumnGroup {
   label: string;
   matches: TournamentMatch[];
@@ -1913,7 +1889,7 @@ export interface BracketColumn {
   groups: BracketColumnGroup[];
 }
 
-/** Championship rounds. Third place sits under the final and is played after it. */
+/** Championship rounds. Third place sits under the final and can be played with it. */
 export function bracketColumns(state: TournamentState): BracketColumn[] {
   const matches = state.matches.filter((match) => match.stage === "bracket");
   const main = matches.filter((match) => !isThirdPlaceMatch(match));
@@ -2038,23 +2014,7 @@ function syncBracket(state: TournamentState): TournamentState {
     }
   }
 
-  holdThirdPlace(matches);
   return { ...state, matches };
-}
-
-function holdThirdPlace(matches: TournamentMatch[]) {
-  const final = championshipMatch(matches);
-  const open =
-    !final || (final.status !== "reported" && final.status !== "bye");
-  if (!open) return;
-  for (const match of matches) {
-    if (!isThirdPlaceMatch(match) || match.status === "bye") continue;
-    match.games = [];
-    match.status = "unreported";
-    match.courtNumber = null;
-    match.live = null;
-    match.claim = null;
-  }
 }
 
 function attachThirdPlace(matches: TournamentMatch[]): TournamentMatch[] {

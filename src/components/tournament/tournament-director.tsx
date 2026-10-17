@@ -496,8 +496,9 @@ function TournamentPanels({
             <TabsContent value="bracket" className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-[var(--muted)]">
-                  Winners move forward. The final is played before third place.
-                  Changing a score pulls that team back out of the next round.
+                  Winners move forward. Third place can be played as soon as the
+                  semifinals are done. Changing a score pulls that team back out
+                  of the next round.
                 </p>
               </div>
               <BracketBoard state={state} onReport={report} onClear={clear} />

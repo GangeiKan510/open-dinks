@@ -740,16 +740,13 @@ describe("tournament bracket", () => {
     expect([final().teamAId, final().teamBId].sort()).toEqual(
       [semis[0]!.teamAId, semis[1]!.teamAId].sort(),
     );
-    expect(third().courtNumber).toBeNull();
-    expect(() =>
-      reportMatchScore(state, third().id, [{ a: 15, b: 10 }]),
-    ).toThrow(/final before the third-place/i);
-
-    state = reportMatchScore(state, final().id, [{ a: 15, b: 12 }]);
-    expect(bracketChampion(state)?.id).toBe(final().teamAId);
     expect(third().courtNumber).not.toBeNull();
     state = reportMatchScore(state, third().id, [{ a: 15, b: 10 }]);
     expect(third().status).toBe("reported");
+
+    state = reportMatchScore(state, final().id, [{ a: 15, b: 12 }]);
+    expect(bracketChampion(state)?.id).toBe(final().teamAId);
+    expect(third().games).toEqual([{ a: 15, b: 10 }]);
 
     state = clearMatchScore(state, semis[0]!.id);
     expect(third().games).toEqual([]);
