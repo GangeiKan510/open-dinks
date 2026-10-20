@@ -218,7 +218,7 @@ export function BookingScheduleCalendar({
       <p className="text-xs text-[var(--muted)]">
         <span className="font-medium text-amber-950">Amber</span> = pending
         request ·{" "}
-        <span className="font-medium text-[var(--accent)]">Green</span> =
+        <span className="font-medium text-[var(--accent)]">Solid</span> =
         confirmed booking
       </p>
 

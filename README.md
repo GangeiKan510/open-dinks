@@ -1,4 +1,4 @@
-# OpenDinks
+# Picklrz
 
 Cloud-first pickleball **open play OS** — fair court rotations, live queues, QR player views, and TV wallboards.
 

@@ -19,10 +19,10 @@ export default async function HomePage() {
 
   return (
     <main className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(183,242,85,0.18),transparent_35%),radial-gradient(circle_at_80%_10%,rgba(31,122,76,0.16),transparent_30%)]" />
+      <div className="hero-wash pointer-events-none absolute inset-0" />
 
       <nav className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <div className="font-[family-name:var(--font-display)] text-2xl tracking-tight">
+        <div className="font-[family-name:var(--font-logo)] text-3xl leading-none">
           {PRODUCT_NAME}
         </div>
         <Button asChild>
@@ -35,7 +35,7 @@ export default async function HomePage() {
           <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
             Pickleball open play OS
           </p>
-          <h1 className="font-[family-name:var(--font-display)] text-5xl leading-[1.05] md:text-7xl">
+          <h1 className="font-[family-name:var(--font-logo)] text-6xl leading-none md:text-8xl">
             {PRODUCT_NAME}
           </h1>
           <p className="max-w-xl text-lg text-[var(--muted)]">
@@ -46,16 +46,13 @@ export default async function HomePage() {
             <Button size="lg" asChild>
               <Link href={ctaHref}>{ctaLabel}</Link>
             </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/tournament">Tournament mode</Link>
-            </Button>
           </div>
         </div>
 
         <div className="animate-rise-delay animate-drift relative min-h-[360px] overflow-hidden rounded-[2rem] border border-[var(--border)] bg-[var(--ink)] p-6 text-[var(--paper)] shadow-2xl">
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(183,242,85,0.18),transparent_40%),radial-gradient(circle_at_80%_80%,rgba(31,122,76,0.45),transparent_45%)]" />
+          <div className="board-shade absolute inset-0" />
           <div className="relative space-y-5">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--lime)]">
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--highlight)]">
               Court board
             </p>
             <div className="grid gap-3">
@@ -67,7 +64,7 @@ export default async function HomePage() {
                 >
                   <div className="mb-2 flex justify-between text-sm">
                     <span>{court}</span>
-                    <span className="text-[var(--lime)]">LIVE</span>
+                    <span className="text-[var(--highlight)]">LIVE</span>
                   </div>
                   <div className="text-sm text-white/80">
                     {i === 0 && "Alex & Blake vs Casey & Drew"}

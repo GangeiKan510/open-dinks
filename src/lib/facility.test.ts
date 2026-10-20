@@ -23,9 +23,9 @@ describe("facility branding", () => {
       tagline: "Open play at The PickleGrounds",
     });
     expect(config.shortName).toBe("TPG");
-    expect(formatBrandTitle(config)).toBe("Open Dinks | The PickleGrounds");
+    expect(formatBrandTitle(config)).toBe("Picklrz | The PickleGrounds");
     expect(formatDocumentTitle("Host login", config)).toBe(
-      "Host login · Open Dinks | The PickleGrounds",
+      "Host login · Picklrz | The PickleGrounds",
     );
   });
 
@@ -33,7 +33,7 @@ describe("facility branding", () => {
     expect(slugifyFacilityName("The PickleGrounds")).toBe("the-picklegrounds");
   });
 
-  it("keeps Open Dinks as the product name", () => {
-    expect(PRODUCT_NAME).toBe("Open Dinks");
+  it("keeps Picklrz as the product name", () => {
+    expect(PRODUCT_NAME).toBe("Picklrz");
   });
 });

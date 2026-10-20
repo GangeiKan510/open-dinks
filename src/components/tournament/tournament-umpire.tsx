@@ -422,7 +422,7 @@ function CourtPicker({
   return (
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
       <header>
-        <p className="text-xs uppercase tracking-[0.22em] text-[var(--lime)]">
+        <p className="text-xs uppercase tracking-[0.22em] text-[var(--highlight)]">
           Umpire
         </p>
         <h1 className="font-[family-name:var(--font-display)] text-4xl">
@@ -440,7 +440,7 @@ function CourtPicker({
               <TabsTrigger
                 key={category.id}
                 value={category.id}
-                className="text-white/60 hover:text-[var(--paper)] data-[state=active]:bg-[var(--ink)] data-[state=active]:text-[var(--lime)] data-[state=active]:shadow-none"
+                className="text-white/60 hover:text-[var(--paper)] data-[state=active]:bg-[var(--ink)] data-[state=active]:text-[var(--highlight)] data-[state=active]:shadow-none"
               >
                 {displayDivision(category)}
               </TabsTrigger>
@@ -503,7 +503,7 @@ function CourtChoices({
               className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left disabled:opacity-50"
               onClick={() => onPick(assignment)}
             >
-              <p className="text-sm text-[var(--lime)]">
+              <p className="text-sm text-[var(--highlight)]">
                 Court {match.courtNumber}
                 {taken ? " · Being called" : ""}
               </p>
@@ -537,7 +537,7 @@ function Waiting({
 }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-4 text-center">
-      <p className="text-xs uppercase tracking-[0.22em] text-[var(--lime)]">
+      <p className="text-xs uppercase tracking-[0.22em] text-[var(--highlight)]">
         Court {court}
       </p>
       <h1 className="font-[family-name:var(--font-display)] text-4xl">
@@ -618,7 +618,7 @@ function UmpireMatch({
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="mb-3 flex shrink-0 items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-[var(--lime)]">
+          <p className="text-xs uppercase tracking-[0.22em] text-[var(--highlight)]">
             {eventName}
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">
@@ -719,7 +719,7 @@ function UmpireMatch({
           <>
             <Button
               type="button"
-              className="h-20 w-full rounded-2xl bg-[var(--lime)] text-2xl text-[var(--ink)] hover:bg-[var(--lime)]"
+              className="h-20 w-full rounded-2xl bg-[var(--highlight)] text-2xl text-[var(--ink)] hover:bg-[var(--highlight)]"
               disabled={!canScore}
               onClick={onPoint}
             >
@@ -805,7 +805,7 @@ function TeamScore({
       className={cn(
         "rounded-2xl border px-4 py-3",
         serving
-          ? "border-[var(--lime)] bg-[var(--lime)]/15"
+          ? "border-[var(--highlight)] bg-[var(--highlight)]/15"
           : "border-white/10 bg-white/5",
       )}
     >
@@ -813,7 +813,7 @@ function TeamScore({
         <span className="flex items-center justify-between gap-3">
           <span className="text-lg leading-tight">{name}</span>
           {serving ? (
-            <span className="shrink-0 rounded-full bg-[var(--lime)] px-2 py-0.5 text-xs font-medium text-[var(--ink)]">
+            <span className="shrink-0 rounded-full bg-[var(--highlight)] px-2 py-0.5 text-xs font-medium text-[var(--ink)]">
               {active != null && players
                 ? players[active]
                 : server === 1
@@ -841,9 +841,9 @@ function TeamScore({
                 className={cn(
                   "h-10 rounded-full border px-2 text-sm",
                   up
-                    ? "border-[var(--lime)] bg-[var(--lime)] text-[var(--ink)]"
+                    ? "border-[var(--highlight)] bg-[var(--highlight)] text-[var(--ink)]"
                     : tagged
-                      ? "border-[var(--lime)] text-[var(--lime)]"
+                      ? "border-[var(--highlight)] text-[var(--highlight)]"
                       : "border-white/20 text-white/80",
                 )}
               >
@@ -875,7 +875,7 @@ function ServerButton({
       className={cn(
         "h-14 text-base",
         pressed
-          ? "border-[var(--lime)] bg-[var(--lime)] text-[var(--ink)] hover:bg-[var(--lime)]"
+          ? "border-[var(--highlight)] bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--highlight)]"
           : "border-white/20 text-[var(--paper)] hover:bg-white/10",
       )}
       onClick={onClick}

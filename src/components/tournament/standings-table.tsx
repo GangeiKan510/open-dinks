@@ -68,7 +68,7 @@ export function StandingsTable({
                     dark ? "border-white/10" : "border-[var(--border)]",
                     advances &&
                       (dark
-                        ? "bg-[var(--lime)]/15"
+                        ? "bg-[var(--highlight)]/15"
                         : "bg-[var(--accent-soft)]"),
                   )}
                 >

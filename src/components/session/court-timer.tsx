@@ -32,7 +32,7 @@ export function CourtTimer({
   const muted = tone === "dark" ? "text-white/50" : "text-[var(--muted)]";
   const fg =
     tone === "dark" ? "text-[var(--paper)]" : "text-[var(--foreground)]";
-  const ended = tone === "dark" ? "text-[var(--lime)]" : "text-amber-700";
+  const ended = tone === "dark" ? "text-[var(--highlight)]" : "text-amber-700";
 
   if (match.status === "ready") {
     return (

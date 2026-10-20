@@ -88,7 +88,7 @@ export function TournamentBoard({
       >
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
-            <p className="text-sm tracking-wide text-[var(--lime)]">
+            <p className="text-sm tracking-wide text-[var(--highlight)]">
               {event.categories
                 .map((category) => displayDivision(category))
                 .join(" · ")}
@@ -106,7 +106,10 @@ export function TournamentBoard({
                 {reported.reported}/{reported.total} reported
               </div>
             )}
-            <Link href="/tournament" className="text-[var(--lime)] underline">
+            <Link
+              href="/tournament"
+              className="text-[var(--highlight)] underline"
+            >
               Director
             </Link>
           </div>
@@ -127,7 +130,7 @@ export function TournamentBoard({
               return (
                 <p
                   key={category.id}
-                  className="font-[family-name:var(--font-display)] text-3xl text-[var(--lime)] md:text-5xl"
+                  className="font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)] md:text-5xl"
                 >
                   {champion.name} won {displayDivision(category)}
                 </p>
@@ -296,7 +299,7 @@ function ClubWins({
           {rows.map((row) => (
             <tr key={row.club} className="border-t border-white/10">
               <td className="px-4 py-3 text-lg">{row.club}</td>
-              <td className="px-4 py-3 text-right text-lg tabular-nums text-[var(--lime)]">
+              <td className="px-4 py-3 text-right text-lg tabular-nums text-[var(--highlight)]">
                 {row.wins}
               </td>
               <td className="px-4 py-3 text-right tabular-nums text-white/70">
@@ -321,7 +324,9 @@ function CourtTile({
   return (
     <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="mb-3 flex items-center justify-between text-sm">
-        <span className="text-[var(--lime)]">Court {match.courtNumber}</span>
+        <span className="text-[var(--highlight)]">
+          Court {match.courtNumber}
+        </span>
         <span className="text-white/50">
           {displayDivision(state)}
           {group ? ` · ${group.name}` : ` · M${match.number}`}
@@ -333,7 +338,7 @@ function CourtTile({
       <p className="text-lg">{teamName(state, match.teamAId)}</p>
       <p className="text-lg text-white/80">{teamName(state, match.teamBId)}</p>
       {match.live?.serving ? (
-        <p className="mt-3 font-[family-name:var(--font-display)] text-4xl tabular-nums text-[var(--lime)]">
+        <p className="mt-3 font-[family-name:var(--font-display)] text-4xl tabular-nums text-[var(--highlight)]">
           {match.live.scoreA}
           <span className="mx-2 text-white/30">–</span>
           {match.live.scoreB}

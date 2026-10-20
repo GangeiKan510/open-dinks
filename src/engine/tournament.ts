@@ -197,7 +197,7 @@ export class TournamentError extends Error {
 const BYE = "__bye__";
 const THIRD_PLACE_MATCH_ID = "bracket-third";
 const MAX_TEAMS = 64;
-const MAX_CATEGORIES = 8;
+const MAX_CATEGORIES = 10;
 const MAX_NAME = 80;
 const MAX_PLAYER = 40;
 const MAX_CLUB = 40;
@@ -1281,7 +1281,9 @@ export function addCategory(
   name: string,
 ): TournamentEvent {
   if (event.categories.length >= MAX_CATEGORIES) {
-    throw new TournamentError("This tournament already has 8 categories.");
+    throw new TournamentError(
+      `This tournament already has ${MAX_CATEGORIES} categories.`,
+    );
   }
   const division = clip(name.trim(), MAX_NAME);
   if (!division) throw new TournamentError("Enter a category name.");

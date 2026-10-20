@@ -10,10 +10,24 @@ import { Label } from "@/components/ui/label";
 import { AUTH_ERROR_MESSAGES, mapAuthError } from "@/lib/auth-errors";
 import { safeAuthNextPath } from "@/lib/auth-redirect";
 import { PRODUCT_NAME } from "@/lib/facility";
+import { applyTheme, clearStoredTheme, parseTheme } from "@/lib/theme";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 type Mode = "sign-in" | "sign-up";
+
+async function syncAccountTheme(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("theme")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return;
+  applyTheme(parseTheme(data?.theme));
+}
 
 function authNextPath(): string {
   const next = new URLSearchParams(window.location.search).get("next");
@@ -48,7 +62,7 @@ export default function LoginPage() {
         const supabase = createClient();
 
         if (mode === "sign-in") {
-          const { error } = await supabase.auth.signInWithPassword({
+          const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
           });
@@ -56,6 +70,7 @@ export default function LoginPage() {
             toast.error(mapAuthError(error, "SIGN_IN_FAILED"));
             return;
           }
+          if (data.user) await syncAccountTheme(supabase, data.user.id);
           router.push(authNextPath());
           router.refresh();
           return;
@@ -79,11 +94,14 @@ export default function LoginPage() {
           return;
         }
 
-        if (data.session) {
+        if (data.session && data.user) {
+          await syncAccountTheme(supabase, data.user.id);
           router.push(authNextPath());
           router.refresh();
           return;
         }
+
+        clearStoredTheme();
 
         // Email confirmation enabled in the Supabase project.
         setNeedsConfirmation(true);
@@ -103,7 +121,7 @@ export default function LoginPage() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
       <Link
         href="/"
-        className="mb-8 font-[family-name:var(--font-display)] text-2xl"
+        className="mb-8 font-[family-name:var(--font-logo)] text-3xl leading-none"
       >
         {PRODUCT_NAME}
       </Link>

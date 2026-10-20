@@ -31,7 +31,7 @@ export function Wallboard({
       <div className="mx-auto grid min-h-screen max-w-[1600px] grid-rows-[auto_1fr] gap-6 p-6 md:p-10">
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
-            <p className="text-sm tracking-wide text-[var(--lime)]">
+            <p className="text-sm tracking-wide text-[var(--highlight)]">
               {formatBrandTitle(facility)}
             </p>
             <h1 className="font-[family-name:var(--font-display)] text-4xl md:text-6xl">
@@ -77,7 +77,7 @@ export function Wallboard({
                         booking && !match
                           ? "rounded-full bg-amber-300/20 px-3 py-1 text-xs text-amber-200"
                           : match
-                            ? "rounded-full bg-[var(--lime)]/20 px-3 py-1 text-xs text-[var(--lime)]"
+                            ? "rounded-full bg-[var(--highlight)]/20 px-3 py-1 text-xs text-[var(--highlight)]"
                             : "rounded-full bg-white/10 px-3 py-1 text-xs text-white/50"
                       }
                     >
@@ -143,7 +143,9 @@ export function Wallboard({
                   className="flex items-center justify-between border-b border-white/5 pb-2 text-lg"
                 >
                   <span>
-                    <span className="mr-3 text-[var(--lime)]">{i + 1}</span>
+                    <span className="mr-3 text-[var(--highlight)]">
+                      {i + 1}
+                    </span>
                     {p.name}
                   </span>
                   <span className="text-sm text-white/40">

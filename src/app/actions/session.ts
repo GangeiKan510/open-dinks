@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { parseSkillTier, type SkillTier } from "@/lib/skill-tier";
+import { THEME_COOKIE } from "@/lib/theme";
 import { DEFAULT_COURT_COUNT, normalizeCourtCount } from "@/lib/court-count";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -73,6 +75,8 @@ export async function createSessionAction(formData: FormData): Promise<void> {
 export async function signOutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  const jar = await cookies();
+  jar.delete(THEME_COOKIE);
   redirect("/");
 }
 

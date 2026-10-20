@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Radio } from "lucide-react";
 import {
   addRosterPlayerAction,
   createSessionAction,
-  signOutAction,
 } from "@/app/actions/session";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
+import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ import {
   SKILL_TIERS,
 } from "@/lib/skill-tier";
 import { createClient } from "@/lib/supabase/server";
+import { resolveTheme, THEME_COOKIE } from "@/lib/theme";
 
 const CARD = "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5";
 
@@ -112,6 +114,7 @@ export default async function DashboardPage() {
     coachesResult,
     coachingBookingsResult,
     coachingHistoryResult,
+    profileResult,
   ] = await Promise.all([
     supabase
       .from("courts")
@@ -162,6 +165,7 @@ export default async function DashboardPage() {
       .or(`status.eq.cancelled,ends_at.lte."${bookingsFrom}"`)
       .order("starts_at", { ascending: false })
       .limit(100),
+    supabase.from("profiles").select("theme").eq("id", user.id).maybeSingle(),
   ]);
 
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
@@ -280,11 +284,7 @@ export default async function DashboardPage() {
           <Button variant="outline" asChild>
             <Link href="/tournament">Tournament</Link>
           </Button>
-          <form action={signOutAction}>
-            <Button variant="outline" type="submit">
-              Sign out
-            </Button>
-          </form>
+          <SignOutButton />
         </div>
       </header>
 
@@ -468,6 +468,10 @@ export default async function DashboardPage() {
                   openHour: venue.bookingOpenHour,
                   closeHour: venue.bookingCloseHour,
                 },
+                theme: resolveTheme(
+                  (await cookies()).get(THEME_COOKIE)?.value,
+                  profileResult.data?.theme,
+                ),
               }
             : null
         }

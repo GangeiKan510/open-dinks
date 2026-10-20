@@ -14,10 +14,13 @@ export function SessionQr({
 
   useEffect(() => {
     let cancelled = false;
+    const foreground = getComputedStyle(document.documentElement)
+      .getPropertyValue("--foreground")
+      .trim();
     QRCode.toDataURL(url, {
       margin: 1,
       width: 220,
-      color: { dark: "#143528", light: "#00000000" },
+      color: { dark: foreground || "#24341c", light: "#00000000" },
     }).then((value) => {
       if (!cancelled) setDataUrl(value);
     });

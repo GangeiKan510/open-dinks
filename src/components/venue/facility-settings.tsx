@@ -21,6 +21,8 @@ import {
 } from "@/lib/booking-hours";
 import { MAX_COURT_COUNT, MIN_COURT_COUNT } from "@/lib/court-count";
 import { formatBrandTitle, type FacilityConfig } from "@/lib/facility";
+import type { ThemeId } from "@/lib/theme";
+import { ThemePicker } from "@/components/venue/theme-picker";
 import { formatSkillBand } from "@/lib/skill-tier";
 import {
   COMMON_VENUE_TIMEZONES,
@@ -35,6 +37,7 @@ export type FacilitySettingsProps = {
   courts: CourtRow[];
   venueTimezone: string;
   bookingHours: BookingHours;
+  theme: ThemeId;
 };
 
 export function FacilitySettings({
@@ -42,6 +45,7 @@ export function FacilitySettings({
   courts,
   venueTimezone,
   bookingHours,
+  theme,
 }: FacilitySettingsProps) {
   const [pending, startTransition] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -113,6 +117,7 @@ export function FacilitySettings({
 
   return (
     <div className="space-y-6">
+      <ThemePicker theme={theme} />
       <div className="grid gap-6 md:grid-cols-2">
         <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="mb-1 font-semibold">Facility</h2>

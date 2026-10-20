@@ -73,6 +73,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PRODUCT_NAME } from "@/lib/facility";
 import { deleteSponsorLogo, uploadSponsorLogo } from "@/lib/sponsor-logo";
 import { saveTournamentDocument } from "@/lib/tournament-client";
 import {
@@ -208,7 +209,7 @@ export function TournamentDirector({
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.22em] text-[var(--accent)]">
             <Link href="/" className="hover:underline">
-              OpenDinks
+              {PRODUCT_NAME}
             </Link>
             {" · "}Tournament
           </p>

@@ -1,5 +1,5 @@
 /** Product name — always present; facilities co-brand when known. */
-export const PRODUCT_NAME = "Open Dinks";
+export const PRODUCT_NAME = "Picklrz";
 
 export type FacilityConfig = {
   id: string;
@@ -30,7 +30,7 @@ export function facilityFromRow(row: FacilityRow): FacilityConfig {
   };
 }
 
-/** Co-branded lockup when a facility is known; otherwise just Open Dinks. */
+/** Co-branded lockup when a facility is known; otherwise just Picklrz. */
 export function formatBrandTitle(facility?: FacilityConfig | null): string {
   if (!facility?.name?.trim()) return PRODUCT_NAME;
   return `${PRODUCT_NAME} | ${facility.name.trim()}`;
