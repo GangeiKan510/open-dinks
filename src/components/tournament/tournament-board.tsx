@@ -10,6 +10,7 @@ import {
   formatDiff,
   groupStandings,
   isSponsorLogoUrl,
+  wildcardTeamIds,
   pointsToWin,
   SPONSOR_TIER_LABELS,
   SPONSOR_TIERS,
@@ -23,6 +24,7 @@ import {
 } from "@/engine/tournament";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 export function TournamentBoard({
   tournamentId,
@@ -358,6 +360,7 @@ function GroupCard({
   const group = state.groups.find((item) => item.id === groupId);
   if (!group) return null;
   const rows = groupStandings(state, groupId);
+  const wildcards = new Set(wildcardTeamIds(state));
   return (
     <section className="overflow-hidden rounded-2xl border border-white/10">
       <h3 className="border-b border-white/10 px-4 py-3 font-[family-name:var(--font-display)] text-2xl">
@@ -382,9 +385,20 @@ function GroupCard({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.teamId} className="border-t border-white/10">
+            <tr
+              key={row.teamId}
+              className={cn(
+                "border-t border-white/10",
+                wildcards.has(row.teamId) && "bg-white/10",
+              )}
+            >
               <td className="px-3 py-2">
                 {row.rank}. {row.name}
+                {wildcards.has(row.teamId) ? (
+                  <span className="ml-2 text-xs uppercase tracking-[0.12em] text-white/50">
+                    Wild card
+                  </span>
+                ) : null}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{row.wins}</td>
               <td className="px-3 py-2 text-right tabular-nums">

@@ -101,6 +101,11 @@ export interface TournamentState {
   teamsPerBracket: number;
   /** How many teams leave each round-robin bracket for the final. */
   advancePerGroup: number;
+  /**
+   * How open spots in the final are filled. Bye leaves them empty.
+   * Wild card takes the next-best teams from every bracket.
+   */
+  knockoutFill: KnockoutFill;
   phase: TournamentPhase;
   teams: TournamentTeam[];
   groups: TournamentGroup[];
@@ -128,7 +133,11 @@ export interface CreateTournamentInput {
   bracketCount?: number;
   teamsPerBracket?: number;
   advancePerGroup?: number;
+  knockoutFill?: KnockoutFill;
 }
+
+/** Bye leaves an open final spot empty. Wild card fills it with the next-best team. */
+export type KnockoutFill = "bye" | "wildcard";
 
 export interface DrawSettings {
   gamesPerMatch?: number;
@@ -137,6 +146,7 @@ export interface DrawSettings {
   bracketCount?: number;
   teamsPerBracket?: number;
   advancePerGroup?: number;
+  knockoutFill?: KnockoutFill;
 }
 
 /** One event, with categories that play at the same time and share the courts. */
@@ -236,6 +246,7 @@ export function createTournament(
       input.advancePerGroup ?? 2,
       input.teamsPerBracket ?? 4,
     ),
+    knockoutFill: normalizeKnockoutFill(input.knockoutFill),
     phase: "setup",
     teams: [],
     groups: [],
@@ -373,6 +384,10 @@ export function setDrawSettings(
     bracketCount,
     teamsPerBracket,
     advancePerGroup,
+    knockoutFill:
+      settings.knockoutFill === undefined
+        ? normalizeKnockoutFill(state.knockoutFill)
+        : requireKnockoutFill(settings.knockoutFill),
     teams: state.teams.map((team) => ({
       ...team,
       bracketIndex: keptBracketIndex(team.bracketIndex, bracketCount),
@@ -403,6 +418,7 @@ export function normalizeTournamentState(
     bracketCount,
     teamsPerBracket,
     advancePerGroup: clampAdvance(state.advancePerGroup, teamsPerBracket),
+    knockoutFill: normalizeKnockoutFill(state.knockoutFill),
     teams: state.teams.map((team) => ({
       ...team,
       bracketIndex: keptBracketIndex(team.bracketIndex, bracketCount),
@@ -1369,6 +1385,7 @@ export function startOverEvent(event: TournamentEvent): TournamentEvent {
         bracketCount: category.bracketCount,
         teamsPerBracket: category.teamsPerBracket,
         advancePerGroup: category.advancePerGroup,
+        knockoutFill: category.knockoutFill,
       }),
       id: category.id,
     })),
@@ -1576,6 +1593,7 @@ export function startOver(state: TournamentState): TournamentState {
     bracketCount: state.bracketCount,
     teamsPerBracket: state.teamsPerBracket,
     advancePerGroup: state.advancePerGroup,
+    knockoutFill: state.knockoutFill,
   });
 }
 
@@ -1945,33 +1963,86 @@ function compareStandings(
   return a.name.localeCompare(b.name);
 }
 
-function advancingTeamIds(state: TournamentState): string[] {
-  const ranked: Array<{
-    teamId: string;
-    place: number;
-    diff: number;
-    pointsFor: number;
-    name: string;
-  }> = [];
+interface CrossBracketRow {
+  teamId: string;
+  place: number;
+  wins: number;
+  diff: number;
+  pointsFor: number;
+  name: string;
+}
+
+function crossBracketRows(state: TournamentState): CrossBracketRow[] {
+  const ranked: CrossBracketRow[] = [];
   for (const group of state.groups) {
     const rows = groupStandings(state, group.id);
-    rows.slice(0, state.advancePerGroup).forEach((row, index) => {
+    rows.forEach((row, index) => {
       ranked.push({
         teamId: row.teamId,
         place: index + 1,
+        wins: row.wins,
         diff: row.diff,
         pointsFor: row.pointsFor,
         name: row.name,
       });
     });
   }
-  ranked.sort((a, b) => {
+  return ranked;
+}
+
+function advancingTeamIds(state: TournamentState): string[] {
+  const ranked = crossBracketRows(state);
+  const direct = ranked.filter((row) => row.place <= state.advancePerGroup);
+  direct.sort((a, b) => {
     if (a.place !== b.place) return a.place - b.place;
     if (b.diff !== a.diff) return b.diff - a.diff;
     if (b.pointsFor !== a.pointsFor) return b.pointsFor - a.pointsFor;
     return a.name.localeCompare(b.name);
   });
-  return ranked.map((row) => row.teamId);
+  const ids = direct.map((row) => row.teamId);
+  if (normalizeKnockoutFill(state.knockoutFill) !== "wildcard") return ids;
+  if (ids.length === 0) return ids;
+  const open = nextPowerOfTwo(ids.length) - ids.length;
+  if (open === 0) return ids;
+
+  const taken = new Set(ids);
+  const wildcards: CrossBracketRow[] = [];
+  let place = state.advancePerGroup + 1;
+  while (wildcards.length < open) {
+    const atPlace = ranked.filter(
+      (row) => row.place === place && !taken.has(row.teamId),
+    );
+    if (atPlace.length === 0) break;
+    atPlace.sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.diff !== a.diff) return b.diff - a.diff;
+      if (b.pointsFor !== a.pointsFor) return b.pointsFor - a.pointsFor;
+      return a.name.localeCompare(b.name);
+    });
+    for (const row of atPlace) {
+      if (wildcards.length >= open) break;
+      wildcards.push(row);
+      taken.add(row.teamId);
+    }
+    place += 1;
+  }
+  return [...ids, ...wildcards.map((row) => row.teamId)];
+}
+
+/** Teams who reach the final only by filling an open spot. */
+export function wildcardTeamIds(state: TournamentState): string[] {
+  if (normalizeKnockoutFill(state.knockoutFill) !== "wildcard") return [];
+  const advancing = new Set(advancingTeamIds(state));
+  const direct = new Set<string>();
+  for (const group of state.groups) {
+    for (const row of groupStandings(state, group.id).slice(
+      0,
+      state.advancePerGroup,
+    )) {
+      direct.add(row.teamId);
+    }
+  }
+  return [...advancing].filter((id) => !direct.has(id));
 }
 
 /**
@@ -2515,6 +2586,15 @@ function clampBracketCount(value: number | undefined): number {
 function clampTeamsPerBracket(value: number | undefined): number {
   if (value == null || !Number.isInteger(value)) return 4;
   return Math.min(8, Math.max(2, value));
+}
+
+function normalizeKnockoutFill(value: unknown): KnockoutFill {
+  return value === "wildcard" ? "wildcard" : "bye";
+}
+
+function requireKnockoutFill(value: string): KnockoutFill {
+  if (value === "bye" || value === "wildcard") return value;
+  throw new TournamentError("Choose byes or wild cards.");
 }
 
 function clampAdvance(

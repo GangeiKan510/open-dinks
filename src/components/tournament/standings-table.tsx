@@ -5,14 +5,17 @@ export function StandingsTable({
   title,
   rows,
   advanceCount,
+  wildcardTeamIds = [],
   tone = "light",
 }: {
   title: string;
   rows: StandingRow[];
   advanceCount: number;
+  wildcardTeamIds?: readonly string[];
   tone?: "light" | "dark";
 }) {
   const dark = tone === "dark";
+  const wildcards = new Set(wildcardTeamIds);
 
   return (
     <section
@@ -59,7 +62,8 @@ export function StandingsTable({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const advances = row.rank <= advanceCount;
+              const isWildcard = wildcards.has(row.teamId);
+              const advances = row.rank <= advanceCount || isWildcard;
               return (
                 <tr
                   key={row.teamId}
@@ -73,8 +77,18 @@ export function StandingsTable({
                   )}
                 >
                   <td className="px-3 py-2 tabular-nums">{row.rank}</td>
-                  <td className="max-w-[12rem] truncate px-3 py-2 font-medium">
-                    {row.name}
+                  <td className="max-w-[12rem] px-3 py-2 font-medium">
+                    <span className="block truncate">{row.name}</span>
+                    {isWildcard ? (
+                      <span
+                        className={cn(
+                          "text-xs font-medium uppercase tracking-[0.12em]",
+                          dark ? "text-white/50" : "text-[var(--muted)]",
+                        )}
+                      >
+                        Wild card
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {row.wins}

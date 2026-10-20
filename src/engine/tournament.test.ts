@@ -39,6 +39,7 @@ import {
   resetDraw,
   setCategoryCourts,
   setDrawSettings,
+  startOver,
   startOverEvent,
   umpireChooseSide,
   umpireClaimMatch,
@@ -49,9 +50,11 @@ import {
   umpireSetServer,
   umpireSideout,
   umpireUndo,
+  wildcardTeamIds,
   UMPIRE_CLAIM_STALE_MS,
   TournamentError,
   tournamentEventFromState,
+  type KnockoutFill,
   type TournamentEvent,
   type TournamentMatch,
   type TournamentState,
@@ -755,6 +758,146 @@ describe("tournament bracket", () => {
     expect(bracketChampion(state)).toBeNull();
   });
 
+  it("defaults open spots to byes and keeps that choice on a fresh start", () => {
+    expect(createTournament().knockoutFill).toBe("bye");
+    const saved = createTournament();
+    delete (saved as { knockoutFill?: KnockoutFill }).knockoutFill;
+    expect(normalizeTournamentState(saved).knockoutFill).toBe("bye");
+
+    const chosen = setDrawSettings(createTournament(), {
+      knockoutFill: "wildcard",
+    });
+    expect(chosen.knockoutFill).toBe("wildcard");
+    expect(startOver(chosen).knockoutFill).toBe("wildcard");
+    expect(normalizeTournamentState(chosen).knockoutFill).toBe("wildcard");
+    expect(() =>
+      setDrawSettings(createTournament(), {
+        knockoutFill: "lucky" as KnockoutFill,
+      }),
+    ).toThrow(/byes or wild cards/i);
+  });
+
+  it("fills open quarterfinal spots with the best runners-up", () => {
+    const pools = sixBracketPools("wildcard");
+    expect(wildcardTeamIds(pools)).toEqual(["b2", "c2"]);
+
+    const built = generateBracket(pools);
+    expect(
+      built.matches.some(
+        (match) => match.stage === "bracket" && match.status === "bye",
+      ),
+    ).toBe(false);
+    expect(roundOnePairs(built)).toEqual([
+      ["a1", "c2"],
+      ["b1", "e1"],
+      ["b2", "f1"],
+      ["c1", "d1"],
+    ]);
+  });
+
+  it("leaves those spots empty when the draw uses byes", () => {
+    const pools = sixBracketPools("bye");
+    expect(wildcardTeamIds(pools)).toEqual([]);
+    const built = generateBracket(pools);
+    const byes = built.matches.filter((match) => match.status === "bye");
+    expect(byes.map((match) => match.teamAId ?? match.teamBId).sort()).toEqual([
+      "a1",
+      "f1",
+    ]);
+    expect(
+      built.matches.some(
+        (match) =>
+          match.stage === "bracket" &&
+          (match.teamAId === "b2" || match.teamBId === "b2"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not add a wild card when the final is already full", () => {
+    const pools: TournamentState = {
+      ...createTournament(),
+      phase: "groups",
+      knockoutFill: "wildcard",
+      advancePerGroup: 1,
+      teams: [
+        team("a1", "Alpha"),
+        team("a2", "Able"),
+        team("b1", "Baker"),
+        team("b2", "Birch"),
+      ],
+      groups: [
+        { id: "g1", name: "Bracket A", teamIds: ["a1", "a2"] },
+        { id: "g2", name: "Bracket B", teamIds: ["b1", "b2"] },
+      ],
+      matches: [
+        scored("m1", "g1", "a1", "a2", 11, 4),
+        scored("m2", "g2", "b1", "b2", 11, 6),
+      ],
+    };
+    expect(wildcardTeamIds(pools)).toEqual([]);
+    const built = generateBracket(pools);
+    expect(built.matches.some((match) => match.status === "bye")).toBe(false);
+    const finalists = built.matches
+      .filter((match) => match.stage === "bracket")
+      .flatMap((match) => [match.teamAId, match.teamBId]);
+    expect(finalists).toEqual(expect.arrayContaining(["a1", "b1"]));
+    expect(finalists).not.toContain("a2");
+  });
+
+  it("ranks wild cards by wins before point differential", () => {
+    const pools = winsBeforeDiffPools();
+    expect(wildcardTeamIds(pools)).toEqual(["a2"]);
+    const built = generateBracket(pools);
+    expect(built.matches.some((match) => match.status === "bye")).toBe(false);
+    expect(
+      built.matches.some(
+        (match) =>
+          match.stage === "bracket" &&
+          (match.teamAId === "b2" || match.teamBId === "b2"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a bye when a wild card cannot fill every open spot", () => {
+    const pools: TournamentState = {
+      ...createTournament(),
+      phase: "groups",
+      knockoutFill: "wildcard",
+      advancePerGroup: 1,
+      teams: [
+        team("a", "Alpha"),
+        team("b", "Bravo"),
+        team("c", "Cedar"),
+        team("d1", "Drew"),
+        team("d2", "Dale"),
+        team("e1", "Eden"),
+        team("e2", "Echo"),
+      ],
+      groups: [
+        { id: "g1", name: "Bracket A", teamIds: ["a"] },
+        { id: "g2", name: "Bracket B", teamIds: ["b"] },
+        { id: "g3", name: "Bracket C", teamIds: ["c"] },
+        { id: "g4", name: "Bracket D", teamIds: ["d1", "d2"] },
+        { id: "g5", name: "Bracket E", teamIds: ["e1", "e2"] },
+      ],
+      matches: [
+        scored("m4", "g4", "d1", "d2", 11, 7),
+        scored("m5", "g5", "e1", "e2", 11, 4),
+      ],
+    };
+    expect(wildcardTeamIds(pools)).toEqual(["d2", "e2"]);
+    const built = generateBracket(pools);
+    expect(
+      built.matches.filter(
+        (match) => match.stage === "bracket" && match.status === "bye",
+      ),
+    ).toHaveLength(1);
+    const bracketTeams = built.matches
+      .filter((match) => match.stage === "bracket")
+      .flatMap((match) => [match.teamAId, match.teamBId]);
+    expect(bracketTeams).toEqual(expect.arrayContaining(["e2", "d2"]));
+  });
+
   it("skips third place when a semifinal is a bye", () => {
     const state = knockout(3);
     expect(state.matches.some(isThirdPlaceMatch)).toBe(false);
@@ -823,6 +966,117 @@ describe("tournament bracket", () => {
     ).toEqual(scoredFinal.games);
   });
 });
+
+function roundOnePairs(state: TournamentState): string[][] {
+  return state.matches
+    .filter(
+      (match) =>
+        match.stage === "bracket" &&
+        match.round === 1 &&
+        match.teamAId &&
+        match.teamBId,
+    )
+    .map((match) => [match.teamAId!, match.teamBId!].sort())
+    .sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+}
+
+/** Six brackets of two. The two best losers are Birch (11–9) and Clay (11–8). */
+function sixBracketPools(fill: KnockoutFill): TournamentState {
+  const groups = [
+    ["a1", "Alpha", "a2", "Able", 11, 0],
+    ["b1", "Baker", "b2", "Birch", 11, 9],
+    ["c1", "Cedar", "c2", "Clay", 11, 8],
+    ["d1", "Drew", "d2", "Dale", 11, 5],
+    ["e1", "Eden", "e2", "Echo", 11, 4],
+    ["f1", "Fern", "f2", "Faye", 11, 1],
+  ] as const;
+  return {
+    ...createTournament({ courtCount: 4 }),
+    phase: "groups",
+    knockoutFill: fill,
+    advancePerGroup: 1,
+    bracketCount: 6,
+    teamsPerBracket: 2,
+    teams: groups.flatMap(([winnerId, winner, loserId, loser]) => [
+      team(winnerId, winner),
+      team(loserId, loser),
+    ]),
+    groups: groups.map(([winnerId, , loserId], index) => ({
+      id: `g${index}`,
+      name: `Bracket ${index}`,
+      teamIds: [winnerId, loserId],
+    })),
+    matches: groups.map(
+      ([winnerId, , loserId, , winnerScore, loserScore], index) =>
+        scored(
+          `m${index}`,
+          `g${index}`,
+          winnerId,
+          loserId,
+          winnerScore,
+          loserScore,
+        ),
+    ),
+  };
+}
+
+/**
+ * Three brackets. Able is second with 2 wins and +1.
+ * Birch is second with 1 win and +9, so wins outrank differential.
+ */
+function winsBeforeDiffPools(): TournamentState {
+  const teams: TournamentTeam[] = [
+    team("a1", "Ace"),
+    team("a2", "Able"),
+    team("a3", "Ames"),
+    team("a4", "Arch"),
+    team("b1", "Bay"),
+    team("b2", "Birch"),
+    team("b3", "Bolt"),
+    team("b4", "Bram"),
+    team("c1", "Cay"),
+    team("c2", "Clay"),
+    team("c3", "Cobb"),
+    team("c4", "Cruz"),
+  ];
+  const results: Array<[string, string, string, number, number]> = [
+    ["ga", "a1", "a2", 11, 10],
+    ["ga", "a1", "a3", 11, 0],
+    ["ga", "a1", "a4", 11, 0],
+    ["ga", "a2", "a3", 11, 10],
+    ["ga", "a2", "a4", 11, 10],
+    ["ga", "a3", "a4", 11, 0],
+    ["gb", "b1", "b2", 11, 10],
+    ["gb", "b1", "b3", 11, 0],
+    ["gb", "b1", "b4", 11, 0],
+    ["gb", "b2", "b3", 11, 0],
+    ["gb", "b3", "b4", 11, 0],
+    ["gb", "b4", "b2", 11, 10],
+    ["gc", "c1", "c2", 11, 0],
+    ["gc", "c1", "c3", 11, 0],
+    ["gc", "c1", "c4", 11, 0],
+    ["gc", "c2", "c3", 11, 9],
+    ["gc", "c2", "c4", 11, 9],
+    ["gc", "c3", "c4", 11, 9],
+  ];
+  return {
+    ...createTournament({ courtCount: 4 }),
+    phase: "groups",
+    knockoutFill: "wildcard",
+    advancePerGroup: 1,
+    bracketCount: 3,
+    teamsPerBracket: 4,
+    teams,
+    groups: [
+      { id: "ga", name: "Bracket A", teamIds: ["a1", "a2", "a3", "a4"] },
+      { id: "gb", name: "Bracket B", teamIds: ["b1", "b2", "b3", "b4"] },
+      { id: "gc", name: "Bracket C", teamIds: ["c1", "c2", "c3", "c4"] },
+    ],
+    matches: results.map(([groupId, teamAId, teamBId, a, b], index) =>
+      scored(`m${index}`, groupId, teamAId, teamBId, a, b),
+    ),
+  };
+}
 
 function knockout(teamCount: number): TournamentState {
   const roster: Array<[string, string]> = [

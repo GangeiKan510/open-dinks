@@ -48,6 +48,7 @@ import {
   setCategoryCourts,
   setDrawSettings,
   stageProgress,
+  wildcardTeamIds,
   startOverEvent,
   undoUnscoredDraw,
   TournamentError,
@@ -1118,12 +1119,48 @@ function SetupForm({
               run(() => setDrawSettings(state, { advancePerGroup }))
             }
           />
+          <div className="space-y-2 sm:col-span-3">
+            <p
+              id="open-spots-label"
+              className="text-sm font-medium leading-none text-[var(--foreground)]"
+            >
+              Open spots
+            </p>
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-labelledby="open-spots-label"
+            >
+              {(
+                [
+                  ["bye", "Bye"],
+                  ["wildcard", "Wild card"],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={state.knockoutFill === value ? "default" : "outline"}
+                  aria-pressed={state.knockoutFill === value}
+                  onClick={() =>
+                    run(() => setDrawSettings(state, { knockoutFill: value }))
+                  }
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
         <p className="text-sm text-[var(--muted)]">
           Teams per bracket is the round-robin group, not the final. Advance per
           bracket is how many teams from each one move into a separate final
-          bracket. Games per match is how many scores you enter. Groups and
-          every round through the quarterfinals play to the first point total.
+          bracket. When the teams moving on do not fill the final bracket, Bye
+          leaves the open spots empty and Wild card fills them with the
+          next-best teams, ranked by wins, then point differential, then points
+          scored. Games per match is how many scores you enter. Groups and every
+          round through the quarterfinals play to the first point total.
           Semifinals and the final play to the second.
         </p>
       </section>
@@ -1499,6 +1536,7 @@ function StandingsColumn({
   onBuild: () => void;
 }) {
   const reason = bracketBlockReason(state);
+  const wildcards = wildcardTeamIds(state);
 
   return (
     <div className="space-y-4">
@@ -1508,11 +1546,16 @@ function StandingsColumn({
           title={group.name}
           rows={groupStandings(state, group.id)}
           advanceCount={Math.min(state.advancePerGroup, group.teamIds.length)}
+          wildcardTeamIds={wildcards}
         />
       ))}
       <p className="text-sm text-[var(--muted)]">
-        Highlighted teams advance to the final. Order is wins, then head-to-head
-        when two teams are tied, then point differential, then points scored.
+        Highlighted teams advance to the final.
+        {state.knockoutFill === "wildcard"
+          ? " Wild card teams fill open spots and are ranked across brackets by wins, then point differential, then points scored."
+          : ""}{" "}
+        Order inside a bracket is wins, then head-to-head when two teams are
+        tied, then point differential, then points scored.
       </p>
       {state.phase === "groups" ? (
         <div className="space-y-2">
