@@ -32,6 +32,7 @@ export default async function TournamentPage() {
       publicToken={tournament.publicToken}
       umpireToken={tournament.umpireToken}
       initialEvent={tournament.event}
+      initialUpdatedAt={tournament.updatedAt}
     />
   );
 }

@@ -77,6 +77,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PRODUCT_NAME } from "@/lib/facility";
 import { deleteSponsorLogo, uploadSponsorLogo } from "@/lib/sponsor-logo";
 import { saveTournamentDocument } from "@/lib/tournament-client";
+import { isNewerTimestamp } from "@/lib/umpire-patches";
 import {
   LEGACY_TOURNAMENT_STORAGE_KEY,
   readLegacyTournament,
@@ -92,16 +93,26 @@ export function TournamentDirector({
   publicToken,
   umpireToken,
   initialEvent,
+  initialUpdatedAt,
 }: {
   tournamentId: string;
   publicToken: string;
   umpireToken: string;
   initialEvent: TournamentEvent;
+  initialUpdatedAt: string;
 }) {
   const [event, setEvent] = useState(initialEvent);
   const savedRef = useRef(initialEvent);
   const pendingRef = useRef(0);
-  const saveSeq = useRef(0);
+  const pendingEventRef = useRef<TournamentEvent | null>(null);
+  const savingRef = useRef(false);
+  const waitersRef = useRef<Array<(ok: boolean) => void>>([]);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
+  const updatedAtRef = useRef(initialUpdatedAt);
+  const remoteRef = useRef<{
+    event: TournamentEvent;
+    updatedAt: string;
+  } | null>(null);
   const state = activeCategory(event);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<"groups" | "bracket" | null>(null);
@@ -114,28 +125,94 @@ export function TournamentDirector({
   const [desk, setDesk] = useState<"tournament" | "sponsors">("tournament");
   const view = state.phase === "bracket" ? (picked ?? "bracket") : "groups";
 
-  const commit = useCallback(
-    (next: TournamentEvent): Promise<boolean> => {
-      setEvent(next);
-      const seq = ++saveSeq.current;
-      pendingRef.current += 1;
-      return saveTournamentDocument(tournamentId, next).then((result) => {
-        pendingRef.current = Math.max(0, pendingRef.current - 1);
-        if (seq !== saveSeq.current) return true;
+  const adopt = useCallback((next: TournamentEvent, updatedAt: string) => {
+    if (
+      updatedAtRef.current &&
+      !isNewerTimestamp(updatedAt, updatedAtRef.current)
+    ) {
+      return;
+    }
+    updatedAtRef.current = updatedAt;
+    savedRef.current = next;
+    setEvent(next);
+  }, []);
+
+  const settle = useCallback((ok: boolean) => {
+    const waiters = waitersRef.current;
+    waitersRef.current = [];
+    for (const waiter of waiters) waiter(ok);
+  }, []);
+
+  const flush = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    pendingRef.current += 1;
+    try {
+      while (pendingEventRef.current) {
+        const next = pendingEventRef.current;
+        pendingEventRef.current = null;
+        const result = await saveTournamentDocument(
+          tournamentId,
+          next,
+          updatedAtRef.current,
+        );
         if (!result.ok) {
-          setError(
-            result.missingSchema
-              ? "Run the latest database migration, then try again."
-              : "Could not save the tournament. Check your connection and try again.",
-          );
-          setEvent(savedRef.current);
-          return false;
+          pendingEventRef.current = null;
+          if (result.conflict && result.event && result.updatedAt) {
+            updatedAtRef.current = "";
+            adopt(result.event, result.updatedAt);
+            setError(
+              "Scores changed on another court. Reloaded the latest tournament.",
+            );
+          } else {
+            setError(
+              result.missingSchema
+                ? "Run the latest database migration, then try again."
+                : "Could not save the tournament. Check your connection and try again.",
+            );
+            setEvent(savedRef.current);
+          }
+          settle(false);
+          return;
         }
+        updatedAtRef.current = result.updatedAt;
         savedRef.current = next;
-        return true;
+        setError(null);
+      }
+      const remote = remoteRef.current;
+      if (remote && isNewerTimestamp(remote.updatedAt, updatedAtRef.current)) {
+        adopt(remote.event, remote.updatedAt);
+      }
+      settle(true);
+    } catch {
+      pendingEventRef.current = null;
+      setError(
+        "Could not save the tournament. Check your connection and try again.",
+      );
+      setEvent(savedRef.current);
+      settle(false);
+    } finally {
+      savingRef.current = false;
+      pendingRef.current = 0;
+      if (pendingEventRef.current) void flushRef.current();
+    }
+  }, [adopt, setError, settle, tournamentId]);
+
+  useEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
+
+  const commit = useCallback(
+    (next: TournamentEvent) => {
+      setEvent(next);
+      pendingEventRef.current = next;
+      const pending = new Promise<boolean>((resolve) => {
+        waitersRef.current.push(resolve);
       });
+      void flush();
+      return pending;
     },
-    [tournamentId, setError],
+    [flush],
   );
 
   useEffect(() => {
@@ -160,18 +237,22 @@ export function TournamentDirector({
           filter: `id=eq.${tournamentId}`,
         },
         (payload) => {
+          const row = payload.new as {
+            document?: unknown;
+            updated_at?: unknown;
+          };
+          const next = tournamentEventFromDocument(row.document);
+          if (!next || typeof row.updated_at !== "string") return;
+          remoteRef.current = { event: next, updatedAt: row.updated_at };
           if (pendingRef.current > 0) return;
-          const next = tournamentEventFromDocument(payload.new.document);
-          if (!next) return;
-          savedRef.current = next;
-          setEvent(next);
+          adopt(next, row.updated_at);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [tournamentId]);
+  }, [adopt, tournamentId]);
 
   function runEvent(action: () => TournamentEvent): boolean {
     try {

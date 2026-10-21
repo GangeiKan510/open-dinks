@@ -15,6 +15,7 @@ export type DirectorTournament =
       publicToken: string;
       umpireToken: string;
       event: TournamentEvent;
+      updatedAt: string;
     }
   | { status: "signed-out" }
   | { status: "unconfigured" }
@@ -25,6 +26,7 @@ type TournamentRow = {
   id: string;
   public_token: string;
   document: unknown;
+  updated_at?: string;
 };
 
 function readyFromRow(
@@ -32,13 +34,14 @@ function readyFromRow(
   umpireToken = "",
 ): DirectorTournament {
   const event = tournamentEventFromDocument(row.document);
-  if (!event) return { status: "error" };
+  if (!event || !row.updated_at) return { status: "error" };
   return {
     status: "ready",
     id: row.id,
     publicToken: row.public_token,
     umpireToken,
     event,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -65,7 +68,7 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
 
   const { data, error } = await supabase
     .from("tournaments")
-    .select("id, public_token, document")
+    .select("id, public_token, document, updated_at")
     .eq("created_by", user.id)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -93,7 +96,7 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
       created_by: user.id,
       document: tournamentEventToJson(emptyTournamentEvent()),
     })
-    .select("id, public_token, document")
+    .select("id, public_token, document, updated_at")
     .single();
 
   if (insertError || !created) {
@@ -137,7 +140,7 @@ export async function loadTournamentByToken(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tournaments")
-    .select("id, public_token, document")
+    .select("id, public_token, document, updated_at")
     .eq("public_token", token)
     .maybeSingle();
   if (error || !data) {

@@ -599,6 +599,10 @@ export type Database = {
         Args: { p_token: string; p_document: Json };
         Returns: undefined;
       };
+      umpire_save_match_patches: {
+        Args: { p_token: string; p_patches: Json };
+        Returns: Json;
+      };
       get_public_booking_venue: {
         Args: { p_slug: string };
         Returns: Json;

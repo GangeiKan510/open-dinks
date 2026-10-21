@@ -31,8 +31,13 @@ import {
 } from "@/engine/tournament";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { saveUmpireDocument } from "@/lib/tournament-client";
+import { saveUmpirePatches } from "@/lib/tournament-client";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
+import {
+  isNewerTimestamp,
+  matchFieldPatches,
+  type MatchFieldPatch,
+} from "@/lib/umpire-patches";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +84,14 @@ export function TournamentUmpire({
   const eventRef = useRef(initialEvent);
   const savedRef = useRef(initialEvent);
   const pendingRef = useRef(0);
-  const saveSeq = useRef(0);
+  const appliedAtRef = useRef("");
+  const queueRef = useRef<MatchFieldPatch[][]>([]);
+  const savingRef = useRef(false);
+  const drainRef = useRef<() => Promise<void>>(async () => {});
+  const remoteRef = useRef<{
+    event: TournamentEvent;
+    updatedAt: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [court, setCourt] = useState<number | null>(null);
   const [pickerCategoryId, setPickerCategoryId] = useState<string | null>(null);
@@ -90,16 +102,31 @@ export function TournamentUmpire({
     () => "",
   );
 
-  const commit = useCallback(
-    (next: TournamentEvent) => {
-      eventRef.current = next;
-      setEvent(next);
-      const seq = ++saveSeq.current;
-      pendingRef.current += 1;
-      void saveUmpireDocument(umpireToken, next).then((result) => {
+  const adopt = useCallback((next: TournamentEvent, updatedAt: string) => {
+    if (
+      appliedAtRef.current &&
+      !isNewerTimestamp(updatedAt, appliedAtRef.current)
+    ) {
+      return;
+    }
+    appliedAtRef.current = updatedAt;
+    eventRef.current = next;
+    savedRef.current = next;
+    setEvent(next);
+  }, []);
+
+  const drain = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      while (queueRef.current.length > 0) {
+        const patches = queueRef.current.shift();
+        if (!patches) break;
+        const result = await saveUmpirePatches(umpireToken, patches);
         pendingRef.current = Math.max(0, pendingRef.current - 1);
-        if (seq !== saveSeq.current) return;
         if (!result.ok) {
+          queueRef.current = [];
+          pendingRef.current = 0;
           setError(
             result.missingSchema
               ? "Run the latest database migration, then try again."
@@ -109,10 +136,45 @@ export function TournamentUmpire({
           setEvent(savedRef.current);
           return;
         }
-        savedRef.current = next;
-      });
+        savedRef.current = result.event;
+        if (queueRef.current.length === 0) {
+          const remote = remoteRef.current;
+          if (remote && isNewerTimestamp(remote.updatedAt, result.updatedAt)) {
+            adopt(remote.event, remote.updatedAt);
+          } else {
+            adopt(result.event, result.updatedAt);
+          }
+        }
+      }
+    } catch {
+      queueRef.current = [];
+      pendingRef.current = 0;
+      setError(
+        "Could not save the score. Check your connection and try again.",
+      );
+      eventRef.current = savedRef.current;
+      setEvent(savedRef.current);
+    } finally {
+      savingRef.current = false;
+      if (queueRef.current.length > 0) void drainRef.current();
+    }
+  }, [adopt, setError, umpireToken]);
+
+  useEffect(() => {
+    drainRef.current = drain;
+  }, [drain]);
+
+  const commit = useCallback(
+    (next: TournamentEvent) => {
+      const patches = matchFieldPatches(eventRef.current, next);
+      eventRef.current = next;
+      setEvent(next);
+      if (patches.length === 0) return;
+      pendingRef.current += 1;
+      queueRef.current.push(patches);
+      void drain();
     },
-    [umpireToken],
+    [drain],
   );
 
   useEffect(() => {
@@ -128,19 +190,22 @@ export function TournamentUmpire({
           filter: `id=eq.${tournamentId}`,
         },
         (payload) => {
+          const row = payload.new as {
+            document?: unknown;
+            updated_at?: unknown;
+          };
+          const next = tournamentEventFromDocument(row.document);
+          if (!next || typeof row.updated_at !== "string") return;
+          remoteRef.current = { event: next, updatedAt: row.updated_at };
           if (pendingRef.current > 0) return;
-          const next = tournamentEventFromDocument(payload.new.document);
-          if (!next) return;
-          eventRef.current = next;
-          savedRef.current = next;
-          setEvent(next);
+          adopt(next, row.updated_at);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [tournamentId]);
+  }, [adopt, tournamentId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
