@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   bracketChampion,
   bracketColumns,
@@ -22,8 +23,9 @@ import {
   type TournamentSponsor,
   type TournamentState,
 } from "@/engine/tournament";
-import { tournamentEventFromDocument } from "@/lib/tournament-document";
+import { PRODUCT_NAME } from "@/lib/facility";
 import { createClient } from "@/lib/supabase/client";
+import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import { cn } from "@/lib/utils";
 
 export function TournamentBoard({
@@ -34,6 +36,7 @@ export function TournamentBoard({
   initialEvent: TournamentEvent;
 }) {
   const [event, setEvent] = useState(initialEvent);
+  const [pickedId, setPickedId] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -61,6 +64,8 @@ export function TournamentBoard({
   const playing = event.categories.filter(
     (category) => category.phase !== "setup",
   );
+  const selected =
+    playing.find((category) => category.id === pickedId) ?? playing[0] ?? null;
   const onCourt = playing.flatMap((category) => {
     const stage = category.phase === "bracket" ? "bracket" : "groups";
     return category.matches
@@ -90,14 +95,19 @@ export function TournamentBoard({
       >
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
-            <p className="text-sm tracking-wide text-[var(--highlight)]">
+            <span
+              className="brand-mark brand-mark-on-board"
+              role="img"
+              aria-label={PRODUCT_NAME}
+            />
+            <h1 className="mt-3 font-[family-name:var(--font-display)] text-4xl md:text-6xl">
+              {event.name.trim() || "Club tournament"}
+            </h1>
+            <p className="mt-2 text-sm tracking-wide text-[var(--highlight)]">
               {event.categories
                 .map((category) => displayDivision(category))
                 .join(" · ")}
             </p>
-            <h1 className="font-[family-name:var(--font-display)] text-4xl md:text-6xl">
-              {event.name.trim() || "Club tournament"}
-            </h1>
           </div>
           <div className="text-right text-sm text-white/60">
             <div>
@@ -126,18 +136,6 @@ export function TournamentBoard({
           </p>
         ) : (
           <>
-            {playing.map((category) => {
-              const champion = bracketChampion(category);
-              if (!champion) return null;
-              return (
-                <p
-                  key={category.id}
-                  className="font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)] md:text-5xl"
-                >
-                  {champion.name} won {displayDivision(category)}
-                </p>
-              );
-            })}
             <section className="space-y-4">
               <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
                 On court
@@ -162,25 +160,52 @@ export function TournamentBoard({
                 </div>
               )}
             </section>
-            {playing.map((category) => (
-              <section key={category.id} className="space-y-4">
-                <h2 className="font-[family-name:var(--font-display)] text-3xl">
-                  {displayDivision(category)}
-                </h2>
-                {category.phase === "bracket" ? (
-                  <BracketStrip state={category} />
-                ) : null}
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {category.groups.map((group) => (
-                    <GroupCard
-                      key={`${category.id}:${group.id}`}
-                      state={category}
-                      groupId={group.id}
-                    />
+            {selected ? (
+              <Tabs value={selected.id} onValueChange={setPickedId}>
+                <TabsList
+                  aria-label="Categories"
+                  className="!border-white/10 !bg-white/5"
+                >
+                  {playing.map((category) => (
+                    <TabsTrigger
+                      key={category.id}
+                      value={category.id}
+                      className="text-white/70 hover:!text-white data-[state=active]:!bg-[var(--highlight)] data-[state=active]:!text-[var(--ink)] data-[state=active]:!shadow-none"
+                    >
+                      {displayDivision(category)}
+                    </TabsTrigger>
                   ))}
-                </div>
-              </section>
-            ))}
+                </TabsList>
+                {playing.map((category) => {
+                  const champion = bracketChampion(category);
+                  return (
+                    <TabsContent
+                      key={category.id}
+                      value={category.id}
+                      className="space-y-4"
+                    >
+                      {champion ? (
+                        <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)] md:text-5xl">
+                          {champion.name} won {displayDivision(category)}
+                        </p>
+                      ) : null}
+                      {category.phase === "bracket" ? (
+                        <BracketStrip state={category} />
+                      ) : null}
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        {category.groups.map((group) => (
+                          <GroupCard
+                            key={`${category.id}:${group.id}`}
+                            state={category}
+                            groupId={group.id}
+                          />
+                        ))}
+                      </div>
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+            ) : null}
           </>
         )}
       </div>
@@ -337,16 +362,45 @@ function CourtTile({
       <p className="text-sm text-white/50">
         Play to {pointsToWin(state, match)}
       </p>
-      <p className="text-lg">{teamName(state, match.teamAId)}</p>
-      <p className="text-lg text-white/80">{teamName(state, match.teamBId)}</p>
-      {match.live?.serving ? (
-        <p className="mt-3 font-[family-name:var(--font-display)] text-4xl tabular-nums text-[var(--highlight)]">
-          {match.live.scoreA}
-          <span className="mx-2 text-white/30">–</span>
-          {match.live.scoreB}
-        </p>
-      ) : null}
+      <ScoreLine
+        name={teamName(state, match.teamAId)}
+        score={match.live?.serving ? match.live.scoreA : null}
+      />
+      <ScoreLine
+        name={teamName(state, match.teamBId)}
+        score={match.live?.serving ? match.live.scoreB : null}
+        muted
+      />
     </article>
+  );
+}
+
+function ScoreLine({
+  name,
+  score,
+  muted = false,
+}: {
+  name: string;
+  score: number | null;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-0.5">
+      <span
+        className={
+          muted
+            ? "min-w-0 truncate text-lg text-white/80"
+            : "min-w-0 truncate text-lg"
+        }
+      >
+        {name}
+      </span>
+      {score != null ? (
+        <span className="shrink-0 font-[family-name:var(--font-display)] text-4xl leading-none tabular-nums text-[var(--highlight)]">
+          {score}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
