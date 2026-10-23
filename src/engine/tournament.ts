@@ -1581,6 +1581,61 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
   return { ...event, categories: prepared };
 }
 
+/** Ready matches that are not on a court, in the order a free court would take them. */
+export function upcomingMatches(
+  event: TournamentEvent,
+): Array<{ category: TournamentState; match: TournamentMatch }> {
+  const playing = event.categories.filter(
+    (category) => category.phase !== "setup",
+  );
+  const busy = new Set<string>();
+  for (const category of playing) {
+    const stage = category.phase === "bracket" ? "bracket" : "groups";
+    for (const match of category.matches) {
+      if (match.stage !== stage || match.courtNumber == null) continue;
+      if (match.teamAId) busy.add(`${category.id}:${match.teamAId}`);
+      if (match.teamBId) busy.add(`${category.id}:${match.teamBId}`);
+    }
+  }
+
+  const waiting: Array<{ category: TournamentState; match: TournamentMatch }> =
+    [];
+  for (const category of playing) {
+    const stage = category.phase === "bracket" ? "bracket" : "groups";
+    for (const match of category.matches) {
+      if (
+        match.stage === stage &&
+        match.status === "unreported" &&
+        match.courtNumber == null &&
+        match.teamAId &&
+        match.teamBId
+      ) {
+        waiting.push({ category, match });
+      }
+    }
+  }
+  waiting.sort(
+    (a, b) =>
+      a.match.round - b.match.round ||
+      a.match.number - b.match.number ||
+      a.category.id.localeCompare(b.category.id),
+  );
+
+  const next: Array<{ category: TournamentState; match: TournamentMatch }> = [];
+  const limit = Math.max(event.courtCount, 1);
+  for (const slot of waiting) {
+    if (next.length >= limit) break;
+    if (!slot.match.teamAId || !slot.match.teamBId) continue;
+    const teamA = `${slot.category.id}:${slot.match.teamAId}`;
+    const teamB = `${slot.category.id}:${slot.match.teamBId}`;
+    if (busy.has(teamA) || busy.has(teamB)) continue;
+    next.push(slot);
+    busy.add(teamA);
+    busy.add(teamB);
+  }
+  return next;
+}
+
 /** Keeps the event name and settings, clears teams and the draw. */
 export function startOver(state: TournamentState): TournamentState {
   return createTournament({

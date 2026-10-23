@@ -31,6 +31,7 @@ import {
   canUndoDraw,
   isThirdPlaceMatch,
   undoUnscoredDraw,
+  upcomingMatches,
   removeCategory,
   removeClub,
   removeSponsor,
@@ -482,6 +483,45 @@ describe("tournament courts", () => {
     ).toHaveLength(1);
     expect(next.matches[0].courtNumber).toBe(1);
     expect(next.matches[1].courtNumber).toBeNull();
+  });
+
+  it("queues the next matches whose teams are not already on court", () => {
+    let state = createTournament({ courtCount: 2 });
+    state = addNamed(state, [
+      ["Smith", "Crozier"],
+      ["Torres", "Doris"],
+      ["Fernandez", "McDonald"],
+      ["Murrieta", "Bierer"],
+      ["Egure", "Carrell"],
+      ["Dobson", "Tibbett"],
+      ["Touzel", "Scotti"],
+      ["Curley", "Yang"],
+    ]);
+    state = generateGroups(state);
+    const event: TournamentEvent = {
+      ...createTournamentEvent(),
+      name: state.name,
+      courtCount: state.courtCount,
+      activeCategoryId: state.id,
+      categories: [state],
+    };
+
+    const onCourt = state.matches.filter((match) => match.courtNumber != null);
+    const playing = new Set(
+      onCourt.flatMap((match) => [match.teamAId, match.teamBId]),
+    );
+    const next = upcomingMatches(event);
+
+    expect(next).toHaveLength(2);
+    expect(next.map((slot) => slot.match.number)).toEqual(
+      [...next.map((slot) => slot.match.number)].sort((a, b) => a - b),
+    );
+    for (const slot of next) {
+      expect(slot.match.courtNumber).toBeNull();
+      expect(slot.match.status).toBe("unreported");
+      expect(playing.has(slot.match.teamAId)).toBe(false);
+      expect(playing.has(slot.match.teamBId)).toBe(false);
+    }
   });
 });
 

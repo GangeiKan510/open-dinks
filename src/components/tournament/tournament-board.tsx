@@ -18,6 +18,7 @@ import {
   type SponsorTier,
   stageProgress,
   teamName,
+  upcomingMatches,
   type TournamentEvent,
   type TournamentMatch,
   type TournamentSponsor,
@@ -72,6 +73,7 @@ export function TournamentBoard({
       .filter((match) => match.stage === stage && match.courtNumber != null)
       .map((match) => ({ category, match }));
   });
+  const upNext = upcomingMatches(event);
   const reported = playing.reduce(
     (sum, category) => {
       const stage = category.phase === "bracket" ? "bracket" : "groups";
@@ -160,6 +162,23 @@ export function TournamentBoard({
                 </div>
               )}
             </section>
+            {upNext.length > 0 ? (
+              <section className="space-y-4">
+                <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
+                  Up next
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {upNext.map(({ category, match }) => (
+                    <CourtTile
+                      key={`${category.id}:${match.id}`}
+                      state={category}
+                      match={match}
+                      queued
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
             {selected ? (
               <Tabs value={selected.id} onValueChange={setPickedId}>
                 <TabsList
@@ -343,18 +362,21 @@ function ClubWins({
 function CourtTile({
   state,
   match,
+  queued = false,
 }: {
   state: TournamentState;
   match: TournamentMatch;
+  queued?: boolean;
 }) {
   const group = state.groups.find((item) => item.id === match.groupId);
+  const live = !queued && match.live?.serving ? match.live : null;
   return (
     <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="mb-3 flex items-center justify-between text-sm">
         <span className="text-[var(--highlight)]">
-          Court {match.courtNumber}
+          {queued ? `M${match.number}` : `Court ${match.courtNumber}`}
         </span>
-        <span className="text-white/50">
+        <span className="truncate text-white/50">
           {displayDivision(state)}
           {group ? ` · ${group.name}` : ` · M${match.number}`}
         </span>
@@ -364,11 +386,11 @@ function CourtTile({
       </p>
       <ScoreLine
         name={teamName(state, match.teamAId)}
-        score={match.live?.serving ? match.live.scoreA : null}
+        score={live ? live.scoreA : null}
       />
       <ScoreLine
         name={teamName(state, match.teamBId)}
-        score={match.live?.serving ? match.live.scoreB : null}
+        score={live ? live.scoreB : null}
         muted
       />
     </article>
