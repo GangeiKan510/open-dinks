@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -39,6 +39,9 @@ export default function LoginPage() {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("sign-in");
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   function onSubmit(formData: FormData) {
     const email = String(formData.get("email") ?? "").trim();
@@ -68,6 +71,8 @@ export default function LoginPage() {
           });
           if (error) {
             toast.error(mapAuthError(error, "SIGN_IN_FAILED"));
+            passwordRef.current?.focus();
+            passwordRef.current?.select();
             return;
           }
           if (data.user) await syncAccountTheme(supabase, data.user.id);
@@ -91,6 +96,8 @@ export default function LoginPage() {
         if (error) {
           console.error("[auth] signUp failed", error);
           toast.error(mapAuthError(error, "SIGN_UP_FAILED"));
+          passwordRef.current?.focus();
+          passwordRef.current?.select();
           return;
         }
 
@@ -113,6 +120,8 @@ export default function LoginPage() {
             ? AUTH_ERROR_MESSAGES.SIGN_IN_FAILED
             : AUTH_ERROR_MESSAGES.SIGN_UP_FAILED,
         );
+        passwordRef.current?.focus();
+        passwordRef.current?.select();
       }
     });
   }
@@ -186,11 +195,14 @@ export default function LoginPage() {
               autoComplete="email"
               required
               placeholder="you@club.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </div>
           <div className="space-y-1">
             <Label htmlFor="password">Password</Label>
             <Input
+              ref={passwordRef}
               id="password"
               name="password"
               type="password"
@@ -202,6 +214,8 @@ export default function LoginPage() {
               placeholder={
                 mode === "sign-up" ? "At least 8 characters" : "••••••••"
               }
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
             />
           </div>
           <Button className="w-full" loading={pending}>
