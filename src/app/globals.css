@@ -153,10 +153,28 @@
   }
 }
 
-.hero-wash {
-  background:
-    radial-gradient(circle at 20% 20%, var(--wash-strong), transparent 35%),
-    radial-gradient(circle at 80% 10%, var(--hero-glow), transparent 30%);
+.page-canvas {
+  background-color: var(--page-bottom);
+  background-image:
+    radial-gradient(
+      1600px 1100px at 14% -180px,
+      var(--wash-strong),
+      transparent 72%
+    ),
+    radial-gradient(
+      1200px 800px at 100% -80px,
+      var(--hero-glow),
+      transparent 70%
+    ),
+    radial-gradient(1400px 1000px at 80% 42%, var(--wash), transparent 74%),
+    radial-gradient(1100px 800px at 0% 78%, var(--hero-glow), transparent 72%),
+    linear-gradient(
+      180deg,
+      var(--page-top) 0%,
+      var(--background) 58%,
+      var(--page-bottom) 100%
+    );
+  background-repeat: no-repeat;
 }
 
 .board-shade {

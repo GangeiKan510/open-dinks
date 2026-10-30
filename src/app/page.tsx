@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -18,42 +19,17 @@ export default async function HomePage() {
   const ctaHref = signedIn ? "/dashboard" : "/login";
   const ctaLabel = signedIn ? "Open dashboard" : "Host login";
   const tournamentHref = signedIn ? "/tournament" : "/login?next=/tournament";
-  const liveCourts = [
-    {
-      court: "Court 1",
-      a: "Alex & Blake",
-      b: "Casey & Drew",
-      scoreA: 8,
-      scoreB: 6,
-    },
-    {
-      court: "Court 2",
-      a: "Eden & Finley",
-      b: "Gray & Harper",
-      scoreA: 4,
-      scoreB: 7,
-    },
-    {
-      court: "Court 3",
-      a: "Indie & Jordan",
-      b: "Kai & Logan",
-      scoreA: 10,
-      scoreB: 9,
-    },
-  ];
 
   return (
-    <main className="relative overflow-hidden">
-      <div className="hero-wash pointer-events-none absolute inset-0" />
-
-      <nav className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+    <main className="page-canvas">
+      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="brand-mark" role="img" aria-label={PRODUCT_NAME} />
         <Button asChild>
           <Link href={ctaHref}>{ctaLabel}</Link>
         </Button>
       </nav>
 
-      <section className="relative z-10 mx-auto grid max-w-6xl gap-10 px-6 pb-20 pt-10 md:grid-cols-[1.1fr_0.9fr] md:items-center md:pt-16">
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-8 md:grid-cols-[1.05fr_0.95fr] md:pt-14">
         <div className="animate-rise space-y-6">
           <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
             Pickleball open play OS
@@ -72,46 +48,19 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <div className="animate-rise-delay animate-drift relative min-h-[360px] overflow-hidden rounded-[2rem] border border-[var(--border)] bg-[var(--ink)] p-6 text-[var(--paper)] shadow-2xl">
-          <div className="board-shade absolute inset-0" />
-          <div className="relative space-y-5">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--highlight)]">
-              Court board
-            </p>
-            <div className="grid gap-3">
-              {liveCourts.map((court, i) => (
-                <div
-                  key={court.court}
-                  className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur"
-                  style={{ animationDelay: `${i * 80}ms` }}
-                >
-                  <div className="mb-2 flex justify-between text-sm">
-                    <span>{court.court}</span>
-                    <span className="text-[var(--highlight)]">LIVE</span>
-                  </div>
-                  {[
-                    [court.a, court.scoreA],
-                    [court.b, court.scoreB],
-                  ].map(([name, score]) => (
-                    <div
-                      key={name}
-                      className="flex items-center justify-between gap-3 py-0.5"
-                    >
-                      <span className="text-sm text-white/80">{name}</span>
-                      <span className="font-[family-name:var(--font-display)] text-3xl leading-none tabular-nums text-[var(--highlight)]">
-                        {score}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <Image
+          src="/assets/open-play-wallboard.jpg"
+          alt="Players on the sideline watching the open play board on a gym TV, with courts and the queue behind them."
+          width={2528}
+          height={1684}
+          priority
+          sizes="(min-width: 768px) 42vw, 100vw"
+          className="animate-rise-delay h-auto w-full rounded-[1.75rem] object-cover shadow-[0_28px_70px_-36px_rgba(20,33,15,0.55)]"
+        />
       </section>
 
-      <section className="relative z-10 border-t border-[var(--border)] bg-[var(--surface)]/70 py-16 backdrop-blur">
-        <div className="mx-auto grid max-w-6xl gap-8 px-6 md:grid-cols-3">
+      <section className="mx-auto max-w-6xl px-6 pb-8">
+        <div className="grid gap-10 border-t border-[var(--border)] pt-12 md:grid-cols-3">
           {[
             {
               title: "Fair by default",
@@ -125,46 +74,63 @@ export default async function HomePage() {
               title: "Cloud sync",
               body: "Supabase realtime keeps phones and the host tablet in lockstep — no paddle rack required.",
             },
-          ].map((item) => (
+          ].map((item, index) => (
             <article key={item.title} className="space-y-2">
+              <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                0{index + 1}
+              </p>
               <h2 className="font-[family-name:var(--font-display)] text-2xl">
                 {item.title}
               </h2>
-              <p className="text-[var(--muted)]">{item.body}</p>
+              <p className="max-w-sm text-[var(--muted)]">{item.body}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="relative z-10 border-t border-[var(--border)] py-16">
-        <div className="mx-auto max-w-6xl space-y-16 px-6">
-          <div className="max-w-xl space-y-6">
-            <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
-              Tournament mode
-            </p>
-            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-5xl">
-              Every category, on the courts you have
-            </h2>
-            <p className="text-lg text-[var(--muted)]">
-              Divisions share the gym. Pools feed a bracket, umpires score from
-              the court, and one public link stays open for everyone else.
-            </p>
-            <Button size="lg" asChild>
-              <Link href={tournamentHref}>Run a tournament</Link>
-            </Button>
+      <section className="py-16">
+        <div className="mx-auto max-w-6xl space-y-24 px-6">
+          <div className="grid items-center gap-10 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="max-w-xl space-y-6">
+              <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
+                Tournament mode
+              </p>
+              <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-5xl">
+                Every category, on the courts you have
+              </h2>
+              <p className="text-lg text-[var(--muted)]">
+                Divisions share the gym. Pools feed a bracket, umpires score
+                from the court, and one public link stays open for everyone
+                else.
+              </p>
+              <Button size="lg" asChild>
+                <Link href={tournamentHref}>Run a tournament</Link>
+              </Button>
+            </div>
+            <Image
+              src="/assets/tournament-gym-board.jpg"
+              alt="A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV."
+              width={2752}
+              height={1536}
+              sizes="(min-width: 768px) 42vw, 100vw"
+              className="h-auto w-full rounded-[1.75rem] object-cover shadow-[0_28px_70px_-36px_rgba(20,33,15,0.55)]"
+            />
           </div>
 
-          <div className="space-y-16">
+          <div className="space-y-24">
             {tournamentFeatures.map((feature, index) => (
               <article
                 key={feature.title}
-                className="grid items-center gap-8 md:grid-cols-2"
+                className="grid items-center gap-10 md:grid-cols-2 md:gap-16"
               >
                 <div className={index % 2 === 1 ? "md:order-2" : undefined}>
-                  <h3 className="font-[family-name:var(--font-display)] text-3xl">
+                  <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                    0{index + 1}
+                  </p>
+                  <h3 className="mt-2 font-[family-name:var(--font-display)] text-3xl">
                     {feature.title}
                   </h3>
-                  <p className="mt-3 max-w-xl text-[var(--muted)]">
+                  <p className="mt-3 max-w-md text-[var(--muted)]">
                     {feature.body}
                   </p>
                 </div>
@@ -176,6 +142,11 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <footer className="mx-auto flex max-w-6xl items-center justify-between border-t border-[var(--border)] px-6 py-8 text-sm text-[var(--muted)]">
+        <span>{PRODUCT_NAME}</span>
+        <span>Open play and tournaments</span>
+      </footer>
     </main>
   );
 }
@@ -324,76 +295,26 @@ function PoolSample() {
 
 function UmpireSample() {
   return (
-    <div className="mx-auto w-full max-w-sm rounded-[1.75rem] bg-[var(--ink)] p-5 text-[var(--paper)] shadow-xl">
-      <p className="text-xs uppercase tracking-[0.22em] text-[var(--highlight)]">
-        Umpire phone
-      </p>
-      <p className="font-[family-name:var(--font-display)] text-4xl">Court 1</p>
-      <p className="mb-4 text-sm text-white/50">Mixed · Game 1 of 1 · to 11</p>
-      <ScoreRow name="Smith / Crozier" score={8} />
-      <ScoreRow name="Touzel / Scotti" score={6} />
-      <p className="mt-4 text-sm text-white/50">Smith · 2nd server</p>
-    </div>
+    <Image
+      src="/assets/tournament-umpire.jpg"
+      alt="An umpire at the scorer's table tapping Point on a tablet, with court 1 playing behind them."
+      width={1792}
+      height={2400}
+      sizes="(min-width: 768px) 28rem, 80vw"
+      className="mx-auto h-auto w-full max-w-md rounded-[1.75rem] object-cover shadow-[0_28px_70px_-36px_rgba(20,33,15,0.55)]"
+    />
   );
 }
 
 function PublicBoardSample() {
-  const standings = [
-    ["Smith / Crozier", "2", "0"],
-    ["Dobson / Tibbett", "1", "1"],
-    ["Egure / Carrell", "0", "2"],
-  ];
-
   return (
-    <BoardPanel label="Public scoreboard">
-      <p className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">
-        On court
-      </p>
-      <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-          <span className="text-[var(--highlight)]">Court 2</span>
-          <span className="text-white/50">Womens Novice · M4</span>
-        </div>
-        <ScoreRow name="Torres / Doris" score={11} />
-        <ScoreRow name="Curley / Yang" score={5} />
-      </article>
-      <p className="mt-4 mb-1 text-xs uppercase tracking-[0.2em] text-white/50">
-        Womens Beginner · standings
-      </p>
-      <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-[0.14em] text-white/40">
-          <tr>
-            <th className="py-2 font-medium" scope="col">
-              Team
-            </th>
-            {["W", "L"].map((heading) => (
-              <th
-                key={heading}
-                className="py-2 text-right font-medium"
-                scope="col"
-              >
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map((row) => (
-            <tr key={row[0]} className="border-t border-white/10">
-              <td className="py-2">{row[0]}</td>
-              <td className="py-2 text-right tabular-nums text-[var(--highlight)]">
-                {row[1]}
-              </td>
-              <td className="py-2 text-right tabular-nums text-white/60">
-                {row[2]}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-3 text-xs text-white/50">
-        No account. Anyone with the link.
-      </p>
-    </BoardPanel>
+    <Image
+      src="/assets/tournament-phone-board.jpg"
+      alt="A phone in the gym showing the public tournament board, with the same board on the TV behind it."
+      width={1792}
+      height={2400}
+      sizes="(min-width: 768px) 28rem, 80vw"
+      className="mx-auto h-auto w-full max-w-md rounded-[1.75rem] object-cover shadow-[0_28px_70px_-36px_rgba(20,33,15,0.55)]"
+    />
   );
 }
