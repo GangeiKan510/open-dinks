@@ -2,16 +2,11 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Radio } from "lucide-react";
-import {
-  addRosterPlayerAction,
-  createSessionAction,
-} from "@/app/actions/session";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
+import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
 import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { loadAccountVenue } from "@/lib/account-venue";
 import {
   buildHourlySlotGrid,
@@ -20,20 +15,11 @@ import {
 } from "@/lib/booking-calendar";
 import { venueBookingsFrom, venueBookingHistoryFrom } from "@/lib/bookings";
 import { buildCoachHourlySlotGrid } from "@/lib/coaching";
-import {
-  DEFAULT_COURT_COUNT,
-  MAX_COURT_COUNT,
-  MIN_COURT_COUNT,
-} from "@/lib/court-count";
 import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
 import { ensureSingleLiveSession } from "@/lib/live-session";
-import {
-  DEFAULT_SKILL_TIER,
-  formatSkillTier,
-  SKILL_TIERS,
-} from "@/lib/skill-tier";
+import { defaultOpenPlayTitle } from "@/lib/open-play";
 import { createClient } from "@/lib/supabase/server";
 import { resolveTheme, THEME_COOKIE } from "@/lib/theme";
 
@@ -106,7 +92,6 @@ export default async function DashboardPage() {
 
   const [
     { data: courts },
-    { data: players },
     { data: sessions },
     { data: facilityRow },
     { data: bookings },
@@ -121,7 +106,6 @@ export default async function DashboardPage() {
       .select("*")
       .eq("venue_id", venue.id)
       .order("sort_order"),
-    supabase.from("players").select("*").eq("venue_id", venue.id).order("name"),
     supabase
       .from("sessions")
       .select("*")
@@ -170,7 +154,6 @@ export default async function DashboardPage() {
 
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
   const courtRows = courts ?? [];
-  const playerRows = players ?? [];
   const sessionRows = sessions ?? [];
   const bookingRows = bookings ?? [];
   const bookingHistoryRows = bookingHistory ?? [];
@@ -303,19 +286,17 @@ export default async function DashboardPage() {
         </Link>
       ) : null}
 
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-3 sm:grid-cols-3">
         <Stat label="Courts" value={String(courtRows.length)} />
         <Stat label="Pending requests" value={String(pendingRequests.length)} />
         <Stat
           label="Upcoming bookings"
           value={String(upcomingBookings.length)}
         />
-        <Stat label="Saved players" value={String(playerRows.length)} />
       </dl>
 
       <DashboardTabs
         pendingRequestCount={pendingRequests.length}
-        rosterCount={playerRows.length}
         openPlay={
           <>
             {liveSession ? (
@@ -341,42 +322,10 @@ export default async function DashboardPage() {
                   Going live opens a wallboard and a player check-in link for
                   this session.
                 </p>
-                <form
-                  action={createSessionAction}
-                  className="grid gap-3 md:grid-cols-3"
-                >
-                  <input type="hidden" name="venueId" value={venue.id} />
-                  <div className="space-y-1 md:col-span-2">
-                    <Label htmlFor="title">Title</Label>
-                    <Input
-                      id="title"
-                      name="title"
-                      defaultValue="Weeknight Open Play"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="courtCount">Courts in play</Label>
-                    <Input
-                      id="courtCount"
-                      name="courtCount"
-                      type="number"
-                      min={MIN_COURT_COUNT}
-                      max={MAX_COURT_COUNT}
-                      defaultValue={Math.max(
-                        MIN_COURT_COUNT,
-                        courtRows.length || DEFAULT_COURT_COUNT,
-                      )}
-                      required
-                    />
-                    <p className="text-xs text-[var(--muted)]">
-                      {courtRows.length} court
-                      {courtRows.length === 1 ? "" : "s"} at this facility
-                    </p>
-                  </div>
-                  <div className="md:col-span-3">
-                    <Button type="submit">Go live</Button>
-                  </div>
-                </form>
+                <OpenPlaySetupForm
+                  venueId={venue.id}
+                  defaultTitle={defaultOpenPlayTitle(venue.timezone)}
+                />
               </section>
             )}
 
@@ -414,50 +363,6 @@ export default async function DashboardPage() {
           coachingHistory: coachingHistoryRows,
           coachingGrid,
         }}
-        roster={
-          <section className={CARD}>
-            <h2 className="mb-1 font-semibold">Roster</h2>
-            <p className="mb-4 text-sm text-[var(--muted)]">
-              Saved players can be checked into any session without retyping
-              their name and skill.
-            </p>
-            <form action={addRosterPlayerAction} className="mb-4 flex gap-2">
-              <input type="hidden" name="venueId" value={venue.id} />
-              <Input name="name" placeholder="Player name" required />
-              <select
-                name="skill"
-                aria-label="Skill"
-                defaultValue={DEFAULT_SKILL_TIER}
-                className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-2 text-sm"
-              >
-                {SKILL_TIERS.map((tier) => (
-                  <option key={tier} value={tier}>
-                    {formatSkillTier(tier)}
-                  </option>
-                ))}
-              </select>
-              <Button type="submit" variant="secondary">
-                Add
-              </Button>
-            </form>
-            <ul className="max-h-96 space-y-2 overflow-auto text-sm">
-              {playerRows.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex justify-between border-b border-[var(--border)] pb-2 last:border-0"
-                >
-                  <span>{p.name}</span>
-                  <span className="text-[var(--muted)]">
-                    {formatSkillTier(p.skill)}
-                  </span>
-                </li>
-              ))}
-              {playerRows.length === 0 ? (
-                <li className="text-[var(--muted)]">No saved players yet</li>
-              ) : null}
-            </ul>
-          </section>
-        }
         settings={
           facility
             ? {

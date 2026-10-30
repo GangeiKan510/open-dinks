@@ -1,5 +1,4 @@
 import { parseSkillTier } from "@/lib/skill-tier";
-import { MIN_COURT_COUNT, normalizeCourtCount } from "@/lib/court-count";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   createInitialState,
@@ -60,11 +59,9 @@ function groupConfirmedCourtBusy(
 
 function resolveSessionCourts(
   courtRows: CourtRow[],
-  sessionCourtCount: number,
   bookingRows: BookingRow[],
   coachingRows: CoachingBusyInput[] = [],
 ): EngineCourt[] {
-  const count = normalizeCourtCount(sessionCourtCount, MIN_COURT_COUNT);
   const sorted = courtRows.slice().sort((a, b) => a.sort_order - b.sort_order);
   const bookingsByCourt = groupConfirmedCourtBusy([
     ...bookingRows.map((row) => ({
@@ -78,25 +75,13 @@ function resolveSessionCourts(
     ...coachingRows,
   ]);
 
-  const fromDb = sorted.slice(0, count).map((c) => ({
+  return sorted.map((c) => ({
     id: c.id,
     name: c.name,
     skillMin: c.skill_min ? parseSkillTier(c.skill_min) : undefined,
     skillMax: c.skill_max ? parseSkillTier(c.skill_max) : undefined,
     bookings: bookingsByCourt.get(c.id),
   }));
-
-  if (fromDb.length >= count) {
-    return fromDb;
-  }
-
-  // Padding courts have no `courts` row, so nothing can be booked against them.
-  const virtual = Array.from({ length: count - fromDb.length }, (_, i) => ({
-    id: `virtual_${fromDb.length + i + 1}`,
-    name: `Court ${fromDb.length + i + 1}`,
-  }));
-
-  return [...fromDb, ...virtual];
 }
 
 export function dbToEngineState(input: {
@@ -138,15 +123,23 @@ export function dbToEngineState(input: {
 
   const courts = resolveSessionCourts(
     input.courts,
-    input.session.court_count,
     input.bookings ?? [],
     coachingBusy,
   );
 
   return createInitialState({
     mode: input.session.mode as SessionMode,
+    format:
+      input.session.game_format === "singles" ||
+      input.session.mode === "singles"
+        ? "singles"
+        : "doubles",
+    scoreTracking:
+      input.session.score_tracking === "scores" ? "scores" : "winner",
+    playerGameLimit: input.session.player_game_limit,
+    matching: input.session.matching === "auto" ? "auto" : "manual",
     kingMaxConsecutiveWins: input.session.king_max_consecutive_wins,
-    maxGameMinutes: input.session.max_game_minutes ?? 15,
+    maxGameMinutes: input.session.max_game_minutes,
     now: Date.now(),
     courts,
     players: input.players.map((p) => ({
@@ -164,6 +157,11 @@ export function dbToEngineState(input: {
       consecutiveWins: p.consecutive_wins,
       queueOrder: p.queue_order ?? undefined,
       teamLockGroupId: p.team_lock_group_id ?? undefined,
+      gender: p.gender === "man" || p.gender === "woman" ? p.gender : null,
+      lastResult:
+        p.last_result === "win" || p.last_result === "loss"
+          ? p.last_result
+          : null,
     })),
     matches: input.matches.map((m) => ({
       id: m.id,
@@ -173,6 +171,8 @@ export function dbToEngineState(input: {
       teamB: m.team_b,
       status: m.status as "ready" | "active" | "completed",
       winner: (m.winner as "a" | "b" | null) ?? null,
+      scoreA: m.score_a,
+      scoreB: m.score_b,
       startedAt: m.started_at ? new Date(m.started_at).getTime() : null,
       endedAt: m.ended_at ? new Date(m.ended_at).getTime() : null,
     })),

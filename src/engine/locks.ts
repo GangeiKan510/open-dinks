@@ -1,8 +1,12 @@
 import type { EnginePlayer, EngineState, SessionMode } from "./types";
 import { orderedWaitingPlayers } from "./queue";
 
-function playersPerCourt(mode: SessionMode): number {
-  return mode === "singles" ? 2 : 4;
+function playersPerCourt(
+  mode: SessionMode,
+  format?: EngineState["format"],
+): number {
+  if (mode === "singles" || format === "singles") return 2;
+  return 4;
 }
 
 export function teamLockMembers(
@@ -116,7 +120,7 @@ export function validateTeamLockPlayerIds(
   playerIds: string[],
   mode: EngineState["mode"],
 ): string | null {
-  const perCourt = playersPerCourt(mode);
+  const perCourt = playersPerCourt(mode, state.format);
   if (playerIds.length !== perCourt) {
     return `Select exactly ${perCourt} players for a team lock.`;
   }

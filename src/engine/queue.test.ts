@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState, reduce } from "./reducer";
 import {
+  formatWaitingTime,
   groupWaitingStack,
   moveWaitingStackGroupIds,
   orderedWaitingPlayers,
+  playerWaitingMs,
   reorderWaitingStackGroupIds,
   reorderWaitingStackIds,
   repositionPartnersForFairJoin,
@@ -17,6 +19,38 @@ function checkIn(state: ReturnType<typeof createInitialState>, name: string) {
     player: { id: name.toLowerCase(), name, skill: "intermediate" },
   });
 }
+
+describe("waiting time", () => {
+  it("counts from check-in until the player has been on a court", () => {
+    expect(
+      playerWaitingMs({ lastPlayedAt: null, checkedInAt: 0 }, 5 * 60_000),
+    ).toBe(5 * 60_000);
+  });
+
+  it("counts from the last time the player left a court", () => {
+    expect(
+      playerWaitingMs(
+        { lastPlayedAt: 10 * 60_000, checkedInAt: 0 },
+        22 * 60_000,
+      ),
+    ).toBe(12 * 60_000);
+  });
+
+  it("does not show a negative wait", () => {
+    expect(
+      playerWaitingMs({ lastPlayedAt: 5_000, checkedInAt: 0 }, 1_000),
+    ).toBe(0);
+  });
+
+  it("formats the wait for the stack", () => {
+    expect(formatWaitingTime(0)).toBe("<1m");
+    expect(formatWaitingTime(59_999)).toBe("<1m");
+    expect(formatWaitingTime(60_000)).toBe("1m");
+    expect(formatWaitingTime(12 * 60_000)).toBe("12m");
+    expect(formatWaitingTime(60 * 60_000)).toBe("1h");
+    expect(formatWaitingTime(90 * 60_000)).toBe("1h 30m");
+  });
+});
 
 describe("waiting stack", () => {
   it("orders waiting players by queueOrder", () => {

@@ -1,12 +1,32 @@
 import type { EnginePlayer, EngineState } from "./types";
 
+/** Time since this player last left a court, or since check-in if they have not played. */
+export function playerWaitingMs(
+  player: Pick<EnginePlayer, "lastPlayedAt" | "checkedInAt">,
+  now: number,
+): number {
+  const since = player.lastPlayedAt ?? player.checkedInAt;
+  if (!Number.isFinite(since) || !Number.isFinite(now)) return 0;
+  return Math.max(0, now - since);
+}
+
+/** Compact label for a wait: "<1m", "12m", "1h 5m". */
+export function formatWaitingTime(ms: number): string {
+  const safe = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+  const totalMinutes = Math.floor(safe / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${totalMinutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 function fairnessCompare(state: EngineState, a: EnginePlayer, b: EnginePlayer) {
   if (a.gamesPlayed !== b.gamesPlayed) {
     return a.gamesPlayed - b.gamesPlayed;
   }
-  const aWait = state.now - (a.lastPlayedAt ?? a.checkedInAt);
-  const bWait = state.now - (b.lastPlayedAt ?? b.checkedInAt);
-  return bWait - aWait;
+  return playerWaitingMs(b, state.now) - playerWaitingMs(a, state.now);
 }
 
 /** Waiting players in host stack order (queueOrder), then fairness tie-break. */

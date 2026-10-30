@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EngineAction, EngineState } from "@/engine";
+import type { EngineAction, EngineState, PlayerGender } from "@/engine";
 import { occupiedMatches, orderedWaitingPlayers, playerName } from "@/engine";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ export function PlayerView({
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
+  const [gender, setGender] = useState<PlayerGender | "">("");
+  const needsGender = state.mode === "couple_hunt";
   const [me, setMe] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const courts = occupiedMatches(state);
@@ -49,12 +51,13 @@ export function PlayerView({
     if (!dispatch || joining) return;
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (needsGender && !gender) return;
     const id = `guest_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`;
     setJoining(true);
     try {
       await dispatch({
         type: "CHECK_IN",
-        player: { id, name: trimmed, skill },
+        player: { id, name: trimmed, skill, gender: gender || null },
       });
       setMe(id);
       setName("");
@@ -87,7 +90,29 @@ export function PlayerView({
             />
           </div>
           <SkillTierSelect id="guest-skill" value={skill} onChange={setSkill} />
-          <Button className="w-full" loading={joining} onClick={selfCheckIn}>
+          {needsGender ? (
+            <div className="space-y-1">
+              <Label htmlFor="guest-gender">Gender</Label>
+              <select
+                id="guest-gender"
+                value={gender}
+                onChange={(event) =>
+                  setGender(event.target.value as PlayerGender | "")
+                }
+                className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+              >
+                <option value="">Choose</option>
+                <option value="man">Man</option>
+                <option value="woman">Woman</option>
+              </select>
+            </div>
+          ) : null}
+          <Button
+            className="w-full"
+            loading={joining}
+            disabled={needsGender && !gender}
+            onClick={selfCheckIn}
+          >
             Join queue
           </Button>
         </div>

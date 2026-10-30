@@ -43,6 +43,8 @@ function playerRow(
     consecutive_wins: player.consecutiveWins ?? 0,
     queue_order: player.queueOrder ?? null,
     team_lock_group_id: player.teamLockGroupId ?? null,
+    gender: player.gender ?? null,
+    last_result: player.lastResult ?? null,
   };
 }
 
@@ -56,6 +58,8 @@ function matchRow(state: EngineState, sessionId = "session-1"): MatchRow[] {
     team_b: match.teamB,
     status: match.status,
     winner: match.winner ?? null,
+    score_a: match.scoreA ?? null,
+    score_b: match.scoreB ?? null,
     started_at: match.startedAt
       ? new Date(match.startedAt).toISOString()
       : null,

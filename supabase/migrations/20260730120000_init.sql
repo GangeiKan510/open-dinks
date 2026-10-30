@@ -1,7 +1,9 @@
 -- OpenDinks initial schema: venues, sessions, matches, RLS
 -- Idempotent so a partially-applied remote DB can finish via `supabase db push`.
 
-create extension if not exists "pgcrypto";
+-- Hosted Postgres installs pgcrypto into extensions, which is off the
+-- migration search_path, so gen_random_bytes must be schema-qualified.
+create extension if not exists pgcrypto with schema extensions;
 
 do $$ begin
   create type public.skill_tier as enum (
@@ -81,7 +83,7 @@ create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
   venue_id uuid not null references public.venues (id) on delete cascade,
   title text not null default 'Open Play',
-  public_token text not null unique default encode(gen_random_bytes(9), 'hex'),
+  public_token text not null unique default encode(extensions.gen_random_bytes(9), 'hex'),
   mode public.session_mode not null default 'rotating',
   status public.session_status not null default 'scheduled',
   court_count int not null default 3,

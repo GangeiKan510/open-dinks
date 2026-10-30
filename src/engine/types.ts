@@ -1,7 +1,26 @@
 import type { SkillTier } from "@/lib/skill-tier";
 
 export type SessionMode =
-  "rotating" | "skill_separated" | "king_of_court" | "singles";
+  | "rotating"
+  | "skill_separated"
+  | "king_of_court"
+  | "singles"
+  | "all_random"
+  | "rated"
+  | "court_kings"
+  | "social_shuffle"
+  | "couple_hunt";
+
+/** Doubles or singles. Orthogonal to matchmaking mode. Legacy `singles` mode still means one player a side. */
+export type GameFormat = "doubles" | "singles";
+
+export type ScoreTracking = "winner" | "scores";
+
+export type MatchingStyle = "auto" | "manual";
+
+export type PlayerGender = "man" | "woman";
+
+export type LastResult = "win" | "loss";
 
 export type PlayerStatus = "waiting" | "playing" | "resting" | "left";
 
@@ -43,6 +62,10 @@ export interface EnginePlayer {
   consecutiveWins?: number;
   /** Host-defined position in the waiting stack (lower = closer to the front). */
   queueOrder?: number;
+  /** Couple Hunt only. Missing gender stays in the queue until the host sets it. */
+  gender?: PlayerGender | null;
+  /** Court Kings uses the previous match result to keep winners with winners. */
+  lastResult?: LastResult | null;
 }
 
 export interface EngineMatch {
@@ -53,6 +76,8 @@ export interface EngineMatch {
   teamB: string[];
   status: MatchStatus;
   winner?: "a" | "b" | null;
+  scoreA?: number | null;
+  scoreB?: number | null;
   /** Set when the host starts the court timer. */
   startedAt: number | null;
   endedAt?: number | null;
@@ -60,6 +85,14 @@ export interface EngineMatch {
 
 export interface EngineState {
   mode: SessionMode;
+  /** One player a side when `singles`. Defaults to doubles. */
+  format: GameFormat;
+  /** Winner buttons, or both scores. The higher score is the winner. */
+  scoreTracking: ScoreTracking;
+  /** After this many games a player rests. Null means they can keep queuing. */
+  playerGameLimit: number | null;
+  /** Auto fills open courts when the queue can. Manual waits for the host. */
+  matching: MatchingStyle;
   courts: EngineCourt[];
   players: EnginePlayer[];
   matches: EngineMatch[];
@@ -70,14 +103,15 @@ export interface EngineState {
   now: number;
   /** Cap for king-of-court consecutive wins before forced rotate. */
   kingMaxConsecutiveWins: number;
-  /** Max game length in minutes before the timer stops at zero. */
-  maxGameMinutes: number;
+  /** Max game length in minutes. Null means the court is not called on a clock. */
+  maxGameMinutes: number | null;
 }
 
 export type EngineAction =
   | { type: "TICK"; now: number }
   | { type: "SET_MODE"; mode: SessionMode }
-  | { type: "SET_MAX_GAME_MINUTES"; minutes: number }
+  | { type: "SET_MAX_GAME_MINUTES"; minutes: number | null }
+  | { type: "SET_GENDER"; playerId: string; gender: PlayerGender | null }
   | {
       type: "CHECK_IN";
       player: Omit<
@@ -107,7 +141,13 @@ export type EngineAction =
   | { type: "PUSH_TO_COURT"; courtId: string }
   | { type: "START_MATCH"; matchId: string }
   | { type: "RETURN_TO_STACK"; matchId: string }
-  | { type: "COMPLETE_MATCH"; matchId: string; winner: "a" | "b" }
+  | {
+      type: "COMPLETE_MATCH";
+      matchId: string;
+      winner: "a" | "b";
+      scoreA?: number | null;
+      scoreB?: number | null;
+    }
   | {
       type: "FORCE_ASSIGN";
       courtId: string;

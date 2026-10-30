@@ -1,5 +1,16 @@
 export type DbSkillTier = "beginner" | "novice" | "intermediate" | "advanced";
 
+export type DbSessionMode =
+  | "rotating"
+  | "skill_separated"
+  | "king_of_court"
+  | "singles"
+  | "all_random"
+  | "rated"
+  | "court_kings"
+  | "social_shuffle"
+  | "couple_hunt";
+
 export type DbBookingStatus = "pending" | "confirmed" | "cancelled";
 
 export type DbBookingPaymentStatus = "unpaid" | "paid" | "refunded";
@@ -401,11 +412,15 @@ export type Database = {
           venue_id: string;
           title: string;
           public_token: string;
-          mode: "rotating" | "skill_separated" | "king_of_court" | "singles";
+          mode: DbSessionMode;
           status: "scheduled" | "live" | "completed";
           court_count: number;
           king_max_consecutive_wins: number;
-          max_game_minutes: number;
+          max_game_minutes: number | null;
+          game_format: "doubles" | "singles";
+          score_tracking: "winner" | "scores";
+          player_game_limit: number | null;
+          matching: "auto" | "manual";
           started_at: string | null;
           ended_at: string | null;
           created_by: string | null;
@@ -416,11 +431,15 @@ export type Database = {
           venue_id: string;
           title?: string;
           public_token?: string;
-          mode?: "rotating" | "skill_separated" | "king_of_court" | "singles";
+          mode?: DbSessionMode;
           status?: "scheduled" | "live" | "completed";
           court_count?: number;
           king_max_consecutive_wins?: number;
-          max_game_minutes?: number;
+          max_game_minutes?: number | null;
+          game_format?: "doubles" | "singles";
+          score_tracking?: "winner" | "scores";
+          player_game_limit?: number | null;
+          matching?: "auto" | "manual";
           started_at?: string | null;
           ended_at?: string | null;
           created_by?: string | null;
@@ -431,11 +450,15 @@ export type Database = {
           venue_id?: string;
           title?: string;
           public_token?: string;
-          mode?: "rotating" | "skill_separated" | "king_of_court" | "singles";
+          mode?: DbSessionMode;
           status?: "scheduled" | "live" | "completed";
           court_count?: number;
           king_max_consecutive_wins?: number;
-          max_game_minutes?: number;
+          max_game_minutes?: number | null;
+          game_format?: "doubles" | "singles";
+          score_tracking?: "winner" | "scores";
+          player_game_limit?: number | null;
+          matching?: "auto" | "manual";
           started_at?: string | null;
           ended_at?: string | null;
           created_by?: string | null;
@@ -459,6 +482,8 @@ export type Database = {
           consecutive_wins: number;
           queue_order: number | null;
           team_lock_group_id: string | null;
+          gender: "man" | "woman" | null;
+          last_result: "win" | "loss" | null;
         };
         Insert: {
           id?: string;
@@ -475,6 +500,8 @@ export type Database = {
           consecutive_wins?: number;
           queue_order?: number | null;
           team_lock_group_id?: string | null;
+          gender?: "man" | "woman" | null;
+          last_result?: "win" | "loss" | null;
         };
         Update: {
           id?: string;
@@ -491,6 +518,8 @@ export type Database = {
           consecutive_wins?: number;
           queue_order?: number | null;
           team_lock_group_id?: string | null;
+          gender?: "man" | "woman" | null;
+          last_result?: "win" | "loss" | null;
         };
         Relationships: [];
       };
@@ -504,6 +533,8 @@ export type Database = {
           team_b: string[];
           status: "ready" | "active" | "completed";
           winner: string | null;
+          score_a: number | null;
+          score_b: number | null;
           started_at: string | null;
           ended_at: string | null;
         };
@@ -516,6 +547,8 @@ export type Database = {
           team_b: string[];
           status?: "ready" | "active" | "completed";
           winner?: string | null;
+          score_a?: number | null;
+          score_b?: number | null;
           started_at?: string | null;
           ended_at?: string | null;
         };
@@ -528,6 +561,8 @@ export type Database = {
           team_b?: string[];
           status?: "ready" | "active" | "completed";
           winner?: string | null;
+          score_a?: number | null;
+          score_b?: number | null;
           started_at?: string | null;
           ended_at?: string | null;
         };
@@ -667,8 +702,7 @@ export type Database = {
       booking_status: DbBookingStatus;
       booking_payment_status: DbBookingPaymentStatus;
       venue_role: "owner" | "admin" | "host";
-      session_mode:
-        "rotating" | "skill_separated" | "king_of_court" | "singles";
+      session_mode: DbSessionMode;
       session_status: "scheduled" | "live" | "completed";
       session_player_status: "waiting" | "playing" | "resting" | "left";
       match_status: "ready" | "active" | "completed";

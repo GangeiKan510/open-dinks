@@ -17,7 +17,7 @@ export function CourtTimer({
   tone = "light",
 }: {
   match: EngineMatch;
-  maxGameMinutes: number;
+  maxGameMinutes: number | null;
   compact?: boolean;
   tone?: "light" | "dark";
 }) {
@@ -33,6 +33,45 @@ export function CourtTimer({
   const fg =
     tone === "dark" ? "text-[var(--paper)]" : "text-[var(--foreground)]";
   const ended = tone === "dark" ? "text-[var(--highlight)]" : "text-amber-700";
+
+  if (maxGameMinutes == null) {
+    if (match.status === "ready") {
+      return (
+        <div
+          className={cn(
+            "font-mono tabular-nums",
+            muted,
+            compact ? "text-sm" : "text-lg",
+          )}
+        >
+          Ready · no time limit
+        </div>
+      );
+    }
+    if (match.status !== "active") return null;
+    const elapsed = matchElapsedMs(match, now) ?? 0;
+    return (
+      <div
+        className={cn(
+          "font-mono tabular-nums",
+          fg,
+          compact ? "text-sm" : "text-2xl font-semibold",
+        )}
+        aria-live="polite"
+      >
+        {formatTimer(elapsed)}
+        <span
+          className={cn(
+            "ml-2 font-sans font-normal",
+            muted,
+            compact ? "text-xs" : "text-sm",
+          )}
+        >
+          elapsed
+        </span>
+      </div>
+    );
+  }
 
   if (match.status === "ready") {
     return (

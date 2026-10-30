@@ -11,9 +11,11 @@ import {
   formatFairJoinBlockMessage,
   formatSeparatedTeamLockMessage,
   formatTeamLockLabel,
+  formatWaitingTime,
   groupWaitingStack,
   moveWaitingStackGroupIds,
   orderedWaitingPlayers,
+  playerWaitingMs,
   reorderWaitingStackGroupIds,
   reorderWaitingStackIds,
   playerName,
@@ -108,7 +110,13 @@ function SortablePlayerRow({
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{player.name}</div>
         <div className="text-xs text-[var(--muted)]">
-          {formatSkillTier(player.skill)} · {player.gamesPlayed} games
+          {formatSkillTier(player.skill)} · {player.gamesPlayed} games · waiting{" "}
+          {formatWaitingTime(playerWaitingMs(player, state.now))}
+          {player.gender === "man"
+            ? " · Man"
+            : player.gender === "woman"
+              ? " · Woman"
+              : ""}
           {player.partnerLockId
             ? ` · locked w/ ${playerName(state, player.partnerLockId)}`
             : ""}
@@ -116,6 +124,28 @@ function SortablePlayerRow({
             ? ` · team ${formatTeamLockLabel(state, player.teamLockGroupId)}`
             : ""}
         </div>
+        {state.mode === "couple_hunt" ? (
+          <select
+            aria-label={`Gender for ${player.name}`}
+            value={player.gender ?? ""}
+            disabled={isPending}
+            onChange={(event) => {
+              const value = event.target.value;
+              run(`gender-${player.id}`, () =>
+                dispatch({
+                  type: "SET_GENDER",
+                  playerId: player.id,
+                  gender: value === "man" || value === "woman" ? value : null,
+                }),
+              );
+            }}
+            className="h-8 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1 text-xs"
+          >
+            <option value="">Gender</option>
+            <option value="man">Man</option>
+            <option value="woman">Woman</option>
+          </select>
+        ) : null}
       </div>
       <div className="flex shrink-0 gap-1">
         <Button
@@ -175,7 +205,7 @@ export function WaitingStackPanel({
 }) {
   const pending = isPending ?? false;
   const stack = orderedWaitingPlayers(state);
-  const perCourt = playersPerCourt(state.mode);
+  const perCourt = playersPerCourt(state);
   const groups = groupWaitingStack(stack, perCourt);
   const separatedTeamLocks = findSeparatedTeamLocks(state);
   const stackIssueMessage = formatSeparatedTeamLockMessage(

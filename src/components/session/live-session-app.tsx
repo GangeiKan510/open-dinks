@@ -22,10 +22,16 @@ import { Wallboard } from "@/components/session/wallboard";
 import { Button } from "@/components/ui/button";
 import {
   createInitialState,
+  reduce,
   type EngineAction,
   type EngineState,
   type SessionMode,
 } from "@/engine";
+import {
+  createdMatchIds,
+  remapHostDispatch,
+  type HostDispatch,
+} from "@/lib/host-dispatch";
 import { createClient } from "@/lib/supabase/client";
 import { createCoalescedAsync } from "@/lib/coalesce-async";
 import { dbToEngineState } from "@/lib/session-mapper";
@@ -85,18 +91,28 @@ export function LiveSessionApp({
     return () => clearInterval(id);
   }, []);
 
-  const state: EngineState = useMemo(() => {
-    const mapped = dbToEngineState({
-      session: bundle.session,
-      players: bundle.players,
-      matches: bundle.matches,
-      courts: bundle.courts,
-      pairings: bundle.pairings,
-      bookings: bundle.bookings,
-      coachingBookings: bundle.coachingBookings,
-    });
-    return { ...mapped, now };
-  }, [bundle, now]);
+  const mapped = useMemo(
+    () =>
+      dbToEngineState({
+        session: bundle.session,
+        players: bundle.players,
+        matches: bundle.matches,
+        courts: bundle.courts,
+        pairings: bundle.pairings,
+        bookings: bundle.bookings,
+        coachingBookings: bundle.coachingBookings,
+      }),
+    [bundle],
+  );
+  const localRef = useRef<EngineState | null>(null);
+  const [local, setLocal] = useState<EngineState | null>(null);
+  const actionRevision = useRef(0);
+  const persistQueue = useRef(Promise.resolve());
+  const savedIds = useRef(new Map<string, string>());
+  const state: EngineState = useMemo(
+    () => ({ ...(local ?? mapped), now }),
+    [local, mapped, now],
+  );
 
   const sessionScopeRef = useRef({
     id: bundle.session.id,
@@ -166,100 +182,155 @@ export function LiveSessionApp({
   }, [token, scheduleRefresh]);
 
   function dispatch(action: EngineAction) {
-    startTransition(async () => {
-      let payload: Parameters<typeof hostDispatchAction>[1] | null = null;
+    let payload: HostDispatch | null = null;
 
-      switch (action.type) {
-        case "FILL_COURTS":
-          payload = { type: "FILL_COURTS" };
-          break;
-        case "PUSH_TO_COURT":
-          payload = { type: "PUSH_TO_COURT", courtId: action.courtId };
-          break;
-        case "REORDER_WAITING_QUEUE":
+    switch (action.type) {
+      case "FILL_COURTS":
+        payload = { type: "FILL_COURTS" };
+        break;
+      case "PUSH_TO_COURT":
+        payload = { type: "PUSH_TO_COURT", courtId: action.courtId };
+        break;
+      case "REORDER_WAITING_QUEUE":
+        payload = {
+          type: "REORDER_WAITING_QUEUE",
+          playerIds: action.playerIds,
+        };
+        break;
+      case "MOVE_WAITING_QUEUE":
+        payload = {
+          type: "MOVE_WAITING_QUEUE",
+          playerId: action.playerId,
+          direction: action.direction,
+        };
+        break;
+      case "START_MATCH":
+        payload = { type: "START_MATCH", matchId: action.matchId };
+        break;
+      case "RETURN_TO_STACK":
+        payload = { type: "RETURN_TO_STACK", matchId: action.matchId };
+        break;
+      case "COMPLETE_MATCH":
+        payload = {
+          type: "COMPLETE_MATCH",
+          matchId: action.matchId,
+          winner: action.winner,
+          scoreA: action.scoreA,
+          scoreB: action.scoreB,
+        };
+        break;
+      case "SET_MODE":
+        payload = { type: "SET_MODE", mode: action.mode };
+        break;
+      case "SET_MAX_GAME_MINUTES":
+        payload = {
+          type: "SET_MAX_GAME_MINUTES",
+          minutes: action.minutes,
+        };
+        break;
+      case "SHUFFLE_TEAMS":
+        payload = { type: "SHUFFLE_TEAMS", matchId: action.matchId };
+        break;
+      case "CHECK_IN":
+        payload = {
+          type: "CHECK_IN",
+          name: action.player.name,
+          skill: action.player.skill,
+          gender: action.player.gender,
+          playerId: action.player.id,
+        };
+        break;
+      case "SET_GENDER":
+        payload = {
+          type: "SET_GENDER",
+          playerId: action.playerId,
+          gender: action.gender,
+        };
+        break;
+      case "SET_STATUS":
+        if (
+          action.status === "waiting" ||
+          action.status === "resting" ||
+          action.status === "left"
+        ) {
           payload = {
-            type: "REORDER_WAITING_QUEUE",
-            playerIds: action.playerIds,
-          };
-          break;
-        case "MOVE_WAITING_QUEUE":
-          payload = {
-            type: "MOVE_WAITING_QUEUE",
+            type: "SET_STATUS",
             playerId: action.playerId,
-            direction: action.direction,
+            status: action.status,
           };
-          break;
-        case "START_MATCH":
-          payload = { type: "START_MATCH", matchId: action.matchId };
-          break;
-        case "RETURN_TO_STACK":
-          payload = { type: "RETURN_TO_STACK", matchId: action.matchId };
-          break;
-        case "COMPLETE_MATCH":
-          payload = {
-            type: "COMPLETE_MATCH",
-            matchId: action.matchId,
-            winner: action.winner,
-          };
-          break;
-        case "SET_MODE":
-          payload = { type: "SET_MODE", mode: action.mode };
-          break;
-        case "SET_MAX_GAME_MINUTES":
-          payload = {
-            type: "SET_MAX_GAME_MINUTES",
-            minutes: action.minutes,
-          };
-          break;
-        case "SHUFFLE_TEAMS":
-          payload = { type: "SHUFFLE_TEAMS", matchId: action.matchId };
-          break;
-        case "CHECK_IN":
-          payload = {
-            type: "CHECK_IN",
-            name: action.player.name,
-            skill: action.player.skill,
-          };
-          break;
-        case "SET_STATUS":
-          if (
-            action.status === "waiting" ||
-            action.status === "resting" ||
-            action.status === "left"
-          ) {
-            payload = {
-              type: "SET_STATUS",
-              playerId: action.playerId,
-              status: action.status,
-            };
-          }
-          break;
-        case "SET_PARTNER_LOCK":
-          payload = {
-            type: "SET_PARTNER_LOCK",
-            playerId: action.playerId,
-            partnerId: action.partnerId,
-          };
-          break;
-        case "SET_TEAM_LOCK":
-          payload = { type: "SET_TEAM_LOCK", playerIds: action.playerIds };
-          break;
-        case "CLEAR_TEAM_LOCK":
-          payload = { type: "CLEAR_TEAM_LOCK", playerId: action.playerId };
-          break;
-        default:
-          toast.message("Override applied locally — syncing…");
-          break;
-      }
-
-      if (!payload) return;
-      const result = await hostDispatchAction(token, payload);
-      if (result && "error" in result && result.error) {
-        toast.error(result.error);
+        }
+        break;
+      case "SET_PARTNER_LOCK":
+        payload = {
+          type: "SET_PARTNER_LOCK",
+          playerId: action.playerId,
+          partnerId: action.partnerId,
+        };
+        break;
+      case "SET_TEAM_LOCK":
+        payload = { type: "SET_TEAM_LOCK", playerIds: action.playerIds };
+        break;
+      case "CLEAR_TEAM_LOCK":
+        payload = { type: "CLEAR_TEAM_LOCK", playerId: action.playerId };
+        break;
+      default:
+        toast.message("Override applied locally — syncing…");
         return;
-      }
-      await scheduleRefresh();
-    });
+    }
+
+    if (!payload) return;
+    const command = payload;
+
+    const revision = ++actionRevision.current;
+    const previous = localRef.current ?? mapped;
+    const next = reduce({ ...previous, now: Date.now() }, action);
+    const matchIds = createdMatchIds(previous, next);
+    localRef.current = next;
+    setLocal(next);
+
+    persistQueue.current = persistQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const result = await hostDispatchAction(
+            token,
+            remapHostDispatch(command, savedIds.current),
+            matchIds,
+          );
+          if (result && "error" in result && result.error) {
+            toast.error(result.error);
+            if (actionRevision.current === revision) {
+              localRef.current = null;
+              setLocal(null);
+            }
+            void scheduleRefresh();
+            return;
+          }
+          if (result && "ok" in result && result.ok) {
+            for (const [from, to] of Object.entries(result.playerIds)) {
+              if (from && to && from !== to) savedIds.current.set(from, to);
+            }
+            for (const [from, to] of Object.entries(result.matchIds)) {
+              if (from && to && from !== to) savedIds.current.set(from, to);
+            }
+          }
+          void scheduleRefresh()
+            .then(() => {
+              if (actionRevision.current === revision) {
+                localRef.current = null;
+                setLocal(null);
+              }
+            })
+            .catch(() => undefined);
+        } catch {
+          toast.error("Could not save that action");
+          if (actionRevision.current === revision) {
+            localRef.current = null;
+            setLocal(null);
+          }
+          void scheduleRefresh().catch(() => undefined);
+        }
+      });
   }
 
   async function onGuestCheckIn(action: EngineAction) {
@@ -268,6 +339,7 @@ export function LiveSessionApp({
       token,
       action.player.name,
       action.player.skill,
+      action.player.gender,
     );
     if (result && "error" in result && result.error) {
       toast.error(result.error);

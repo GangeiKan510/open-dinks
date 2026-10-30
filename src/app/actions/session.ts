@@ -1,17 +1,20 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { parseSkillTier, type SkillTier } from "@/lib/skill-tier";
+import { type SkillTier } from "@/lib/skill-tier";
 import { THEME_COOKIE } from "@/lib/theme";
-import { DEFAULT_COURT_COUNT, normalizeCourtCount } from "@/lib/court-count";
+import { parseOpenPlayForm } from "@/lib/open-play";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { reduce, type SessionMode } from "@/engine";
+import { reduce, type PlayerGender } from "@/engine";
+import { type HostDispatch, renameNewMatches } from "@/lib/host-dispatch";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { dbToEngineState } from "@/lib/session-mapper";
 import { loadSessionBundle } from "@/lib/session-bundle";
+import { loadSessionLiveRows } from "@/lib/session-live-rows";
 import { planSessionPersist } from "@/lib/session-persist";
+import { normalizeCourtCount } from "@/lib/court-count";
 
 /** Violation of sessions_one_live_per_venue. */
 const PG_UNIQUE_VIOLATION = "23505";
@@ -22,12 +25,7 @@ const PG_UNIQUE_VIOLATION = "23505";
  */
 export async function createSessionAction(formData: FormData): Promise<void> {
   const venueId = String(formData.get("venueId") ?? "");
-  const title = String(formData.get("title") ?? "Open Play").trim();
-  const mode = "rotating" as const;
-  const courtCount = normalizeCourtCount(
-    formData.get("courtCount"),
-    DEFAULT_COURT_COUNT,
-  );
+  const setup = parseOpenPlayForm(formData);
 
   const supabase = await createClient();
   const {
@@ -41,18 +39,29 @@ export async function createSessionAction(formData: FormData): Promise<void> {
     redirect(`/s/${alreadyLive.public_token}/host`);
   }
 
+  const { data: courts, error: courtsError } = await supabase
+    .from("courts")
+    .select("id")
+    .eq("venue_id", venueId);
+  if (courtsError || !courts) return;
+
   const { data: session, error } = await supabase
     .from("sessions")
     .insert({
       venue_id: venueId,
-      title,
-      mode,
-      court_count: courtCount,
+      title: setup.title,
+      mode: setup.mode,
+      game_format: setup.format,
+      score_tracking: setup.scoreTracking,
+      player_game_limit: setup.playerGameLimit,
+      matching: setup.matching,
+      max_game_minutes: setup.maxGameMinutes,
+      court_count: normalizeCourtCount(courts.length),
       status: "live",
       started_at: new Date().toISOString(),
       created_by: user.id,
     })
-    .select("public_token")
+    .select("id, public_token")
     .single();
 
   // Lost a race against a concurrent "Go live": join the winner rather than
@@ -68,6 +77,24 @@ export async function createSessionAction(formData: FormData): Promise<void> {
 
   if (error || !session) return;
 
+  if (setup.playerNames.length > 0) {
+    await supabase.from("session_players").insert(
+      setup.playerNames.map((name, index) => ({
+        session_id: session.id,
+        display_name: name,
+        skill: "intermediate" as const,
+        status: "waiting" as const,
+        queue_order: index,
+      })),
+    );
+  }
+
+  if (setup.matching === "auto") {
+    await persistEngineDiff(session.public_token, (state) =>
+      reduce(state, { type: "FILL_COURTS" }),
+    );
+  }
+
   revalidatePath("/dashboard");
   redirect(`/s/${session.public_token}/host`);
 }
@@ -81,17 +108,16 @@ export async function signOutAction() {
 }
 
 async function loadSessionBundleForPersist(token: string) {
-  const bundle = await loadSessionBundle(token);
-  if (!bundle) return null;
-  return {
-    session: bundle.session,
-    players: bundle.players,
-    matches: bundle.matches,
-    courts: bundle.courts,
-    pairings: bundle.pairings,
-    bookings: bundle.bookings,
-    coachingBookings: bundle.coachingBookings,
-  };
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("public_token", token)
+    .single();
+  if (!session) return null;
+
+  const rows = await loadSessionLiveRows(supabase, session);
+  return { supabase, session, ...rows };
 }
 
 async function persistEngineDiff(
@@ -103,9 +129,9 @@ async function persistEngineDiff(
   const bundle = await loadSessionBundleForPersist(token);
   if (!bundle) return { error: "Session not found" };
 
+  const { supabase } = bundle;
   const before = dbToEngineState(bundle);
   const after = mutate(before);
-  const supabase = await createClient();
   const plan = planSessionPersist({
     sessionId: bundle.session.id,
     before,
@@ -191,14 +217,38 @@ async function persistEngineDiff(
     await supabase.from("matches").delete().in("id", plan.matchDeletes);
   }
 
+  const newEngineMatchIds = after.matches
+    .filter(
+      (match) =>
+        (match.status === "ready" || match.status === "active") &&
+        !before.matches.some((row) => row.id === match.id),
+    )
+    .map((match) => match.id);
+  const matchIds: Record<string, string> = {};
   if (plan.matchInserts.length > 0) {
-    await supabase.from("matches").insert(
-      plan.matchInserts.map((row) => ({
-        ...row,
-        team_a: mapIds(row.team_a),
-        team_b: mapIds(row.team_b),
-      })),
+    const canMap = newEngineMatchIds.length === plan.matchInserts.length;
+    const insertedMatches = await Promise.all(
+      plan.matchInserts.map(async (row, index) => {
+        const { data, error } = await supabase
+          .from("matches")
+          .insert({
+            ...row,
+            team_a: mapIds(row.team_a),
+            team_b: mapIds(row.team_b),
+          })
+          .select("id")
+          .single();
+        return { index, data, error };
+      }),
     );
+    for (const row of insertedMatches) {
+      if (row.error || !row.data) {
+        console.error(row.error);
+        return { error: "Failed to open a court" };
+      }
+      const engineId = newEngineMatchIds[row.index];
+      if (canMap && engineId) matchIds[engineId] = row.data.id;
+    }
   }
 
   if (plan.sessionPatch) {
@@ -224,59 +274,34 @@ async function persistEngineDiff(
     );
   }
 
-  revalidatePath(`/s/${token}`);
-  revalidatePath(`/s/${token}/host`);
-  revalidatePath(`/s/${token}/board`);
-  return { ok: true as const };
+  // Host, player, and board views refresh themselves, so the click returns
+  // as soon as the rows are saved.
+  return {
+    ok: true as const,
+    playerIds: Object.fromEntries(idMap),
+    matchIds,
+  };
 }
 
 export async function hostDispatchAction(
   token: string,
-  action:
-    | { type: "FILL_COURTS"; courtIds?: string[] }
-    | { type: "PUSH_TO_COURT"; courtId: string }
-    | { type: "REORDER_WAITING_QUEUE"; playerIds: string[] }
-    | {
-        type: "MOVE_WAITING_QUEUE";
-        playerId: string;
-        direction: "up" | "down";
-      }
-    | { type: "START_MATCH"; matchId: string }
-    | { type: "RETURN_TO_STACK"; matchId: string }
-    | { type: "COMPLETE_MATCH"; matchId: string; winner: "a" | "b" }
-    | { type: "SET_MODE"; mode: SessionMode }
-    | { type: "SET_MAX_GAME_MINUTES"; minutes: number }
-    | { type: "SHUFFLE_TEAMS"; matchId: string }
-    | {
-        type: "CHECK_IN";
-        name: string;
-        skill: SkillTier;
-      }
-    | {
-        type: "SET_STATUS";
-        playerId: string;
-        status: "waiting" | "resting" | "left";
-      }
-    | {
-        type: "SET_PARTNER_LOCK";
-        playerId: string;
-        partnerId: string | null;
-      }
-    | { type: "SET_TEAM_LOCK"; playerIds: string[] }
-    | { type: "CLEAR_TEAM_LOCK"; playerId: string },
+  action: HostDispatch,
+  matchIds: string[] = [],
 ) {
   return persistEngineDiff(token, (state) => {
-    if (action.type === "CHECK_IN") {
-      return reduce(state, {
-        type: "CHECK_IN",
-        player: {
-          id: `tmp_${Date.now()}`,
-          name: action.name,
-          skill: action.skill,
-        },
-      });
-    }
-    return reduce(state, action);
+    const after =
+      action.type === "CHECK_IN"
+        ? reduce(state, {
+            type: "CHECK_IN",
+            player: {
+              id: action.playerId,
+              name: action.name,
+              skill: action.skill,
+              gender: action.gender ?? null,
+            },
+          })
+        : reduce(state, action);
+    return renameNewMatches(state, after, matchIds);
   });
 }
 
@@ -284,6 +309,7 @@ export async function guestCheckInAction(
   token: string,
   name: string,
   skill: SkillTier,
+  gender?: PlayerGender | null,
 ) {
   const bundle = await loadSessionBundle(token);
   if (!bundle || bundle.session.status !== "live") {
@@ -295,8 +321,14 @@ export async function guestCheckInAction(
     display_name: name.trim(),
     skill,
     status: "waiting",
+    gender: gender ?? null,
   });
   if (error) return { error: error.message };
+  if (bundle.session.matching === "auto") {
+    await persistEngineDiff(token, (state) =>
+      reduce(state, { type: "FILL_COURTS" }),
+    );
+  }
   revalidatePath(`/s/${token}`);
   return { ok: true as const };
 }
@@ -323,19 +355,4 @@ export async function endSessionAction(token: string) {
   // Frees the venue's single live slot, so the dashboard can offer "Go live".
   revalidatePath("/dashboard");
   return { ok: true as const };
-}
-
-export async function addRosterPlayerAction(formData: FormData): Promise<void> {
-  const venueId = String(formData.get("venueId") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const skill = parseSkillTier(String(formData.get("skill")));
-  if (!venueId || !name) return;
-
-  const supabase = await createClient();
-  await supabase.from("players").insert({
-    venue_id: venueId,
-    name,
-    skill,
-  });
-  revalidatePath("/dashboard");
 }

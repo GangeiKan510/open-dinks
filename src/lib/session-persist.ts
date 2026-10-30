@@ -27,7 +27,7 @@ export type SessionPersistPlan = {
   matchDeletes: string[];
   sessionPatch: {
     mode: EngineState["mode"];
-    max_game_minutes: number;
+    max_game_minutes: number | null;
   } | null;
   pairingUpserts: PairingInsert[];
 };
@@ -68,7 +68,10 @@ function sameTimestamp(
   return new Date(iso).getTime() === ms;
 }
 
-function playerPatch(player: EnginePlayer): SessionPlayerUpdate {
+function playerPatch(
+  player: EnginePlayer,
+  state: EngineState,
+): SessionPlayerUpdate {
   return {
     display_name: player.name,
     skill: player.skill,
@@ -80,14 +83,23 @@ function playerPatch(player: EnginePlayer): SessionPlayerUpdate {
     queue_order: player.queueOrder ?? null,
     team_lock_group_id: player.teamLockGroupId ?? null,
     partner_lock_id: player.partnerLockId ?? null,
+    // Omit until the session uses them so a database without the new columns
+    // can still save balanced open play.
+    ...(state.mode === "couple_hunt" || player.gender
+      ? { gender: player.gender ?? null }
+      : {}),
+    ...(state.mode === "court_kings" || player.lastResult
+      ? { last_result: player.lastResult ?? null }
+      : {}),
   };
 }
 
 function playerUnchanged(
   existing: SessionPlayerRow,
   player: EnginePlayer,
+  state: EngineState,
 ): boolean {
-  const patch = playerPatch(player);
+  const patch = playerPatch(player, state);
   return (
     existing.display_name === patch.display_name &&
     existing.skill === patch.skill &&
@@ -99,7 +111,9 @@ function playerUnchanged(
     (existing.queue_order ?? null) === (patch.queue_order ?? null) &&
     (existing.team_lock_group_id ?? null) ===
       (patch.team_lock_group_id ?? null) &&
-    (existing.partner_lock_id ?? null) === (patch.partner_lock_id ?? null)
+    (existing.partner_lock_id ?? null) === (patch.partner_lock_id ?? null) &&
+    (existing.gender ?? null) === (patch.gender ?? null) &&
+    (existing.last_result ?? null) === (patch.last_result ?? null)
   );
 }
 
@@ -109,6 +123,8 @@ function matchUnchanged(existing: MatchRow, match: EngineMatch): boolean {
     sameIds(existing.team_b, match.teamB) &&
     existing.status === match.status &&
     (existing.winner ?? null) === (match.winner ?? null) &&
+    (existing.score_a ?? null) === (match.scoreA ?? null) &&
+    (existing.score_b ?? null) === (match.scoreB ?? null) &&
     sameTimestamp(existing.started_at, match.startedAt) &&
     sameTimestamp(existing.ended_at, match.endedAt ?? null)
   );
@@ -144,12 +160,21 @@ export function planSessionPersist(input: {
           avoid_ids: [],
           queue_order: player.queueOrder ?? null,
           team_lock_group_id: player.teamLockGroupId ?? null,
+          ...(input.after.mode === "couple_hunt" || player.gender
+            ? { gender: player.gender ?? null }
+            : {}),
+          ...(input.after.mode === "court_kings" || player.lastResult
+            ? { last_result: player.lastResult ?? null }
+            : {}),
         },
       });
       continue;
     }
-    if (!playerUnchanged(existing, player)) {
-      playerUpdates.push({ id: player.id, patch: playerPatch(player) });
+    if (!playerUnchanged(existing, player, input.after)) {
+      playerUpdates.push({
+        id: player.id,
+        patch: playerPatch(player, input.after),
+      });
     }
   }
 
@@ -173,6 +198,12 @@ export function planSessionPersist(input: {
       patch: {
         status: "completed",
         winner: match.winner ?? null,
+        ...(match.scoreA != null || match.scoreB != null
+          ? {
+              score_a: match.scoreA ?? null,
+              score_b: match.scoreB ?? null,
+            }
+          : {}),
         ended_at: isoFromMillis(match.endedAt) ?? new Date().toISOString(),
         team_a: match.teamA,
         team_b: match.teamB,

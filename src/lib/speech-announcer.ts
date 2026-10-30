@@ -8,10 +8,12 @@ export function warningThresholdMs(warningMinutes: number): number {
 /** True when the game is long enough to warrant a warning and time left is within the window. */
 export function isWithinWarningWindow(
   remainingMs: number | null,
-  maxGameMinutes: number,
+  maxGameMinutes: number | null,
   warningMinutes: number,
 ): boolean {
-  if (remainingMs == null || remainingMs <= 0) return false;
+  if (maxGameMinutes == null || remainingMs == null || remainingMs <= 0) {
+    return false;
+  }
   const warnMs = warningThresholdMs(warningMinutes);
   const maxMs = maxGameMinutes * 60_000;
   if (maxMs <= warnMs) return false;
@@ -84,7 +86,7 @@ export function formatRemainingTimeAnnouncement(
 }
 
 /** Slightly under 1 so gym announcements are easier to catch. */
-export const ANNOUNCEMENT_SPEECH_RATE = 0.85;
+export const ANNOUNCEMENT_SPEECH_RATE = 0.9;
 
 export function speakAnnouncement(text: string): void {
   if (typeof window === "undefined" || !window.speechSynthesis) return;

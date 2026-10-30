@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pairKey } from "@/lib/utils";
 import {
   activeCategory,
+  applyVenueCourtCount,
   addCategory,
   addClub,
   addSponsor,
@@ -1490,6 +1491,33 @@ describe("tournament categories", () => {
         event.categories[0].id,
       ),
     ).toThrow(/at least one/i);
+  });
+
+  it("uses the venue court count for every category", () => {
+    const event = addCategory(
+      createTournamentEvent({ courtCount: 4, name: "HARAYA CUP" }),
+      "Womens Open",
+    );
+    const synced = applyVenueCourtCount(event, 3);
+
+    expect(synced.courtCount).toBe(3);
+    expect(synced.categories.map((category) => category.courtCount)).toEqual([
+      3, 3,
+    ]);
+    expect(applyVenueCourtCount(synced, 3)).toBe(synced);
+  });
+
+  it("drops category courts that settings no longer has", () => {
+    let event = createTournamentEvent({ courtCount: 4 });
+    event = commitCategory(
+      event,
+      event.categories[0]!.id,
+      setCategoryCourts(activeCategory(event), [1, 4]),
+    );
+
+    expect(activeCategory(applyVenueCourtCount(event, 3)).courtNumbers).toEqual(
+      [1],
+    );
   });
 
   it("shares courts when two categories are playing", () => {

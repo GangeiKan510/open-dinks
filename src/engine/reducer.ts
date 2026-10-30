@@ -22,6 +22,10 @@ export function createInitialState(
 ): EngineState {
   return {
     mode: "rotating",
+    format: "doubles",
+    scoreTracking: "winner",
+    playerGameLimit: null,
+    matching: "manual",
     courts: [
       { id: "c1", name: "Court 1" },
       { id: "c2", name: "Court 2" },
@@ -73,6 +77,29 @@ function fillCourtsFromStack(
     next = applyAssignment(next, p.courtId, p.teamA, p.teamB);
   }
   return next;
+}
+
+function applyGameLimit(state: EngineState): EngineState {
+  if (state.playerGameLimit == null) return state;
+  const limit = state.playerGameLimit;
+  let changed = false;
+  const players = state.players.map((player) => {
+    if (player.status === "waiting" && player.gamesPlayed >= limit) {
+      changed = true;
+      return { ...player, status: "resting" as const };
+    }
+    return player;
+  });
+  return changed ? { ...state, players } : state;
+}
+
+function maybeAutoFill(state: EngineState): EngineState {
+  if (state.matching !== "auto") return state;
+  return fillCourtsFromStack(state);
+}
+
+function settleQueue(state: EngineState): EngineState {
+  return maybeAutoFill(applyGameLimit(state));
 }
 
 function updatePlayer(
@@ -196,15 +223,17 @@ function returnToStack(state: EngineState, matchId: string): EngineState {
     matches: state.matches.map((m) => (m.id === matchId ? completed : m)),
   };
 
-  return wasActive
+  const queued = wasActive
     ? appendToWaitingQueue(next, allIds)
     : prependToWaitingQueue(next, allIds);
+  return wasActive ? applyGameLimit(queued) : queued;
 }
 
 function completeMatch(
   state: EngineState,
   matchId: string,
   winner: "a" | "b",
+  scores?: { scoreA: number; scoreB: number } | null,
 ): EngineState {
   const match = state.matches.find((m) => m.id === matchId);
   if (!match || match.status !== "active") return state;
@@ -228,14 +257,21 @@ function completeMatch(
       lastPlayedAt: state.now,
       status: "waiting",
       consecutiveWins: 0,
+      lastResult: winners.includes(id) ? "win" : "loss",
     });
   }
+
+  const overLimit = (id: string) => {
+    if (state.playerGameLimit == null) return false;
+    const played = players.find((player) => player.id === id)?.gamesPlayed ?? 0;
+    return played >= state.playerGameLimit;
+  };
 
   if (state.mode === "king_of_court") {
     for (const id of winners) {
       const p = players.find((x) => x.id === id)!;
       const nextWins = (p.consecutiveWins ?? 0) + 1;
-      const stay = nextWins < state.kingMaxConsecutiveWins;
+      const stay = nextWins < state.kingMaxConsecutiveWins && !overLimit(id);
       players = updatePlayer(players, id, {
         consecutiveWins: stay ? nextWins : 0,
         status: stay ? "playing" : "waiting",
@@ -253,6 +289,8 @@ function completeMatch(
       status: "completed",
       winner,
       endedAt: state.now,
+      scoreA: scores?.scoreA ?? null,
+      scoreB: scores?.scoreB ?? null,
     };
 
     let next: EngineState = {
@@ -293,10 +331,10 @@ function completeMatch(
           };
         }
       }
-      return appendToWaitingQueue(next, allIds);
+      return settleQueue(appendToWaitingQueue(next, allIds));
     }
 
-    return appendToWaitingQueue(next, allIds);
+    return settleQueue(appendToWaitingQueue(next, allIds));
   }
 
   const completed: EngineMatch = {
@@ -304,17 +342,21 @@ function completeMatch(
     status: "completed",
     winner,
     endedAt: state.now,
+    scoreA: scores?.scoreA ?? null,
+    scoreB: scores?.scoreB ?? null,
   };
 
-  return appendToWaitingQueue(
-    {
-      ...state,
-      players,
-      partnerHistory,
-      opponentHistory,
-      matches: state.matches.map((m) => (m.id === matchId ? completed : m)),
-    },
-    allIds,
+  return settleQueue(
+    appendToWaitingQueue(
+      {
+        ...state,
+        players,
+        partnerHistory,
+        opponentHistory,
+        matches: state.matches.map((m) => (m.id === matchId ? completed : m)),
+      },
+      allIds,
+    ),
   );
 }
 
@@ -421,7 +463,16 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case "SET_MAX_GAME_MINUTES":
       return {
         ...state,
-        maxGameMinutes: clampMaxGameMinutes(action.minutes),
+        maxGameMinutes:
+          action.minutes == null ? null : clampMaxGameMinutes(action.minutes),
+      };
+
+    case "SET_GENDER":
+      return {
+        ...state,
+        players: updatePlayer(state.players, action.playerId, {
+          gender: action.gender,
+        }),
       };
 
     case "CHECK_IN": {
@@ -434,9 +485,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
             skill: action.player.skill,
             partnerLockId: action.player.partnerLockId,
             avoidIds: action.player.avoidIds,
+            gender: action.player.gender,
           }),
         };
-        return appendToWaitingQueue(next, [action.player.id]);
+        return settleQueue(appendToWaitingQueue(next, [action.player.id]));
       }
       const minGames = state.players
         .filter((p) => p.status !== "left")
@@ -455,7 +507,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         queueOrder: nextQueueOrder(state),
       };
       const next = { ...state, players: [...state.players, player] };
-      return appendToWaitingQueue(next, [player.id]);
+      return settleQueue(appendToWaitingQueue(next, [player.id]));
     }
 
     case "SET_STATUS": {
@@ -490,7 +542,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
 
       const next = { ...state, players };
       if (action.status === "waiting") {
-        return appendToWaitingQueue(next, [action.playerId]);
+        return settleQueue(appendToWaitingQueue(next, [action.playerId]));
       }
       if (action.status === "resting" || action.status === "left") {
         return applyWaitingQueueOrder(
@@ -572,8 +624,19 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case "RETURN_TO_STACK":
       return returnToStack(state, action.matchId);
 
-    case "COMPLETE_MATCH":
-      return completeMatch(state, action.matchId, action.winner);
+    case "COMPLETE_MATCH": {
+      const scores =
+        action.scoreA != null && action.scoreB != null
+          ? { scoreA: action.scoreA, scoreB: action.scoreB }
+          : null;
+      if (scores && scores.scoreA === scores.scoreB) return state;
+      const winner = scores
+        ? scores.scoreA > scores.scoreB
+          ? "a"
+          : "b"
+        : action.winner;
+      return completeMatch(state, action.matchId, winner, scores);
+    }
 
     case "FORCE_ASSIGN":
       return applyAssignment(state, action.courtId, action.teamA, action.teamB);

@@ -17,6 +17,10 @@ const baseSession: SessionRow = {
   court_count: 1,
   king_max_consecutive_wins: 3,
   max_game_minutes: 15,
+  game_format: "doubles",
+  score_tracking: "winner",
+  player_game_limit: null,
+  matching: "manual",
   started_at: null,
   ended_at: null,
   created_by: null,
@@ -49,13 +53,22 @@ describe("session mapper courts", () => {
     expect(state.courts[0].name).toBe("Court 1");
   });
 
-  it("pads virtual courts when a session uses more courts than the venue has saved", () => {
+  it("uses the courts saved in settings and ignores the session count", () => {
     const courts: CourtRow[] = [
       {
         id: "court-1",
         venue_id: "venue-1",
         name: "Court 1",
         sort_order: 1,
+        skill_min: null,
+        skill_max: null,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: "court-2",
+        venue_id: "venue-1",
+        name: "Court 2",
+        sort_order: 2,
         skill_min: null,
         skill_max: null,
         created_at: new Date().toISOString(),
@@ -70,12 +83,9 @@ describe("session mapper courts", () => {
       pairings: [],
     });
 
-    expect(state.courts).toHaveLength(4);
-    expect(state.courts.map((court) => court.name)).toEqual([
-      "Court 1",
-      "Court 2",
-      "Court 3",
-      "Court 4",
+    expect(state.courts.map((court) => court.id)).toEqual([
+      "court-1",
+      "court-2",
     ]);
   });
 });
@@ -187,7 +197,7 @@ describe("session mapper bookings", () => {
     expect(state.courts[0].bookings).toBeUndefined();
   });
 
-  it("leaves padded virtual courts unbookable", () => {
+  it("does not invent a court that settings does not have", () => {
     const state = dbToEngineState({
       session: { ...baseSession, court_count: 2 },
       players: [],
@@ -197,8 +207,8 @@ describe("session mapper bookings", () => {
       bookings: [bookingRow({ court_id: "virtual_2" })],
     });
 
-    expect(state.courts[1].id).toBe("virtual_2");
-    expect(state.courts[1].bookings).toBeUndefined();
+    expect(state.courts).toHaveLength(1);
+    expect(state.courts[0]?.id).toBe("court-1");
   });
 
   it("FILL_COURTS skips rented courts only when bookings are mapped", () => {
@@ -226,6 +236,8 @@ describe("session mapper bookings", () => {
       consecutive_wins: 0,
       queue_order: index,
       team_lock_group_id: null,
+      gender: null,
+      last_result: null,
     }));
     const noon = Date.parse("2026-08-29T12:00:00.000Z");
     const base = {

@@ -7,6 +7,7 @@ import { BookingWindow } from "@/components/session/booking-window";
 import { CourtAnnouncer } from "@/components/session/court-announcer";
 import { CourtTimer } from "@/components/session/court-timer";
 import { formatBrandTitle, type FacilityConfig } from "@/lib/facility";
+import { openPlayModeLabel } from "@/lib/open-play";
 import { primeSpeechAnnouncer } from "@/lib/speech-announcer";
 
 export function Wallboard({
@@ -28,7 +29,7 @@ export function Wallboard({
   return (
     <div className="min-h-screen bg-[var(--ink)] text-[var(--paper)]">
       <CourtAnnouncer state={state} enabled />
-      <div className="mx-auto grid min-h-screen max-w-[1600px] grid-rows-[auto_1fr] gap-6 p-6 md:p-10">
+      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 p-6 md:p-10">
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
             <p className="text-sm tracking-wide text-[var(--highlight)]">
@@ -42,13 +43,17 @@ export function Wallboard({
             <div>
               {state.players.filter((p) => p.status !== "left").length} players
             </div>
-            <div className="capitalize">{state.mode.replaceAll("_", " ")}</div>
-            <div>Max {state.maxGameMinutes} min</div>
+            <div>{openPlayModeLabel(state.mode)}</div>
+            <div>
+              {state.maxGameMinutes == null
+                ? "No time limit"
+                : `Max ${state.maxGameMinutes} min`}
+            </div>
           </div>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,22rem)]">
+          <div className="grid auto-rows-min items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {state.courts.map((court) => {
               const match = courts.find((m) => m.courtId === court.id);
               const booking = activeCourtBooking(court, state.now);
@@ -134,9 +139,13 @@ export function Wallboard({
             })}
           </div>
 
-          <aside className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <aside className="rounded-2xl border border-white/10 bg-white/5 p-5 lg:sticky lg:top-6">
             <h2 className="mb-4 text-2xl font-semibold">Queue</h2>
-            <ol className="space-y-3">
+            <ol
+              tabIndex={0}
+              aria-label="Waiting queue"
+              className="max-h-80 space-y-3 overflow-y-auto overscroll-contain pr-1 [scrollbar-color:rgba(255,255,255,0.35)_transparent] [scrollbar-width:thin] lg:max-h-[calc(100dvh-8rem)]"
+            >
               {waiting.map((p, i) => (
                 <li
                   key={p.id}

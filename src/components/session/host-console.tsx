@@ -2,17 +2,24 @@
 
 import { useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
-import type { EngineAction, EngineMatch, EngineState } from "@/engine";
+import type {
+  EngineAction,
+  EngineMatch,
+  EngineState,
+  PlayerGender,
+} from "@/engine";
 import {
   activeCourtBooking,
   bookableCourts,
   isMatchOvertime,
+  matchElapsedMs,
   matchRemainingMs,
   occupiedMatches,
   playerName,
   playersPerCourt,
   summarizeSession,
 } from "@/engine";
+import { openPlayModeLabel } from "@/lib/open-play";
 import { BookingWindow } from "@/components/session/booking-window";
 import { WaitingStackPanel } from "@/components/session/waiting-stack-panel";
 import {
@@ -28,6 +35,7 @@ import { CourtTimer } from "@/components/session/court-timer";
 import { tryStackPush } from "@/lib/stack-push";
 import {
   formatRemainingTimeAnnouncement,
+  formatRemainingTimeForSpeech,
   formatStartSessionAnnouncement,
   speakAnnouncement,
 } from "@/lib/speech-announcer";
@@ -53,6 +61,7 @@ export function HostConsole({
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
+  const [gender, setGender] = useState<PlayerGender | "">("");
   const [lockA, setLockA] = useState("");
   const [lockB, setLockB] = useState("");
   const [teamLockIds, setTeamLockIds] = useState<string[]>(() =>
@@ -62,7 +71,8 @@ export function HostConsole({
   const tracksPending = isPending !== undefined;
   const pending = isPending ?? false;
   const activeBusyKey = tracksPending && pending ? busyKey : null;
-  const perCourt = playersPerCourt(state.mode);
+  const perCourt = playersPerCourt(state);
+  const needsGender = state.mode === "couple_hunt";
   const courts = occupiedMatches(state);
   // Booked courts are unavailable, so they must not count as open capacity.
   const openCourtCount = bookableCourts(state).filter(
@@ -81,6 +91,7 @@ export function HostConsole({
   function checkIn() {
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (needsGender && !gender) return;
     runBusy("check-in", () => {
       dispatch({
         type: "CHECK_IN",
@@ -88,6 +99,7 @@ export function HostConsole({
           id: `p_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
           name: trimmed,
           skill,
+          gender: gender || null,
         },
       });
       setName("");
@@ -99,6 +111,15 @@ export function HostConsole({
     courtName: string,
     now: number,
   ) {
+    if (match.status === "active" && state.maxGameMinutes == null) {
+      const elapsed = matchElapsedMs(match, now);
+      speakAnnouncement(
+        elapsed == null
+          ? `${courtName} has no time limit.`
+          : `${courtName}, ${formatRemainingTimeForSpeech(elapsed)} elapsed. No time limit.`,
+      );
+      return;
+    }
     const remaining = matchRemainingMs(match, state.maxGameMinutes, now);
     const timeUp = isMatchOvertime(match, state.maxGameMinutes, now);
     speakAnnouncement(
@@ -125,6 +146,16 @@ export function HostConsole({
             <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--foreground)]">
               Live open play
             </h1>
+            <p className="text-sm text-[var(--muted)]">
+              {openPlayModeLabel(state.mode)} ·{" "}
+              {state.format === "singles" || state.mode === "singles"
+                ? "Singles"
+                : "Doubles"}{" "}
+              · {state.matching === "auto" ? "Auto" : "Manual"} matching
+              {state.playerGameLimit != null
+                ? ` · ${state.playerGameLimit} game limit`
+                : ""}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {boardUrl ? (
@@ -256,7 +287,23 @@ export function HostConsole({
                           >
                             Start session
                           </Button>
-                        ) : null}
+                        ) : (
+                          <MatchResult
+                            matchId={match.id}
+                            scoreTracking={state.scoreTracking}
+                            pending={pending}
+                            busy={activeBusyKey === `result-${match.id}`}
+                            onComplete={(result) =>
+                              runBusy(`result-${match.id}`, () =>
+                                dispatch({
+                                  type: "COMPLETE_MATCH",
+                                  matchId: match.id,
+                                  ...result,
+                                }),
+                              )
+                            }
+                          />
+                        )}
                         <Button
                           size="sm"
                           className="w-full"
@@ -290,10 +337,7 @@ export function HostConsole({
                         variant="secondary"
                         className="w-full"
                         loading={activeBusyKey === `push-${court.id}`}
-                        disabled={
-                          pending ||
-                          waiting.length < (state.mode === "singles" ? 2 : 4)
-                        }
+                        disabled={pending || waiting.length < perCourt}
                         onClick={() =>
                           runBusy(`push-${court.id}`, () =>
                             tryStackPush(state, dispatch, {
@@ -329,25 +373,55 @@ export function HostConsole({
         {!readOnly ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <h2 className="mb-3 font-semibold">Session settings</h2>
-            <div className="space-y-1">
-              <Label htmlFor="max-game-minutes">Max game timer (minutes)</Label>
-              <Input
-                id="max-game-minutes"
-                type="number"
-                min={1}
-                max={60}
-                value={state.maxGameMinutes}
-                onChange={(e) =>
-                  dispatch({
-                    type: "SET_MAX_GAME_MINUTES",
-                    minutes: Number(e.target.value) || 15,
-                  })
-                }
-              />
-              <p className="text-xs text-[var(--muted)]">
-                Timer stops at zero and announces when a court session ends.
-                Start each court manually once players are assigned.
-              </p>
+            <div className="space-y-2">
+              <Label id="match-duration-label">Match duration</Label>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-2)] p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={state.maxGameMinutes == null ? "default" : "ghost"}
+                  aria-pressed={state.maxGameMinutes == null}
+                  onClick={() =>
+                    dispatch({ type: "SET_MAX_GAME_MINUTES", minutes: null })
+                  }
+                >
+                  No limit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={state.maxGameMinutes != null ? "default" : "ghost"}
+                  aria-pressed={state.maxGameMinutes != null}
+                  onClick={() =>
+                    dispatch({
+                      type: "SET_MAX_GAME_MINUTES",
+                      minutes: state.maxGameMinutes ?? 15,
+                    })
+                  }
+                >
+                  Set limit
+                </Button>
+              </div>
+              {state.maxGameMinutes != null ? (
+                <Input
+                  id="max-game-minutes"
+                  aria-labelledby="match-duration-label"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={state.maxGameMinutes}
+                  onChange={(e) =>
+                    dispatch({
+                      type: "SET_MAX_GAME_MINUTES",
+                      minutes: Number(e.target.value) || 15,
+                    })
+                  }
+                />
+              ) : (
+                <p className="text-xs text-[var(--muted)]">
+                  Courts are not called on a clock.
+                </p>
+              )}
             </div>
           </div>
         ) : null}
@@ -367,10 +441,27 @@ export function HostConsole({
                 />
               </div>
               <SkillTierSelect id="skill" value={skill} onChange={setSkill} />
+              {needsGender ? (
+                <div className="space-y-1">
+                  <Label htmlFor="player-gender">Gender</Label>
+                  <select
+                    id="player-gender"
+                    value={gender}
+                    onChange={(event) =>
+                      setGender(event.target.value as PlayerGender | "")
+                    }
+                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                  >
+                    <option value="">Choose</option>
+                    <option value="man">Man</option>
+                    <option value="woman">Woman</option>
+                  </select>
+                </div>
+              ) : null}
               <Button
                 className="w-full"
                 loading={activeBusyKey === "check-in"}
-                disabled={pending}
+                disabled={pending || (needsGender && !gender)}
                 onClick={checkIn}
               >
                 Add player
@@ -676,6 +767,101 @@ function QueueCard({
           <li className="text-sm text-[var(--muted)]">Empty</li>
         ) : null}
       </ul>
+    </div>
+  );
+}
+
+function MatchResult({
+  matchId,
+  scoreTracking,
+  pending,
+  busy,
+  onComplete,
+}: {
+  matchId: string;
+  scoreTracking: EngineState["scoreTracking"];
+  pending: boolean;
+  busy: boolean;
+  onComplete: (result: {
+    winner: "a" | "b";
+    scoreA?: number;
+    scoreB?: number;
+  }) => void;
+}) {
+  const [scoreA, setScoreA] = useState("");
+  const [scoreB, setScoreB] = useState("");
+  const a = Number(scoreA);
+  const b = Number(scoreB);
+  const scoresReady =
+    scoreA.trim() !== "" &&
+    scoreB.trim() !== "" &&
+    Number.isInteger(a) &&
+    Number.isInteger(b) &&
+    a >= 0 &&
+    b >= 0 &&
+    a !== b;
+
+  if (scoreTracking === "scores") {
+    return (
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`score-a-${matchId}`}>Team A</Label>
+            <Input
+              id={`score-a-${matchId}`}
+              inputMode="numeric"
+              value={scoreA}
+              onChange={(event) => setScoreA(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`score-b-${matchId}`}>Team B</Label>
+            <Input
+              id={`score-b-${matchId}`}
+              inputMode="numeric"
+              value={scoreB}
+              onChange={(event) => setScoreB(event.target.value)}
+            />
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="w-full"
+          loading={busy}
+          disabled={pending || !scoresReady}
+          onClick={() =>
+            onComplete({
+              winner: a > b ? "a" : "b",
+              scoreA: a,
+              scoreB: b,
+            })
+          }
+        >
+          Record score
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <Button
+        size="sm"
+        loading={busy}
+        disabled={pending}
+        onClick={() => onComplete({ winner: "a" })}
+      >
+        Team A won
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        loading={busy}
+        disabled={pending}
+        onClick={() => onComplete({ winner: "b" })}
+      >
+        Team B won
+      </Button>
     </div>
   );
 }

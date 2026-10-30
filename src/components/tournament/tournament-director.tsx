@@ -94,12 +94,14 @@ export function TournamentDirector({
   umpireToken,
   initialEvent,
   initialUpdatedAt,
+  openPlayHref,
 }: {
   tournamentId: string;
   publicToken: string;
   umpireToken: string;
   initialEvent: TournamentEvent;
   initialUpdatedAt: string;
+  openPlayHref: string;
 }) {
   const [event, setEvent] = useState(initialEvent);
   const savedRef = useRef(initialEvent);
@@ -344,7 +346,7 @@ export function TournamentDirector({
             </p>
           )}
           <Button variant="outline" asChild>
-            <Link href="/demo">Open play</Link>
+            <Link href={openPlayHref}>Open play</Link>
           </Button>
         </div>
       </header>
@@ -541,12 +543,8 @@ function TournamentPanels({
 
             <TabsContent value="groups" className="space-y-6">
               <StageToolbar
-                state={state}
                 filter={filter}
                 onFilter={setFilter}
-                onCourts={(courtCount) =>
-                  run(() => updateTournamentDetails(state, { courtCount }))
-                }
                 onEdit={() => {
                   if (confirm === "edit") run(() => resetDraw(state));
                   else setConfirm("edit");
@@ -1007,8 +1005,8 @@ function CategoryCourts({
           Courts for {displayDivision(state)}
         </h2>
         <p className="text-sm text-[var(--muted)]">
-          Check the courts this category plays on. Courts 1–3 can stay at one
-          venue and the rest at another.
+          These courts come from Settings. Uncheck any this category should not
+          use.
         </p>
       </div>
       <div
@@ -1121,23 +1119,6 @@ function SetupForm({
           />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="court-count">Courts</Label>
-            <Input
-              id="court-count"
-              type="number"
-              min={1}
-              max={32}
-              value={state.courtCount}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (!Number.isInteger(parsed)) return;
-                run(() =>
-                  updateTournamentDetails(state, { courtCount: parsed }),
-                );
-              }}
-            />
-          </div>
           <NumberSetting
             id="games-per-match"
             label="Games per match"
@@ -1488,19 +1469,15 @@ function NumberSetting({
 }
 
 function StageToolbar({
-  state,
   filter,
   onFilter,
-  onCourts,
   onEdit,
   onStart,
   confirm,
   onCancelConfirm,
 }: {
-  state: TournamentState;
   filter: MatchFilter;
   onFilter: (filter: MatchFilter) => void;
-  onCourts: (count: number) => void;
   onEdit: () => void;
   onStart: () => void;
   confirm: "edit" | "start" | null;
@@ -1526,22 +1503,6 @@ function StageToolbar({
           {label}
         </Button>
       ))}
-      <label className="ml-auto flex items-center gap-2 text-sm text-[var(--muted)]">
-        Courts
-        <Input
-          className="h-8 w-16"
-          type="number"
-          min={1}
-          max={32}
-          value={state.courtCount}
-          aria-label="Courts in use"
-          onChange={(event) => {
-            const parsed = Number.parseInt(event.target.value, 10);
-            if (!Number.isInteger(parsed)) return;
-            onCourts(parsed);
-          }}
-        />
-      </label>
       <Button type="button" size="sm" variant="outline" onClick={onEdit}>
         {confirm === "edit" ? "Discard scores and edit teams" : "Edit teams"}
       </Button>

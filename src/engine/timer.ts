@@ -7,9 +7,10 @@ export function matchElapsedMs(match: EngineMatch, now: number): number | null {
 
 export function matchRemainingMs(
   match: EngineMatch,
-  maxGameMinutes: number,
+  maxGameMinutes: number | null,
   now: number,
 ): number | null {
+  if (maxGameMinutes == null) return null;
   const elapsed = matchElapsedMs(match, now);
   if (elapsed == null) return null;
   return Math.max(0, maxGameMinutes * 60_000 - elapsed);
@@ -17,9 +18,10 @@ export function matchRemainingMs(
 
 export function isMatchOvertime(
   match: EngineMatch,
-  maxGameMinutes: number,
+  maxGameMinutes: number | null,
   now: number,
 ): boolean {
+  if (maxGameMinutes == null) return false;
   const elapsed = matchElapsedMs(match, now);
   if (elapsed == null) return false;
   return elapsed >= maxGameMinutes * 60_000;

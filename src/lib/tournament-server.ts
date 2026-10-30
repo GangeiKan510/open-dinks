@@ -1,3 +1,9 @@
+import {
+  applyVenueCourtCount,
+  type TournamentEvent,
+} from "@/engine/tournament";
+import { loadAccountVenue } from "@/lib/account-venue";
+import { normalizeCourtCount } from "@/lib/court-count";
 import { isSupabaseConfigured } from "@/lib/env";
 import {
   emptyTournamentEvent,
@@ -6,7 +12,6 @@ import {
 } from "@/lib/tournament-document";
 import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { createClient } from "@/lib/supabase/server";
-import type { TournamentEvent } from "@/engine/tournament";
 
 export type DirectorTournament =
   | {
@@ -57,6 +62,62 @@ async function loadUmpireToken(
   return typeof data === "string" ? data : "";
 }
 
+async function settingsCourtCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<number | null> {
+  const venue = await loadAccountVenue(userId, supabase);
+  if (!venue) return null;
+  const { data, error } = await supabase
+    .from("courts")
+    .select("id")
+    .eq("venue_id", venue.id);
+  if (error || !data || data.length < 1) return null;
+  return normalizeCourtCount(data.length);
+}
+
+/** Saved draws follow the facility court count. */
+async function alignTournamentCourts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  row: { id: string; updated_at: string },
+  event: TournamentEvent,
+): Promise<{ event: TournamentEvent; updatedAt: string }> {
+  const count = await settingsCourtCount(supabase, userId);
+  if (count == null) return { event, updatedAt: row.updated_at };
+  const next = applyVenueCourtCount(event, count);
+  if (next === event) return { event, updatedAt: row.updated_at };
+
+  const { data, error } = await supabase
+    .from("tournaments")
+    .update({ document: tournamentEventToJson(next) })
+    .eq("id", row.id)
+    .eq("updated_at", row.updated_at)
+    .select("updated_at")
+    .maybeSingle();
+  if (error) {
+    console.error("[tournament] court sync failed", error.code);
+    return { event: next, updatedAt: row.updated_at };
+  }
+  if (data?.updated_at) return { event: next, updatedAt: data.updated_at };
+
+  const fresh = await supabase
+    .from("tournaments")
+    .select("document, updated_at")
+    .eq("id", row.id)
+    .maybeSingle();
+  const loaded = fresh.data
+    ? tournamentEventFromDocument(fresh.data.document)
+    : null;
+  if (!loaded || !fresh.data?.updated_at) {
+    return { event: next, updatedAt: row.updated_at };
+  }
+  return {
+    event: applyVenueCourtCount(loaded, count),
+    updatedAt: fresh.data.updated_at,
+  };
+}
+
 export async function loadDirectorTournament(): Promise<DirectorTournament> {
   if (!isSupabaseConfigured()) return { status: "unconfigured" };
 
@@ -81,20 +142,35 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
   }
   if (data) {
     const ready = readyFromRow(data);
-    if (ready.status !== "ready") return ready;
+    if (ready.status !== "ready" || !data.updated_at) {
+      return ready.status === "ready" ? { status: "error" } : ready;
+    }
+    const aligned = await alignTournamentCourts(
+      supabase,
+      user.id,
+      { id: data.id, updated_at: data.updated_at },
+      ready.event,
+    );
     const umpireToken = await loadUmpireToken(supabase);
     if (umpireToken === "error") return { status: "error" };
     return {
       ...ready,
+      event: aligned.event,
+      updatedAt: aligned.updatedAt,
       umpireToken: umpireToken === "missing-schema" ? "" : umpireToken,
     };
   }
 
+  const courtCount = await settingsCourtCount(supabase, user.id);
+  const createdEvent =
+    courtCount == null
+      ? emptyTournamentEvent()
+      : applyVenueCourtCount(emptyTournamentEvent(), courtCount);
   const { data: created, error: insertError } = await supabase
     .from("tournaments")
     .insert({
       created_by: user.id,
-      document: tournamentEventToJson(emptyTournamentEvent()),
+      document: tournamentEventToJson(createdEvent),
     })
     .select("id, public_token, document, updated_at")
     .single();

@@ -7,7 +7,22 @@ import {
   formatSeparatedTeamLockMessage,
 } from "./locks";
 import { orderedWaitingPlayers } from "./queue";
-import type { EnginePlayer, EngineState, SessionMode } from "./types";
+import type {
+  EnginePlayer,
+  EngineState,
+  GameFormat,
+  SessionMode,
+} from "./types";
+
+type SideInput = SessionMode | Pick<EngineState, "mode" | "format">;
+
+export function resolveGameFormat(input: SideInput): GameFormat {
+  if (typeof input === "string") {
+    return input === "singles" ? "singles" : "doubles";
+  }
+  if (input.format === "singles" || input.mode === "singles") return "singles";
+  return "doubles";
+}
 
 const PARTNER_WEIGHT = 3;
 const OPPONENT_WEIGHT = 1;
@@ -16,12 +31,12 @@ const AVOID_PENALTY = 1000;
 const LOCK_BREAK_PENALTY = 500;
 const TEAM_LOCK_BREAK_PENALTY = 2000;
 
-export function playersPerSide(mode: SessionMode): number {
-  return mode === "singles" ? 1 : 2;
+export function playersPerSide(input: SideInput): number {
+  return resolveGameFormat(input) === "singles" ? 1 : 2;
 }
 
-export function playersPerCourt(mode: SessionMode): number {
-  return playersPerSide(mode) * 2;
+export function playersPerCourt(input: SideInput): number {
+  return playersPerSide(input) * 2;
 }
 
 export function eligibleWaiting(state: EngineState): EnginePlayer[] {
@@ -51,7 +66,12 @@ function lockOk(group: EnginePlayer[]): boolean {
   return true;
 }
 
-function pairingScore(
+function partnersAreLocked(a: EnginePlayer, b: EnginePlayer): boolean {
+  return a.partnerLockId === b.id && b.partnerLockId === a.id;
+}
+
+/** Avoid lists, team locks, and partner locks. History and skill are separate. */
+function constraintPenalty(
   state: EngineState,
   teamA: EnginePlayer[],
   teamB: EnginePlayer[],
@@ -88,18 +108,36 @@ function pairingScore(
     }
   }
 
-  for (let i = 0; i < teamA.length; i++) {
-    for (let j = i + 1; j < teamA.length; j++) {
-      score +=
-        count(state.partnerHistory, teamA[i].id, teamA[j].id) * PARTNER_WEIGHT;
+  return score;
+}
+
+function partnerRepeatScore(state: EngineState, team: EnginePlayer[]): number {
+  const weight = state.mode === "social_shuffle" ? 10_000 : PARTNER_WEIGHT;
+  let score = 0;
+  for (let i = 0; i < team.length; i++) {
+    for (let j = i + 1; j < team.length; j++) {
+      const repeats = count(state.partnerHistory, team[i].id, team[j].id);
+      if (repeats === 0) continue;
+      if (
+        state.mode === "social_shuffle" &&
+        partnersAreLocked(team[i], team[j])
+      ) {
+        continue;
+      }
+      score += repeats * weight;
     }
   }
-  for (let i = 0; i < teamB.length; i++) {
-    for (let j = i + 1; j < teamB.length; j++) {
-      score +=
-        count(state.partnerHistory, teamB[i].id, teamB[j].id) * PARTNER_WEIGHT;
-    }
-  }
+  return score;
+}
+
+function pairingScore(
+  state: EngineState,
+  teamA: EnginePlayer[],
+  teamB: EnginePlayer[],
+): number {
+  let score = constraintPenalty(state, teamA, teamB);
+  score += partnerRepeatScore(state, teamA);
+  score += partnerRepeatScore(state, teamB);
   for (const a of teamA) {
     for (const b of teamB) {
       score += count(state.opponentHistory, a.id, b.id) * OPPONENT_WEIGHT;
@@ -157,6 +195,150 @@ export interface ProposedMatch {
   score: number;
 }
 
+function splitPickIndex(
+  players: EnginePlayer[],
+  now: number,
+  count: number,
+): number {
+  if (count <= 1) return 0;
+  let hash = now | 0;
+  for (const player of players) {
+    for (let i = 0; i < player.id.length; i++) {
+      hash = (Math.imul(hash, 31) + player.id.charCodeAt(i)) | 0;
+    }
+    hash = (hash + player.gamesPlayed) | 0;
+  }
+  return Math.abs(hash ^ now) % count;
+}
+
+function isMixedSide(team: EnginePlayer[]): boolean {
+  if (team.length !== 2) return false;
+  const genders = team.map((player) => player.gender);
+  return genders.includes("man") && genders.includes("woman");
+}
+
+function coupleHuntScore(
+  state: EngineState,
+  teamA: EnginePlayer[],
+  teamB: EnginePlayer[],
+): number {
+  if (!isMixedSide(teamA) || !isMixedSide(teamB)) return 1_000_000;
+  let score = constraintPenalty(state, teamA, teamB);
+  for (const team of [teamA, teamB]) {
+    const repeats = count(state.partnerHistory, team[0].id, team[1].id);
+    if (repeats > 0 && !partnersAreLocked(team[0], team[1])) {
+      score += 10_000 * repeats;
+    }
+  }
+  return score;
+}
+
+function takeRatedGroup(
+  pool: EnginePlayer[],
+  perCourt: number,
+  state: EngineState,
+): EnginePlayer[] | null {
+  if (pool.length < perCourt) return null;
+  const anchor = skillTierRank(pool[0].skill);
+  for (let window = 0; window <= 4; window++) {
+    const near = pool.filter(
+      (player) => Math.abs(skillTierRank(player.skill) - anchor) <= window,
+    );
+    const group = takeNextCourtPlayers(near, perCourt, state);
+    if (group) return group;
+  }
+  return null;
+}
+
+function takeCourtKingsGroup(
+  pool: EnginePlayer[],
+  perCourt: number,
+  state: EngineState,
+): EnginePlayer[] | null {
+  const winners = pool.filter((player) => player.lastResult === "win");
+  const losers = pool.filter((player) => player.lastResult === "loss");
+  if (winners.length >= perCourt) {
+    return takeNextCourtPlayers(winners, perCourt, state);
+  }
+  if (losers.length >= perCourt) {
+    return takeNextCourtPlayers(losers, perCourt, state);
+  }
+  return takeNextCourtPlayers(pool, perCourt, state);
+}
+
+function takeCoupleGroup(
+  pool: EnginePlayer[],
+  state: EngineState,
+): EnginePlayer[] | null {
+  const gendered = pool.filter(
+    (player) => player.gender === "man" || player.gender === "woman",
+  );
+  const men = gendered.filter((player) => player.gender === "man");
+  const women = gendered.filter((player) => player.gender === "woman");
+  if (men.length < 2 || women.length < 2) return null;
+
+  const seeded = [men[0], men[1], women[0], women[1]];
+  if (seeded.some((player) => player.teamLockGroupId)) {
+    const locked = takeNextCourtPlayers(gendered, 4, state);
+    if (!locked) return null;
+    const manCount = locked.filter((player) => player.gender === "man").length;
+    if (manCount !== 2) return null;
+    return locked;
+  }
+  return seeded;
+}
+
+function selectCourtGroup(
+  pool: EnginePlayer[],
+  perCourt: number,
+  state: EngineState,
+): EnginePlayer[] | null {
+  if (state.mode === "rated") return takeRatedGroup(pool, perCourt, state);
+  if (state.mode === "court_kings") {
+    return takeCourtKingsGroup(pool, perCourt, state);
+  }
+  if (state.mode === "couple_hunt") return takeCoupleGroup(pool, state);
+  return takeNextCourtPlayers(pool, perCourt, state);
+}
+
+function chooseTeams(
+  state: EngineState,
+  group: EnginePlayer[],
+  perSide: number,
+): [EnginePlayer[], EnginePlayer[]] | null {
+  const splits = teamSplits(group, perSide);
+  if (splits.length === 0) return null;
+
+  if (state.mode === "all_random") {
+    let bestPenalty = Number.POSITIVE_INFINITY;
+    const tied: Array<[EnginePlayer[], EnginePlayer[]]> = [];
+    for (const split of splits) {
+      const penalty = constraintPenalty(state, split[0], split[1]);
+      if (penalty < bestPenalty) {
+        bestPenalty = penalty;
+        tied.length = 0;
+      }
+      if (penalty === bestPenalty) tied.push(split);
+    }
+    return tied[splitPickIndex(group, state.now, tied.length)] ?? null;
+  }
+
+  let best: [EnginePlayer[], EnginePlayer[]] | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const [teamA, teamB] of splits) {
+    const score =
+      state.mode === "couple_hunt"
+        ? coupleHuntScore(state, teamA, teamB)
+        : pairingScore(state, teamA, teamB);
+    if (score < bestScore) {
+      bestScore = score;
+      best = [teamA, teamB];
+    }
+  }
+  if (state.mode === "couple_hunt" && bestScore >= 1_000_000) return null;
+  return best;
+}
+
 function filterByCourtSkill(
   waiting: EnginePlayer[],
   court: EngineState["courts"][number],
@@ -188,10 +370,18 @@ export function proposeFillCourts(
     const allowed = new Set(options.courtIds);
     freeCourts = freeCourts.filter((c) => allowed.has(c.id));
   }
-  const perCourt = playersPerCourt(state.mode);
-  const perSide = playersPerSide(state.mode);
+  if (state.mode === "couple_hunt" && playersPerSide(state) === 1) {
+    return [];
+  }
 
-  let waiting = orderedWaitingPlayers(state);
+  const perCourt = playersPerCourt(state);
+  const perSide = playersPerSide(state);
+
+  let waiting = orderedWaitingPlayers(state).filter(
+    (player) =>
+      state.playerGameLimit == null ||
+      player.gamesPlayed < state.playerGameLimit,
+  );
   const proposals: ProposedMatch[] = [];
   const used = new Set<string>();
 
@@ -200,26 +390,19 @@ export function proposeFillCourts(
       (p) => !used.has(p.id),
     );
 
-    const group = takeNextCourtPlayers(pool, perCourt, state);
-    if (!group) continue;
+    const group = selectCourtGroup(pool, perCourt, state);
+    if (!group || !lockOk(group)) continue;
 
-    let best: ProposedMatch | null = null;
-
-    if (!lockOk(group)) continue;
-
-    for (const [teamA, teamB] of teamSplits(group, perSide)) {
-      const score = pairingScore(state, teamA, teamB);
-      const candidate: ProposedMatch = {
-        courtId: court.id,
-        courtName: court.name,
-        teamA: teamA.map((p) => p.id),
-        teamB: teamB.map((p) => p.id),
-        score,
-      };
-      if (!best || candidate.score < best.score) {
-        best = candidate;
-      }
-    }
+    const chosen = chooseTeams(state, group, perSide);
+    const best: ProposedMatch | null = chosen
+      ? {
+          courtId: court.id,
+          courtName: court.name,
+          teamA: chosen[0].map((p) => p.id),
+          teamB: chosen[1].map((p) => p.id),
+          score: pairingScore(state, chosen[0], chosen[1]),
+        }
+      : null;
 
     if (best) {
       proposals.push(best);
@@ -241,7 +424,7 @@ export function getStackPushBlockReason(
     return formatSeparatedTeamLockMessage(state, separated);
   }
 
-  const perCourt = playersPerCourt(state.mode);
+  const perCourt = playersPerCourt(state);
   const waitingCount = state.players.filter(
     (p) => p.status === "waiting",
   ).length;

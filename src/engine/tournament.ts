@@ -1348,6 +1348,37 @@ export function removeCategory(
   return assignEventCourts({ ...event, activeCategoryId, categories });
 }
 
+/**
+ * The facility's saved courts are the only court count. Categories keep a
+ * subset when they already named specific courts, and lose numbers Settings
+ * no longer has.
+ */
+export function applyVenueCourtCount(
+  event: TournamentEvent,
+  courtCount: number,
+): TournamentEvent {
+  const count = normalizeCourtCount(courtCount, event.courtCount);
+  if (
+    event.courtCount === count &&
+    event.categories.every(
+      (category) =>
+        category.courtCount === count &&
+        category.courtNumbers.every((number) => number >= 1 && number <= count),
+    )
+  ) {
+    return event;
+  }
+  return assignEventCourts({
+    ...event,
+    courtCount: count,
+    categories: event.categories.map((category) => ({
+      ...category,
+      courtCount: count,
+      courtNumbers: sanitizeCourtList(category.courtNumbers, count),
+    })),
+  });
+}
+
 /** Writes one category back and reassigns the shared courts. */
 export function commitCategory(
   event: TournamentEvent,
