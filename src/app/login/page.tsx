@@ -10,11 +10,8 @@ import { Label } from "@/components/ui/label";
 import { AUTH_ERROR_MESSAGES, mapAuthError } from "@/lib/auth-errors";
 import { safeAuthNextPath } from "@/lib/auth-redirect";
 import { PRODUCT_NAME } from "@/lib/facility";
-import { applyTheme, clearStoredTheme, parseTheme } from "@/lib/theme";
+import { applyTheme, parseTheme } from "@/lib/theme";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
-
-type Mode = "sign-in" | "sign-up";
 
 async function syncAccountTheme(
   supabase: ReturnType<typeof createClient>,
@@ -37,8 +34,6 @@ function authNextPath(): string {
 export default function LoginPage() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [mode, setMode] = useState<Mode>("sign-in");
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -55,71 +50,26 @@ export default function LoginPage() {
       toast.error(AUTH_ERROR_MESSAGES.PASSWORD_REQUIRED);
       return;
     }
-    if (mode === "sign-up" && password.length < 8) {
-      toast.error(AUTH_ERROR_MESSAGES.PASSWORD_TOO_SHORT);
-      return;
-    }
 
     startTransition(async () => {
       try {
         const supabase = createClient();
-
-        if (mode === "sign-in") {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-          if (error) {
-            toast.error(mapAuthError(error, "SIGN_IN_FAILED"));
-            passwordRef.current?.focus();
-            passwordRef.current?.select();
-            return;
-          }
-          if (data.user) await syncAccountTheme(supabase, data.user.id);
-          router.push(authNextPath());
-          router.refresh();
-          return;
-        }
-
-        const siteUrl =
-          process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-          window.location.origin;
-
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
-          options: {
-            emailRedirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(authNextPath())}`,
-          },
         });
-
         if (error) {
-          console.error("[auth] signUp failed", error);
-          toast.error(mapAuthError(error, "SIGN_UP_FAILED"));
+          toast.error(mapAuthError(error, "SIGN_IN_FAILED"));
           passwordRef.current?.focus();
           passwordRef.current?.select();
           return;
         }
-
-        if (data.session && data.user) {
-          await syncAccountTheme(supabase, data.user.id);
-          router.push(authNextPath());
-          router.refresh();
-          return;
-        }
-
-        clearStoredTheme();
-
-        // Email confirmation enabled in the Supabase project.
-        setNeedsConfirmation(true);
-        toast.success(AUTH_ERROR_MESSAGES.CONFIRM_EMAIL);
+        if (data.user) await syncAccountTheme(supabase, data.user.id);
+        router.push(authNextPath());
+        router.refresh();
       } catch (err) {
         console.error("[auth] unexpected failure", err);
-        toast.error(
-          mode === "sign-in"
-            ? AUTH_ERROR_MESSAGES.SIGN_IN_FAILED
-            : AUTH_ERROR_MESSAGES.SIGN_UP_FAILED,
-        );
+        toast.error(AUTH_ERROR_MESSAGES.SIGN_IN_FAILED);
         passwordRef.current?.focus();
         passwordRef.current?.select();
       }
@@ -134,101 +84,49 @@ export default function LoginPage() {
       >
         {PRODUCT_NAME}
       </Link>
-      <h1 className="mb-2 text-3xl font-semibold">
-        {mode === "sign-in" ? "Host login" : "Create host account"}
-      </h1>
+      <h1 className="mb-2 text-3xl font-semibold">Host login</h1>
       <p className="mb-6 text-[var(--muted)]">
         Email and password for organizers. Players book courts with Google on
         your public booking link — no host account needed.
       </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1">
-        <button
-          type="button"
-          className={cn(
-            "rounded-md px-3 py-2 text-sm font-medium transition",
-            mode === "sign-in"
-              ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted)]",
-          )}
-          onClick={() => {
-            setMode("sign-in");
-            setNeedsConfirmation(false);
-          }}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          className={cn(
-            "rounded-md px-3 py-2 text-sm font-medium transition",
-            mode === "sign-up"
-              ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted)]",
-          )}
-          onClick={() => {
-            setMode("sign-up");
-            setNeedsConfirmation(false);
-          }}
-        >
-          Create account
-        </button>
-      </div>
-
-      {needsConfirmation ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm">
-          {AUTH_ERROR_MESSAGES.CONFIRM_EMAIL}
+      <form
+        className="space-y-4"
+        action={(formData) => {
+          onSubmit(formData);
+        }}
+      >
+        <div className="space-y-1">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="you@club.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
         </div>
-      ) : (
-        <form
-          className="space-y-4"
-          action={(formData) => {
-            onSubmit(formData);
-          }}
-        >
-          <div className="space-y-1">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              placeholder="you@club.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              ref={passwordRef}
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={
-                mode === "sign-in" ? "current-password" : "new-password"
-              }
-              required
-              minLength={mode === "sign-up" ? 8 : undefined}
-              placeholder={
-                mode === "sign-up" ? "At least 8 characters" : "••••••••"
-              }
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
-          <Button className="w-full" loading={pending}>
-            {pending
-              ? mode === "sign-in"
-                ? "Signing in…"
-                : "Creating account…"
-              : mode === "sign-in"
-                ? "Sign in"
-                : "Create account"}
-          </Button>
-        </form>
-      )}
+        <div className="space-y-1">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            ref={passwordRef}
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            placeholder="••••••••"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
+        <Button className="w-full" loading={pending}>
+          {pending ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
 
       <p className="mt-8 text-sm text-[var(--muted)]">
         No Supabase yet?{" "}
