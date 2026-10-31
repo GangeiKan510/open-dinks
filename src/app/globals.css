@@ -204,6 +204,25 @@ body {
   min-height: 100vh;
 }
 
+@keyframes link-pending-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes link-pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.link-pending-icon {
+  opacity: 0;
+  animation:
+    link-pending-spin 1s linear infinite,
+    link-pending-in 0s linear 150ms forwards;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

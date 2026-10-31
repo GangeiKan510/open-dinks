@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/env";
 import { PRODUCT_NAME } from "@/lib/facility";
@@ -54,7 +54,7 @@ export default async function HomePage() {
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Button size="lg" asChild>
-                <Link href={ctaHref}>{ctaLabel}</Link>
+                <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
               </Button>
               <a
                 href="#open-play"
@@ -159,7 +159,9 @@ export default async function HomePage() {
                 one link, with no account.
               </p>
               <Button size="lg" asChild>
-                <Link href={tournamentHref}>Run a tournament</Link>
+                <PendingLink href={tournamentHref}>
+                  Run a tournament
+                </PendingLink>
               </Button>
             </div>
             <Shot
@@ -260,7 +262,7 @@ export default async function HomePage() {
             </p>
           </div>
           <Button size="lg" asChild>
-            <Link href={ctaHref}>{ctaLabel}</Link>
+            <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
           </Button>
         </div>
       </section>

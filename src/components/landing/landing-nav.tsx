@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { PRODUCT_NAME } from "@/lib/facility";
 import {
@@ -93,7 +93,7 @@ export function LandingNav({
             aria-label={PRODUCT_NAME}
           />
           <Button asChild className="md:hidden">
-            <Link href={ctaHref}>{ctaLabel}</Link>
+            <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
           </Button>
         </div>
 
@@ -122,7 +122,7 @@ export function LandingNav({
         </nav>
 
         <Button asChild className="hidden md:inline-flex">
-          <Link href={ctaHref}>{ctaLabel}</Link>
+          <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
         </Button>
       </div>
     </header>
