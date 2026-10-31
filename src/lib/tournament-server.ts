@@ -3,6 +3,7 @@ import {
   type TournamentEvent,
 } from "@/engine/tournament";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { isPublicBooker } from "@/lib/host-access";
 import { normalizeCourtCount } from "@/lib/court-count";
 import { isSupabaseConfigured } from "@/lib/env";
 import {
@@ -23,6 +24,7 @@ export type DirectorTournament =
       updatedAt: string;
     }
   | { status: "signed-out" }
+  | { status: "not-host" }
   | { status: "unconfigured" }
   | { status: "missing-schema" }
   | { status: "error" };
@@ -126,6 +128,10 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed-out" };
+  if (isPublicBooker(user)) {
+    const venue = await loadAccountVenue(user.id, supabase);
+    if (!venue) return { status: "not-host" };
+  }
 
   const { data, error } = await supabase
     .from("tournaments")

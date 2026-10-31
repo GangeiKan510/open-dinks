@@ -19,6 +19,9 @@ export default async function TournamentPage() {
   if (tournament.status === "signed-out") {
     redirect("/login?next=/tournament");
   }
+  if (tournament.status === "not-host") {
+    redirect("/");
+  }
   if (tournament.status === "unconfigured") {
     return <TournamentUnavailable />;
   }

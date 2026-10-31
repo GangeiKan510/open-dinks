@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import {
   bookingsCoveringSlot,
+  dayKeyInTimeZone,
+  dayKeysOverlappingBookings,
   formatSlotRangeLabel,
   type HourlySlotGrid,
   type ScheduleBooking,
   zonedSlotToUtc,
   BOOKING_SLOT_DURATION_MS,
 } from "@/lib/booking-calendar";
+import { formatDateAndTimeRange } from "@/lib/bookings";
 import { useHydrated } from "@/lib/use-hydrated";
 import { formatVenueTimezoneLabel } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
@@ -57,12 +60,34 @@ export function BookingScheduleCalendar({
   onSelectBooking: (bookingId: string | null) => void;
 }) {
   const hydrated = useHydrated();
-  const [selectedDay, setSelectedDay] = useState(grid.days[0]?.key ?? "");
+  const dayKeys = useMemo(() => grid.days.map((day) => day.key), [grid.days]);
+  const pendingBookings = useMemo(
+    () =>
+      bookings
+        .filter((booking) => booking.status === "pending")
+        .sort((a, b) => a.startsAt - b.startsAt),
+    [bookings],
+  );
+  const pendingDayKeys = useMemo(
+    () =>
+      new Set(dayKeysOverlappingBookings(dayKeys, pendingBookings, timeZone)),
+    [dayKeys, pendingBookings, timeZone],
+  );
+  const [selectedDay, setSelectedDay] = useState(
+    () =>
+      dayKeysOverlappingBookings(dayKeys, pendingBookings, timeZone)[0] ??
+      grid.days[0]?.key ??
+      "",
+  );
 
   const bookingsById = useMemo(
     () => new Map(bookings.map((booking) => [booking.id, booking])),
     [bookings],
   );
+  const courtName = useMemo(() => {
+    const byId = new Map(courts.map((court) => [court.id, court.name]));
+    return (courtId: string) => byId.get(courtId) ?? "Court";
+  }, [courts]);
 
   return (
     <section className="space-y-2" aria-label="Booking schedule">
@@ -79,6 +104,47 @@ export function BookingScheduleCalendar({
         </p>
       </div>
 
+      {pendingBookings.length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Pending requests</h3>
+          <ul className="space-y-2">
+            {pendingBookings.map((booking) => {
+              const selected = booking.id === selectedBookingId;
+              return (
+                <li key={booking.id}>
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => {
+                      const dayKey = dayKeyInTimeZone(
+                        booking.startsAt,
+                        timeZone,
+                      );
+                      if (dayKeys.includes(dayKey)) setSelectedDay(dayKey);
+                      onSelectBooking(booking.id);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm",
+                      selected
+                        ? "border-amber-600 bg-amber-100 text-amber-950"
+                        : "border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100",
+                    )}
+                  >
+                    <span className="font-medium">{booking.bookedByName}</span>
+                    <span className="text-xs">
+                      {courtName(booking.courtId)}
+                      {hydrated
+                        ? ` · ${formatDateAndTimeRange(booking.startsAt, booking.endsAt, { timeZone })}`
+                        : ""}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       <div
         className="flex gap-1.5 overflow-x-auto pb-0.5"
         role="tablist"
@@ -86,6 +152,7 @@ export function BookingScheduleCalendar({
       >
         {grid.days.map((day) => {
           const active = day.key === selectedDay;
+          const hasPending = pendingDayKeys.has(day.key);
           return (
             <button
               key={day.key}
@@ -101,10 +168,16 @@ export function BookingScheduleCalendar({
               )}
             >
               {hydrated ? (
-                <>
+                <span className="inline-flex items-center gap-1">
                   <span className="uppercase tracking-wide">{day.weekday}</span>{" "}
                   <span className="font-medium">{day.dateLabel}</span>
-                </>
+                  {hasPending ? (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-amber-500"
+                      aria-label="Has a pending request"
+                    />
+                  ) : null}
+                </span>
               ) : (
                 <span>&nbsp;</span>
               )}
@@ -224,7 +297,9 @@ export function BookingScheduleCalendar({
 
       {selectedBookingId && bookingsById.has(selectedBookingId) ? null : (
         <p className="text-xs text-[var(--muted)]">
-          Select a booking on the calendar to approve, decline, or cancel it.
+          {pendingBookings.length > 0
+            ? "Select a pending request, or a block on the calendar, to approve or decline it."
+            : "Select a booking on the calendar to approve, decline, or cancel it."}
         </p>
       )}
     </section>

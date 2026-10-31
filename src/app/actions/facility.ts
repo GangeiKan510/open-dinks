@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { isPublicBooker } from "@/lib/host-access";
 import { createFacilityForAccount } from "@/lib/facility-server";
 import {
   buildCourtNames,
@@ -43,6 +44,7 @@ export async function createFacilityAction(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: FACILITY_ERROR_MESSAGES.signIn };
+  if (isPublicBooker(user)) return { error: FACILITY_ERROR_MESSAGES.notHost };
 
   const existing = await loadAccountVenue(user.id);
   if (existing) {
@@ -298,7 +300,7 @@ async function findCourtInUse(
     .from("bookings")
     .select("court_id")
     .in("court_id", courtIds)
-    .neq("status", "cancelled")
+    .in("status", ["pending", "confirmed"])
     .gt("ends_at", nowIso)
     .limit(1);
 

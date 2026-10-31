@@ -27,6 +27,7 @@ export const BOOKING_ERROR_MESSAGES = {
   overlap: "That court is already booked for the selected time.",
   notFound: "That booking no longer exists.",
   save: "Could not save the booking. Try again.",
+  load: "Could not load bookings. Refresh the page.",
   migrations:
     "Bookings are not set up yet. Run the latest Supabase migrations, then try again.",
 } as const;

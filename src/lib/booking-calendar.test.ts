@@ -5,6 +5,7 @@ import {
   buildHourlySlotGrid,
   busyRangesFromBookings,
   dayKeyInTimeZone,
+  dayKeysOverlappingBookings,
   parseScheduleBookings,
   formatHourLabel,
   formatSlotRangeLabel,
@@ -62,6 +63,39 @@ describe("parseScheduleBookings", () => {
 
     expect(parsed).toHaveLength(2);
     expect(parsed[0]?.status).toBe("pending");
+  });
+});
+
+describe("dayKeysOverlappingBookings", () => {
+  it("matches the Manila day of a request and skips the other days", () => {
+    const days = upcomingDayKeys(
+      zonedSlotToUtc("2026-10-31", 12, "Asia/Manila"),
+      7,
+      "Asia/Manila",
+    );
+    const startsAt = zonedSlotToUtc("2026-11-03", 2, "Asia/Manila");
+    const matched = dayKeysOverlappingBookings(
+      days,
+      [{ startsAt, endsAt: startsAt + 4 * BOOKING_SLOT_DURATION_MS }],
+      "Asia/Manila",
+    );
+
+    expect(matched).toEqual(["2026-11-03"]);
+  });
+
+  it("includes both local days when a booking crosses midnight", () => {
+    const matched = dayKeysOverlappingBookings(
+      ["2026-11-03", "2026-11-04"],
+      [
+        {
+          startsAt: zonedSlotToUtc("2026-11-03", 23, "Asia/Manila"),
+          endsAt: zonedSlotToUtc("2026-11-04", 2, "Asia/Manila"),
+        },
+      ],
+      "Asia/Manila",
+    );
+
+    expect(matched).toEqual(["2026-11-03", "2026-11-04"]);
   });
 });
 

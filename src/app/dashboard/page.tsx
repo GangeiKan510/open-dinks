@@ -8,12 +8,17 @@ import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import {
   buildHourlySlotGrid,
   busyRangesFromBookings,
   PUBLIC_BOOKING_LOOKAHEAD_DAYS,
 } from "@/lib/booking-calendar";
-import { venueBookingsFrom, venueBookingHistoryFrom } from "@/lib/bookings";
+import {
+  BOOKING_ERROR_MESSAGES,
+  venueBookingsFrom,
+  venueBookingHistoryFrom,
+} from "@/lib/bookings";
 import { buildCoachHourlySlotGrid } from "@/lib/coaching";
 import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { isSupabaseConfigured, siteUrl } from "@/lib/env";
@@ -65,6 +70,32 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const venue = await loadAccountVenue(user.id, supabase);
+  const booker = isPublicBooker(user);
+
+  if (
+    !canOpenHostDashboard({
+      isPublicBooker: booker,
+      hasVenue: Boolean(venue),
+    })
+  ) {
+    return (
+      <main className="mx-auto max-w-lg space-y-4 px-6 py-16">
+        <h1 className="font-[family-name:var(--font-display)] text-4xl">
+          This account is for booking
+        </h1>
+        <p className="text-[var(--muted)]">
+          Google sign-in on a booking page is only for requesting a court or a
+          lesson. The host dashboard uses the club email login.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link href="/">Back home</Link>
+          </Button>
+          <SignOutButton />
+        </div>
+      </main>
+    );
+  }
 
   if (!venue) {
     return (
@@ -94,8 +125,8 @@ export default async function DashboardPage() {
     { data: courts },
     { data: sessions },
     { data: facilityRow },
-    { data: bookings },
-    { data: bookingHistory },
+    bookingsResult,
+    bookingHistoryResult,
     coachesResult,
     coachingBookingsResult,
     coachingHistoryResult,
@@ -122,7 +153,7 @@ export default async function DashboardPage() {
       .from("bookings")
       .select("*")
       .eq("venue_id", venue.id)
-      .neq("status", "cancelled")
+      .in("status", ["pending", "confirmed"])
       .gt("ends_at", bookingsFrom)
       .order("starts_at"),
     supabase
@@ -138,7 +169,7 @@ export default async function DashboardPage() {
       .from("coaching_bookings")
       .select("*")
       .eq("venue_id", venue.id)
-      .neq("status", "cancelled")
+      .in("status", ["pending", "confirmed"])
       .gt("ends_at", bookingsFrom)
       .order("starts_at"),
     supabase
@@ -155,8 +186,22 @@ export default async function DashboardPage() {
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
   const courtRows = courts ?? [];
   const sessionRows = sessions ?? [];
-  const bookingRows = bookings ?? [];
-  const bookingHistoryRows = bookingHistory ?? [];
+  if (bookingsResult.error) {
+    console.error("[dashboard] bookings query failed", bookingsResult.error);
+  }
+  if (bookingHistoryResult.error) {
+    console.error(
+      "[dashboard] booking history query failed",
+      bookingHistoryResult.error,
+    );
+  }
+  const bookingRows = bookingsResult.error ? [] : (bookingsResult.data ?? []);
+  const bookingHistoryRows = bookingHistoryResult.error
+    ? []
+    : (bookingHistoryResult.data ?? []);
+  const bookingsLoadError = bookingsResult.error
+    ? BOOKING_ERROR_MESSAGES.load
+    : null;
 
   const coachingSchemaReady =
     !isMissingSchemaError(coachesResult.error) &&
@@ -353,6 +398,7 @@ export default async function DashboardPage() {
           venueId: venue.id,
           courts: courtRows,
           bookings: bookingRows,
+          bookingsLoadError,
           bookingHistory: bookingHistoryRows,
           grid: bookingGrid,
           timeZone: venue.timezone,

@@ -142,6 +142,10 @@
   mask-mode: alpha;
 }
 
+.brand-mark.brand-mark-nav {
+  height: 2.5rem;
+}
+
 .brand-mark-on-board {
   height: 1.75rem;
   background-color: var(--paper);
@@ -245,6 +249,12 @@ body {
 
 .sponsor-ticker-track {
   animation: sponsor-ticker var(--ticker-duration, 40s) linear infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

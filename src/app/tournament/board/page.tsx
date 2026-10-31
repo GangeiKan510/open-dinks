@@ -10,6 +10,9 @@ export const metadata: Metadata = {
 
 export default async function TournamentBoardPage() {
   const tournament = await loadDirectorTournament();
+  if (tournament.status === "not-host") {
+    redirect("/");
+  }
   if (tournament.status === "ready") {
     redirect(`/tournament/board/${tournament.publicToken}`);
   }

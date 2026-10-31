@@ -1,5 +1,7 @@
 export const FACILITY_ERROR_MESSAGES = {
   signIn: "Sign in to manage your facility.",
+  notHost:
+    "A booking sign-in can't create a facility. Hosts use the email login.",
   name: "Facility name is required.",
   noFacility: "Set up your facility first.",
   profile:

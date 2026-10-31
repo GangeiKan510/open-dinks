@@ -108,6 +108,7 @@ export type BookingsManagerProps = {
   venueId: string;
   courts: CourtRow[];
   bookings: BookingRow[];
+  bookingsLoadError?: string | null;
   bookingHistory?: BookingRow[];
   grid: HourlySlotGrid;
   timeZone: string;
@@ -123,6 +124,7 @@ export function BookingsManager({
   venueId,
   courts,
   bookings,
+  bookingsLoadError = null,
   bookingHistory = [],
   grid,
   timeZone,
@@ -554,6 +556,11 @@ export function BookingsManager({
       </TabsContent>
 
       <TabsContent value="schedule" className="space-y-4">
+        {bookingsLoadError ? (
+          <p role="alert" className="text-sm text-red-700">
+            {bookingsLoadError}
+          </p>
+        ) : null}
         <BookingScheduleCalendar
           grid={grid}
           courts={courts}

@@ -532,3 +532,29 @@ export function bookingsCoveringSlot(
       rangesOverlap(slotStartsAt, slotEndsAt, booking.startsAt, booking.endsAt),
   );
 }
+
+/**
+ * Day keys whose local midnight-to-midnight window overlaps a booking.
+ * The last key runs 24 hours when no following key is available.
+ */
+export function dayKeysOverlappingBookings(
+  dayKeys: string[],
+  bookings: Array<{ startsAt: number; endsAt: number }>,
+  timeZone: string,
+): string[] {
+  const matched: string[] = [];
+  for (let index = 0; index < dayKeys.length; index++) {
+    const dayKey = dayKeys[index];
+    if (!dayKey) continue;
+    const start = zonedSlotToUtc(dayKey, 0, timeZone);
+    const nextKey = dayKeys[index + 1];
+    const end = nextKey
+      ? zonedSlotToUtc(nextKey, 0, timeZone)
+      : start + 24 * 60 * 60 * 1000;
+    const overlaps = bookings.some((booking) =>
+      rangesOverlap(start, end, booking.startsAt, booking.endsAt),
+    );
+    if (overlaps) matched.push(dayKey);
+  }
+  return matched;
+}

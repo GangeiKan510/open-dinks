@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { LiveSessionApp } from "@/components/session/live-session-app";
+import { loadAccountVenue } from "@/lib/account-venue";
 import { siteUrl } from "@/lib/env";
 import { loadSessionBundle } from "@/lib/session-bundle";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,9 @@ export default async function HostSessionPage({
 
   const bundle = await loadSessionBundle(token);
   if (!bundle) notFound();
+
+  const venue = await loadAccountVenue(user.id, supabase);
+  if (!venue || venue.id !== bundle.session.venue_id) redirect("/");
 
   const base = siteUrl();
   return (
