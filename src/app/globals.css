@@ -157,7 +157,18 @@
   }
 }
 
-.page-canvas {
+/*
+ * Paint the wash on the document, not the viewport. A gradient on `body`
+ * alone is promoted to the canvas and sized to the screen, then repeats,
+ * so long pages show a hard seam at the bottom of the first screen.
+ */
+html {
+  min-height: 100%;
+  background-color: var(--page-bottom);
+}
+
+.page-canvas,
+body {
   background-color: var(--page-bottom);
   background-image:
     radial-gradient(
@@ -188,19 +199,6 @@
 }
 
 body {
-  background:
-    radial-gradient(
-      1200px 600px at 10% -10%,
-      var(--hero-glow),
-      transparent 55%
-    ),
-    radial-gradient(900px 500px at 90% 0%, var(--wash), transparent 50%),
-    linear-gradient(
-      180deg,
-      var(--page-top) 0%,
-      var(--background) 40%,
-      var(--page-bottom) 100%
-    );
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
   min-height: 100vh;
