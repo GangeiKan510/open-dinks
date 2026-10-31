@@ -92,7 +92,7 @@ export function LandingNav({
             role="img"
             aria-label={PRODUCT_NAME}
           />
-          <Button asChild className="md:hidden">
+          <Button asChild className="rounded-full md:hidden">
             <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
           </Button>
         </div>
@@ -111,8 +111,8 @@ export function LandingNav({
                 className={cn(
                   "shrink-0 border-b-2 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
                   current
-                    ? "border-[var(--accent)] text-[var(--ink)]"
-                    : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
+                    ? "border-[var(--highlight)] text-[var(--foreground)]"
+                    : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]",
                 )}
               >
                 {section.label}
@@ -121,7 +121,7 @@ export function LandingNav({
           })}
         </nav>
 
-        <Button asChild className="hidden md:inline-flex">
+        <Button asChild className="hidden rounded-full md:inline-flex">
           <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
         </Button>
       </div>

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { Reveal } from "@/components/landing/reveal";
 import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -11,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 const photoFrame =
-  "h-auto w-full rounded-[1.25rem] object-cover shadow-[0_24px_50px_-32px_rgba(20,33,15,0.5)]";
+  "h-auto w-full rounded-[1.25rem] object-cover shadow-[0_30px_70px_-36px_rgba(0,0,0,0.75)]";
 
 export default async function HomePage() {
   let signedIn = false;
@@ -38,70 +39,99 @@ export default async function HomePage() {
     <main className="page-canvas motion-safe:scroll-smooth">
       <LandingNav ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
-      <section className="mx-auto max-w-6xl px-6 pb-16 pt-10 md:pt-16">
-        <div className="grid items-center gap-10 md:grid-cols-[1.05fr_0.95fr]">
-          <div className="animate-rise space-y-6">
-            <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
-              For pickleball clubs
-            </p>
-            <h1 className="max-w-xl text-5xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-6xl">
-              One board for open play, tournaments, and court hours.
+      <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
+        <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="animate-rise space-y-7">
+            <Pill>For pickleball clubs</Pill>
+            <h1 className="max-w-xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
+              One board for <span className="gradient-phrase">open play</span>,{" "}
+              <span className="gradient-phrase">tournaments</span>, and{" "}
+              <span className="gradient-phrase">court hours</span>.
             </h1>
-            <p className="max-w-xl text-lg text-[var(--muted)]">
+            <p className="max-w-xl text-lg leading-relaxed text-[var(--muted)]">
               Players use a phone. The gym watches the TV. You send the next
               group, keep the draw moving, and confirm a booking before a court
               is held.
             </p>
-            <div className="flex flex-wrap items-center gap-4">
-              <Button size="lg" asChild>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="lg" className="rounded-full" asChild>
                 <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
               </Button>
-              <a
-                href="#open-play"
-                className="text-sm font-medium text-[var(--accent)] underline underline-offset-4"
+              <Button
+                size="lg"
+                variant="outline"
+                className="rounded-full"
+                asChild
               >
-                See how a session runs
-              </a>
+                <a href="#open-play">See how a session runs</a>
+              </Button>
             </div>
           </div>
-          <Shot
-            src="/assets/open-play-wallboard.jpg"
-            alt="Players on the sideline watching the open play board on a gym TV, with courts and the queue behind them."
-            width={2528}
-            height={1684}
-            priority
-            brief="Gym TV during open play: courts in use, who is on them, and the queue, with players waiting on the sideline."
-          />
+          <div className="animate-rise-delay">
+            <HeroCollage />
+          </div>
         </div>
+      </section>
 
-        <div className="mt-14 grid gap-4 md:grid-cols-3">
+      <section className="mx-auto max-w-6xl px-6 py-16" aria-label="The board">
+        <div className="flex flex-wrap gap-x-10 gap-y-3 text-sm font-medium tracking-wide text-[var(--muted)]">
           {products.map((product) => (
             <a
               key={product.href}
               href={product.href}
-              className="rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface)]/80 p-5 transition hover:border-[var(--accent)]"
+              className="transition hover:text-[var(--foreground)]"
             >
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">
-                {product.kicker}
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--ink)]">
-                {product.title}
-              </h2>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                {product.body}
-              </p>
+              {product.kicker}
             </a>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pb-8">
+        <Reveal>
+          <h2 className="text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
+            Selected work
+          </h2>
+        </Reveal>
+        <div className="mt-8 grid gap-5 md:grid-cols-2">
+          {selectedWork.map((work, index) => (
+            <Reveal key={work.src} delay={index * 90}>
+              <a
+                href={work.href}
+                className="group block overflow-hidden rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)] motion-safe:transition motion-safe:duration-500 motion-safe:hover:-translate-y-1"
+              >
+                <div className="relative aspect-[16/10]">
+                  <Image
+                    src={work.src}
+                    alt={work.alt}
+                    fill
+                    sizes="(min-width: 768px) 36rem, 100vw"
+                    className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 md:p-6">
+                    <p className="text-xs font-medium tracking-wide text-white/70">
+                      {work.kicker}
+                    </p>
+                    <h3 className="text-2xl font-semibold text-white">
+                      {work.title}
+                    </h3>
+                    <p className="max-w-md text-sm leading-relaxed text-white/75">
+                      {work.body}
+                    </p>
+                  </div>
+                </div>
+              </a>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section id="open-play" className="border-t border-[var(--border)] py-20">
         <div className="mx-auto max-w-6xl px-6">
-          <div className="max-w-2xl space-y-4">
-            <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
-              Open Play OS
-            </p>
-            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-5xl">
+          <Reveal className="max-w-2xl space-y-4">
+            <Pill>Open Play OS</Pill>
+            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
               Saturday open play, without the whiteboard.
             </h2>
             <p className="text-lg text-[var(--muted)]">
@@ -109,25 +139,24 @@ export default async function HomePage() {
               their place in the queue. You send the next group. The same list
               is on every phone and on the gym TV.
             </p>
-          </div>
+          </Reveal>
 
           <div className="mt-10 grid gap-5 md:grid-cols-2">
             {openPlaySteps.map((step, index) => (
-              <article
-                key={step.title}
-                className="flex flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)]/75 p-5 md:p-6"
-              >
-                <div>
-                  <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
-                    0{index + 1}
-                  </p>
-                  <h3 className="mt-2 font-[family-name:var(--font-display)] text-3xl">
-                    {step.title}
-                  </h3>
-                  <p className="mt-3 text-[var(--muted)]">{step.body}</p>
-                </div>
-                <div className="mt-auto">{step.media}</div>
-              </article>
+              <Reveal key={step.title} delay={(index % 2) * 90}>
+                <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
+                  <div>
+                    <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                      0{index + 1}
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
+                      {step.title}
+                    </h3>
+                    <p className="mt-3 text-[var(--muted)]">{step.body}</p>
+                  </div>
+                  <div className="mt-auto">{step.media}</div>
+                </article>
+              </Reveal>
             ))}
           </div>
 
@@ -145,11 +174,9 @@ export default async function HomePage() {
       >
         <div className="mx-auto max-w-6xl px-6">
           <div className="grid items-center gap-10 md:grid-cols-[1.05fr_0.95fr]">
-            <div className="max-w-xl space-y-5">
-              <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
-                Tournament Mode
-              </p>
-              <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-5xl">
+            <Reveal className="max-w-xl space-y-5">
+              <Pill>Tournament Mode</Pill>
+              <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
                 Several categories. The courts you actually have.
               </h2>
               <p className="text-lg text-[var(--muted)]">
@@ -158,38 +185,39 @@ export default async function HomePage() {
                 points only for the court they claimed. Everyone else follows
                 one link, with no account.
               </p>
-              <Button size="lg" asChild>
+              <Button size="lg" className="rounded-full" asChild>
                 <PendingLink href={tournamentHref}>
                   Run a tournament
                 </PendingLink>
               </Button>
-            </div>
-            <Shot
-              src="/assets/tournament-gym-board.jpg"
-              alt="A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV."
-              width={2752}
-              height={1536}
-              brief="A player in the gym, phone in hand, with the same tournament board on the wall TV: live courts and the bracket."
-            />
+            </Reveal>
+            <Reveal delay={120}>
+              <Shot
+                src="/assets/tournament-gym-board.jpg"
+                alt="A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV."
+                width={2752}
+                height={1536}
+                brief="A player in the gym, phone in hand, with the same tournament board on the wall TV: live courts and the bracket."
+              />
+            </Reveal>
           </div>
 
           <div className="mt-12 grid gap-5 md:grid-cols-2">
             {tournamentBlocks.map((block, index) => (
-              <article
-                key={block.title}
-                className="flex flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)]/75 p-5 md:p-6"
-              >
-                <div>
-                  <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
-                    0{index + 1}
-                  </p>
-                  <h3 className="mt-2 font-[family-name:var(--font-display)] text-3xl">
-                    {block.title}
-                  </h3>
-                  <p className="mt-3 text-[var(--muted)]">{block.body}</p>
-                </div>
-                <div className="mt-auto">{block.media}</div>
-              </article>
+              <Reveal key={block.title} delay={(index % 2) * 90}>
+                <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
+                  <div>
+                    <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                      0{index + 1}
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
+                      {block.title}
+                    </h3>
+                    <p className="mt-3 text-[var(--muted)]">{block.body}</p>
+                  </div>
+                  <div className="mt-auto">{block.media}</div>
+                </article>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -200,11 +228,9 @@ export default async function HomePage() {
         className="border-t border-[var(--border)] py-20"
       >
         <div className="mx-auto max-w-6xl px-6">
-          <div className="max-w-xl space-y-4">
-            <p className="text-sm uppercase tracking-[0.28em] text-[var(--accent)]">
-              Court rentals and coaching
-            </p>
-            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--ink)] md:text-5xl">
+          <Reveal className="max-w-xl space-y-4">
+            <Pill>Court rentals and coaching</Pill>
+            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
               Court hours and lessons, off the group chat.
             </h2>
             <p className="text-lg text-[var(--muted)]">
@@ -214,62 +240,144 @@ export default async function HomePage() {
               with Google and sends a request. Nothing is held until you accept
               it.
             </p>
-          </div>
+          </Reveal>
           <div className="mt-10 grid items-start gap-6 md:grid-cols-[minmax(0,2752fr)_minmax(0,2400fr)]">
-            <Shot
-              src="/assets/05-booking-phone.jpeg"
-              alt="A player in the gym holding a phone on the public court rental page, with Court 1 hours selected and a Google sign-in for John Doe."
-              width={2752}
-              height={1536}
-              brief="The public booking page, in the gym: consecutive open hours on one court, then Google sign-in before the request is sent."
-            />
-            <Shot
-              src="/assets/06-host-approve.jpeg"
-              alt="A monitor at the club desk showing John Doe's Tuesday court request selected, with Approve and Decline ready."
-              width={2400}
-              height={1792}
-              brief="The host schedule in the gym: pending requests in amber. Approve holds the court. Decline sends it back."
-            />
+            <Reveal>
+              <Shot
+                src="/assets/05-booking-phone.jpeg"
+                alt="A player in the gym holding a phone on the public court rental page, with Court 1 hours selected and a Google sign-in for John Doe."
+                width={2752}
+                height={1536}
+                brief="The public booking page, in the gym: consecutive open hours on one court, then Google sign-in before the request is sent."
+              />
+            </Reveal>
+            <Reveal delay={120}>
+              <Shot
+                src="/assets/06-host-approve.jpeg"
+                alt="A monitor at the club desk showing John Doe's Tuesday court request selected, with Approve and Decline ready."
+                width={2400}
+                height={1792}
+                brief="The host schedule in the gym: pending requests in amber. Approve holds the court. Decline sends it back."
+              />
+            </Reveal>
           </div>
 
           <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {rentalFacts.map((fact) => (
-              <article
-                key={fact.title}
-                className="rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface)]/75 p-5"
-              >
-                <h3 className="font-[family-name:var(--font-display)] text-2xl">
-                  {fact.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                  {fact.body}
-                </p>
-              </article>
+            {rentalFacts.map((fact, index) => (
+              <Reveal key={fact.title} delay={index * 80}>
+                <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
+                  <h3 className="text-xl font-semibold text-[var(--foreground)]">
+                    {fact.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                    {fact.body}
+                  </p>
+                </article>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       <section className="border-t border-[var(--border)]">
-        <div className="mx-auto flex max-w-6xl flex-col items-start gap-5 px-6 py-16 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-xl space-y-2">
-            <h2 className="text-3xl font-semibold tracking-tight text-[var(--ink)]">
-              Put the board up before the doors open.
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-20 lg:grid-cols-[0.9fr_1.1fr]">
+          <Reveal className="max-w-xl space-y-5">
+            <Pill>One board</Pill>
+            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
+              The gym runs from the same screen.
             </h2>
-            <p className="text-[var(--muted)]">
-              Hosts sign in. Players join a session from a QR, or request a
-              court from your public link.
+            <p className="text-lg text-[var(--muted)]">
+              Queue, draw, and court hours stay together. Players follow a link.
+              You confirm what the TV is allowed to show.
             </p>
+            <Button size="lg" className="rounded-full" asChild>
+              <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
+            </Button>
+          </Reveal>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {capabilities.map((item, index) => (
+              <Reveal key={item.title} delay={index * 80}>
+                <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
+                  <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                    {item.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                    {item.body}
+                  </p>
+                </article>
+              </Reveal>
+            ))}
           </div>
-          <Button size="lg" asChild>
-            <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
-          </Button>
         </div>
       </section>
 
-      <footer className="mx-auto flex max-w-6xl items-center justify-between border-t border-[var(--border)] px-6 py-8 text-sm text-[var(--muted)]">
-        <span>{PRODUCT_NAME}</span>
-        <span>Open play, tournaments, and bookings</span>
+      <section className="px-6 py-24 text-center">
+        <Reveal className="mx-auto max-w-3xl space-y-6">
+          <Pill>Before the doors open</Pill>
+          <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-6xl">
+            Put the <span className="gradient-phrase">board up</span> before the
+            first game.
+          </h2>
+          <p className="mx-auto max-w-xl text-lg text-[var(--muted)]">
+            Hosts sign in. Players join a session from a QR, or request a court
+            from your public link.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button size="lg" className="rounded-full" asChild>
+              <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="rounded-full"
+              asChild
+            >
+              <PendingLink href={tournamentHref}>Run a tournament</PendingLink>
+            </Button>
+          </div>
+        </Reveal>
+      </section>
+
+      <footer className="border-t border-[var(--border)]">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-12 sm:grid-cols-2 md:grid-cols-4">
+          <div className="space-y-3 sm:col-span-2">
+            <div
+              className="brand-mark brand-mark-nav"
+              role="img"
+              aria-label={PRODUCT_NAME}
+            />
+            <p className="max-w-xs text-sm leading-relaxed text-[var(--muted)]">
+              Open play, tournaments, and court hours on one board.
+            </p>
+          </div>
+          <div className="space-y-2 text-sm">
+            <p className="font-medium text-[var(--foreground)]">On the floor</p>
+            {products.map((product) => (
+              <a
+                key={product.href}
+                href={product.href}
+                className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                {product.kicker}
+              </a>
+            ))}
+          </div>
+          <div className="space-y-2 text-sm">
+            <p className="font-medium text-[var(--foreground)]">Hosts</p>
+            <PendingLink
+              href={ctaHref}
+              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              {ctaLabel}
+            </PendingLink>
+            <PendingLink
+              href="/demo"
+              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Local demo
+            </PendingLink>
+          </div>
+        </div>
       </footer>
     </main>
   );
@@ -295,6 +403,107 @@ const products = [
     body: "Players ask for hours or a coach. You accept before the court is held.",
   },
 ];
+
+const selectedWork = [
+  {
+    href: "#open-play",
+    kicker: "Open Play OS",
+    title: "A fair queue, on the TV",
+    body: "Courts in use, who is on them, and the queue, with players waiting on the sideline.",
+    src: "/assets/open-play-wallboard.jpg",
+    alt: "Players on the sideline watching the open play board on a gym TV, with courts and the queue behind them.",
+  },
+  {
+    href: "#tournament",
+    kicker: "Tournament Mode",
+    title: "A draw that fits the gym",
+    body: "The same tournament board on a phone and on the gym TV: live courts and the bracket.",
+    src: "/assets/tournament-gym-board.jpg",
+    alt: "A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV.",
+  },
+  {
+    href: "#court-rentals",
+    kicker: "Court rentals",
+    title: "Hours picked in the gym",
+    body: "Consecutive open hours on one court, then Google sign-in before the request is sent.",
+    src: "/assets/05-booking-phone.jpeg",
+    alt: "A player in the gym holding a phone on the public court rental page, with Court 1 hours selected and a Google sign-in for John Doe.",
+  },
+  {
+    href: "#court-rentals",
+    kicker: "Coaching",
+    title: "Requests you confirm",
+    body: "Pending requests stay amber until you approve. Nothing is held before that.",
+    src: "/assets/06-host-approve.jpeg",
+    alt: "A monitor at the club desk showing John Doe's Tuesday court request selected, with Approve and Decline ready.",
+  },
+];
+
+const capabilities = [
+  {
+    title: "A fair queue",
+    body: "The next group comes from the fewest games and the longest wait, without repeat partners.",
+  },
+  {
+    title: "The gym TV",
+    body: "Courts, the countdown, and the queue stay on the wall. Phones show the same list.",
+  },
+  {
+    title: "Requests you confirm",
+    body: "A court hour or a lesson stays pending until you accept it. Decline sends it back.",
+  },
+  {
+    title: "A score from the court",
+    body: "An umpire claims one court and enters only that match. The public link follows along.",
+  },
+];
+
+function Pill({ children }: { children: ReactNode }) {
+  return (
+    <p className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-xs font-medium text-[var(--muted)]">
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-[var(--highlight)]"
+        aria-hidden
+      />
+      {children}
+    </p>
+  );
+}
+
+function HeroCollage() {
+  return (
+    <div className="relative mx-auto mt-4 w-full max-w-xl pb-10 lg:mt-0 lg:max-w-none">
+      <div
+        aria-hidden
+        className="glow-pulse pointer-events-none absolute -inset-8 rounded-full bg-[radial-gradient(circle,var(--wash-strong),transparent_68%)] blur-2xl"
+      />
+      <div className="relative">
+        <Image
+          src="/assets/open-play-wallboard.jpg"
+          alt="Players on the sideline watching the open play board on a gym TV, with courts and the queue behind them."
+          width={2528}
+          height={1684}
+          priority
+          className="h-auto w-full rounded-[1.75rem] object-cover shadow-[0_40px_80px_-40px_rgba(0,0,0,0.85)] ring-1 ring-white/10"
+        />
+        <Image
+          src="/assets/05-booking-phone.jpeg"
+          alt="A player in the gym holding a phone on the public court rental page, with Court 1 hours selected."
+          width={2752}
+          height={1536}
+          className="float-slow absolute -bottom-6 left-4 w-[48%] rounded-2xl object-cover shadow-[0_24px_50px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/15"
+        />
+        <Image
+          src="/assets/tournament-gym-board.jpg"
+          alt="The tournament board on the gym TV, with live courts and the bracket."
+          width={2752}
+          height={1536}
+          className="float-late absolute -top-5 right-0 w-[42%] rounded-2xl object-cover shadow-[0_24px_50px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/15"
+        />
+      </div>
+    </div>
+  );
+}
 
 const openPlaySteps = [
   {

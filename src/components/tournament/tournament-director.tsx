@@ -843,7 +843,7 @@ function SponsorLogos({
                     {logos.length}
                   </span>
                 </h3>
-                <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-white">
+                <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                   {logos.map((sponsor) => (
                     <li
                       key={sponsor.id}
