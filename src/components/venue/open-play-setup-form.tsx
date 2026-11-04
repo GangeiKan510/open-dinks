@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Radio } from "lucide-react";
 import { createSessionAction } from "@/app/actions/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,7 +108,7 @@ export function OpenPlaySetupForm({
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium">How matches are made</p>
+        <p className="text-sm font-medium">How the next group is picked</p>
         <div className="grid grid-cols-2 gap-2">
           {OPEN_PLAY_MODES.map((option) => (
             <ModeOption
@@ -297,7 +297,10 @@ export function OpenPlaySetupForm({
         </p>
       </div>
 
-      <Button type="submit">Go live</Button>
+      <Button type="submit" size="lg">
+        <Radio className="h-4 w-4 shrink-0" aria-hidden />
+        Go live
+      </Button>
     </form>
   );
 }

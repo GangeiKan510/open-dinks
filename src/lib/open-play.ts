@@ -10,60 +10,60 @@ export type OpenPlayMode = {
 export const OPEN_PLAY_MODES: OpenPlayMode[] = [
   {
     mode: "rotating",
-    label: "Balanced",
+    label: "Fair Mix",
     description:
-      "Skill-aware matchmaking for mixed groups. Builds balanced, competitive matchups with even sides.",
+      "Skill-aware pairing for mixed groups. Even sides, competitive games, fair wait times.",
   },
   {
     mode: "all_random",
-    label: "All Random",
-    description: "Random matchups. Chaos in a good way.",
+    label: "Chaos Draw",
+    description: "Pure random matchups. No skill math, just the next names.",
   },
   {
     mode: "rated",
-    label: "Rated Match",
-    description: "Groups similarly-skilled players within a rating window.",
+    label: "Rating Band",
+    description: "Keeps games inside a rating window so sides stay close.",
   },
   {
     mode: "court_kings",
-    label: "Court Kings",
+    label: "Winner Path",
     description: "Winners of the last match face winners; losers face losers.",
   },
   {
     mode: "skill_separated",
-    label: "Skill Exclusive Courts",
+    label: "Skill Lanes",
     description:
-      "Give each court its own skill range; players are only placed on courts that fit their level.",
+      "Each court gets its own skill range. Players only land on a lane that fits their level.",
   },
   {
     mode: "king_of_court",
-    label: "Last Man Standing",
+    label: "Court Hold",
     description:
-      "Winners hold the court and keep playing until they lose; challengers come up from the queue.",
+      "Winners keep the court until they lose. Challengers come up from the queue.",
   },
   {
     mode: "social_shuffle",
-    label: "Social Shuffle",
+    label: "Fresh Partners",
     description:
-      "Never the same partner twice: every game teams you with someone new for the whole session. Booked pairs stay together.",
+      "Never the same partner twice for the whole session. Booked pairs stay together.",
   },
   {
     mode: "couple_hunt",
-    label: "Couple Hunt",
+    label: "Mixed Only",
     description:
-      "Mixed doubles with a twist: every team is one man and one woman, and no couple repeats for the whole session. Doubles only; players pick a gender at check-in.",
+      "Every team is one man and one woman, and no pair repeats for the whole session. Doubles only; players pick a gender at check-in.",
   },
 ];
 
 const MODE_LABELS: Record<SessionMode, string> = {
-  rotating: "Balanced",
-  all_random: "All Random",
-  rated: "Rated Match",
-  court_kings: "Court Kings",
-  skill_separated: "Skill Exclusive Courts",
-  king_of_court: "Last Man Standing",
-  social_shuffle: "Social Shuffle",
-  couple_hunt: "Couple Hunt",
+  rotating: "Fair Mix",
+  all_random: "Chaos Draw",
+  rated: "Rating Band",
+  court_kings: "Winner Path",
+  skill_separated: "Skill Lanes",
+  king_of_court: "Court Hold",
+  social_shuffle: "Fresh Partners",
+  couple_hunt: "Mixed Only",
   singles: "Singles",
 };
 

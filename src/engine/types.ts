@@ -62,9 +62,9 @@ export interface EnginePlayer {
   consecutiveWins?: number;
   /** Host-defined position in the waiting stack (lower = closer to the front). */
   queueOrder?: number;
-  /** Couple Hunt only. Missing gender stays in the queue until the host sets it. */
+  /** Mixed Only only. Missing gender stays in the queue until the host sets it. */
   gender?: PlayerGender | null;
-  /** Court Kings uses the previous match result to keep winners with winners. */
+  /** Winner Path uses the previous match result to keep winners with winners. */
   lastResult?: LastResult | null;
 }
 

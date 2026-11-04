@@ -67,7 +67,7 @@ describe("parseOpenPlayForm", () => {
     expect(parseOpenPlayForm(form).matching).toBe("auto");
   });
 
-  it("does not start Couple Hunt as singles", () => {
+  it("does not start Mixed Only as singles", () => {
     const form = new FormData();
     form.set("format", "singles");
     form.set("mode", "couple_hunt");

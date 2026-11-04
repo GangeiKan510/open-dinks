@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Radio } from "lucide-react";
+import { Radio, Trophy } from "lucide-react";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
 import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
 import { SignOutButton } from "@/components/venue/sign-out-button";
@@ -27,16 +27,46 @@ import { ensureSingleLiveSession } from "@/lib/live-session";
 import { defaultOpenPlayTitle } from "@/lib/open-play";
 import { createClient } from "@/lib/supabase/server";
 import { resolveTheme, THEME_COOKIE } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 
-const CARD = "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5";
+const CARD =
+  "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--highlight)_16%,transparent)]";
 
-function Stat({ label, value }: { label: string; value: string }) {
+const PANEL =
+  "rounded-xl border border-[var(--border)] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--accent-soft)_55%,var(--surface)),var(--surface))] p-5";
+
+function Stat({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "accent" | "attention";
+}) {
   return (
-    <div className={`${CARD} py-4`}>
+    <div
+      className={cn(
+        "rounded-xl border p-5 py-4",
+        tone === "attention"
+          ? "border-amber-400/40 bg-amber-400/10"
+          : tone === "accent"
+            ? "border-[var(--highlight)]/35 bg-[var(--accent-soft)]"
+            : "border-[var(--border)] bg-[var(--surface)] shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--highlight)_16%,transparent)]",
+      )}
+    >
       <dt className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
         {label}
       </dt>
-      <dd className="mt-1 text-2xl font-semibold tabular-nums">{value}</dd>
+      <dd
+        className={cn(
+          "mt-1 text-2xl font-semibold tabular-nums",
+          tone === "attention" && "text-amber-300",
+          tone === "accent" && "text-[var(--highlight)]",
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -301,7 +331,7 @@ export default async function DashboardPage() {
     <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--highlight)]">
             {formatBrandTitle(facility)}
           </p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">
@@ -310,7 +340,10 @@ export default async function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
-            <Link href="/tournament">Tournament</Link>
+            <Link href="/tournament">
+              <Trophy className="h-4 w-4 shrink-0" aria-hidden />
+              Tournament mode
+            </Link>
           </Button>
           <SignOutButton />
         </div>
@@ -319,24 +352,32 @@ export default async function DashboardPage() {
       {liveSession ? (
         <Link
           href={`/s/${liveSession.public_token}/host`}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3"
         >
           <span className="flex items-center gap-2 text-sm font-medium">
-            <Radio className="h-4 w-4 shrink-0 animate-pulse" aria-hidden />
+            <Radio
+              className="h-4 w-4 shrink-0 animate-pulse text-[var(--highlight)]"
+              aria-hidden
+            />
             Live now · {liveSession.title}
           </span>
-          <span className="text-sm text-[var(--accent)] underline">
+          <span className="text-sm font-medium text-[var(--highlight)] underline">
             Open host console
           </span>
         </Link>
       ) : null}
 
       <dl className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Courts" value={String(courtRows.length)} />
-        <Stat label="Pending requests" value={String(pendingRequests.length)} />
+        <Stat label="Courts" value={String(courtRows.length)} tone="accent" />
+        <Stat
+          label="Pending requests"
+          value={String(pendingRequests.length)}
+          tone={pendingRequests.length > 0 ? "attention" : "default"}
+        />
         <Stat
           label="Upcoming bookings"
           value={String(upcomingBookings.length)}
+          tone={upcomingBookings.length > 0 ? "accent" : "default"}
         />
       </dl>
 
@@ -345,7 +386,10 @@ export default async function DashboardPage() {
         openPlay={
           <>
             {liveSession ? (
-              <section className={CARD}>
+              <section className={PANEL}>
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--highlight)]">
+                  Live
+                </p>
                 <h2 className="mb-1 font-semibold">Session in progress</h2>
                 <p className="mb-4 text-sm text-[var(--muted)]">
                   You can run one session at a time. End{" "}
@@ -361,7 +405,10 @@ export default async function DashboardPage() {
                 </Button>
               </section>
             ) : (
-              <section className={CARD}>
+              <section className={PANEL}>
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--highlight)]">
+                  Open play
+                </p>
                 <h2 className="mb-1 font-semibold">Start open play</h2>
                 <p className="mb-4 text-sm text-[var(--muted)]">
                   Going live opens a wallboard and a player check-in link for
@@ -375,15 +422,19 @@ export default async function DashboardPage() {
             )}
 
             <section className="space-y-3">
-              <h2 className="font-semibold">Past sessions</h2>
+              <h2 className="font-semibold text-[var(--foreground)]">
+                Past sessions
+              </h2>
               {sessionRows.map((s) => (
                 <Link
                   key={s.id}
                   href={`/s/${s.public_token}/host`}
-                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm transition-colors hover:border-[var(--accent)]"
+                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm transition-colors hover:border-[var(--highlight)]/50 hover:bg-[var(--accent-soft)]"
                 >
                   <span>{s.title}</span>
-                  <span className="text-[var(--muted)]">Completed</span>
+                  <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-xs text-[var(--muted)]">
+                    Completed
+                  </span>
                 </Link>
               ))}
               {sessionRows.length === 0 ? (

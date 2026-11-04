@@ -14,10 +14,10 @@ export const THEME_OPTIONS: ReadonlyArray<{
   swatch: string;
 }> = [
   { id: "court", label: "Court", swatch: "#8b7cff" },
-  { id: "blue", label: "Blue", swatch: "#7aa2ff" },
-  { id: "green", label: "Green", swatch: "#7dce8a" },
-  { id: "red", label: "Red", swatch: "#e07a7a" },
-  { id: "mono", label: "Mono", swatch: "#d4d4d4" },
+  { id: "blue", label: "Blue", swatch: "#4f7dff" },
+  { id: "green", label: "Green", swatch: "#2f9e5b" },
+  { id: "red", label: "Red", swatch: "#e25555" },
+  { id: "mono", label: "Mono", swatch: "#f4f4f4" },
 ];
 
 const THEME_ID_SET: ReadonlySet<string> = new Set(THEME_IDS);

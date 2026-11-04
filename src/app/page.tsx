@@ -161,9 +161,9 @@ export default async function HomePage() {
           </div>
 
           <p className="mt-8 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
-            Before anyone joins, you pick the session: Balanced, All Random,
-            Rated Match, Court Kings, Skill Exclusive Courts, Last Man Standing,
-            Social Shuffle, or Couple Hunt. Doubles or singles.
+            Before anyone joins, you pick the session: Fair Mix, Chaos Draw,
+            Rating Band, Winner Path, Skill Lanes, Court Hold, Fresh Partners,
+            or Mixed Only. Doubles or singles.
           </p>
         </div>
       </section>
@@ -508,7 +508,7 @@ function HeroCollage() {
 const openPlaySteps = [
   {
     title: "Players check themselves in",
-    body: "The QR opens the session. A name and a skill are enough. They see their spot in the queue, and whether they are on a court. Couple Hunt also asks for a gender, because every team is mixed and no couple repeats.",
+    body: "The QR opens the session. A name and a skill are enough. They see their spot in the queue, and whether they are on a court. Mixed Only also asks for a gender, because every team is mixed and no pair repeats.",
     media: (
       <Shot
         src="/assets/01-player-checkin.jpeg"

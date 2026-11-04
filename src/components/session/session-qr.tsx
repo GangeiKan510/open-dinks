@@ -14,13 +14,12 @@ export function SessionQr({
 
   useEffect(() => {
     let cancelled = false;
-    const foreground = getComputedStyle(document.documentElement)
-      .getPropertyValue("--foreground")
-      .trim();
+    // Keep modules black on a white card. Theme foreground is light on dark
+    // themes and makes the code unreadable to phones.
     QRCode.toDataURL(url, {
       margin: 1,
       width: 220,
-      color: { dark: foreground || "#24341c", light: "#00000000" },
+      color: { dark: "#111111", light: "#00000000" },
     }).then((value) => {
       if (!cancelled) setDataUrl(value);
     });
