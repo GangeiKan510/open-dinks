@@ -46,6 +46,19 @@ Open [http://localhost:3000/demo](http://localhost:3000/demo):
 7. Optional: Auth → Providers → Email → disable “Confirm email” for faster local host sign-up
 8. `yarn dev` → `/login` → create a **host** account with email + password → create a venue → start open play. Public bookers on `/book/{slug}` sign in with Google before requesting a court or coaching session.
 
+## Git workflow
+
+| Branch    | Role                                            |
+| --------- | ----------------------------------------------- |
+| `develop` | **Default.** Staging. Open feature PRs here.    |
+| `main`    | Production. Only via release PR from `develop`. |
+
+1. Branch from `develop` → open PR into `develop`
+2. Verify on the staging deploy (Vercel Preview for `develop`)
+3. When ready to ship, open a release PR: `develop` → `main`
+
+Supabase migrations still apply only on push to `main` (production DB).
+
 ## Scripts
 
 ```bash
