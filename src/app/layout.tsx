@@ -3,6 +3,7 @@ import { Bebas_Neue, Outfit } from "next/font/google";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import { Toaster } from "sonner";
+import { siteUrl } from "@/lib/env";
 import { formatDocumentTitle, PRODUCT_NAME } from "@/lib/facility";
 import { resolveTheme, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
@@ -25,14 +26,40 @@ const body = Outfit({
   weight: ["400", "500", "600", "700"],
 });
 
+const SITE_DESCRIPTION =
+  "Cloud-first open play for pickleball: fair rotations, live queues, QR check-in, and TV wallboards.";
+
+const OG_IMAGE = {
+  url: "/picklrz-og-image.png",
+  width: 1200,
+  height: 630,
+  alt: "Picklrz — tournaments, matchmaking, and court hours for pickleball facilities",
+} as const;
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
   title: {
     default: formatDocumentTitle(),
     template: `%s · ${PRODUCT_NAME}`,
   },
-  description:
-    "Cloud-first open play for pickleball: fair rotations, live queues, QR check-in, and TV wallboards.",
+  description: SITE_DESCRIPTION,
+  applicationName: PRODUCT_NAME,
   manifest: "/site.webmanifest",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "/",
+    siteName: PRODUCT_NAME,
+    title: formatDocumentTitle(),
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: formatDocumentTitle(),
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
 };
 
 export default async function RootLayout({
