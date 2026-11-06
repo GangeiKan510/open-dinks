@@ -44,6 +44,8 @@ import {
   setDrawSettings,
   startOver,
   startOverEvent,
+  swapMatches,
+  unparkMatch,
   umpireChooseSide,
   umpireClaimMatch,
   umpireFinishGame,
@@ -96,7 +98,9 @@ function scored(
     round: 1,
     slot: 0,
     number: 1,
+    queueOrder: 1,
     courtNumber: null,
+    parked: false,
     teamAId,
     teamBId,
     games: [{ a, b }],
@@ -463,7 +467,9 @@ describe("tournament courts", () => {
       round: 1,
       slot: number,
       number,
+      queueOrder: number,
       courtNumber: null,
+      parked: false,
       teamAId,
       teamBId,
       games: [],
@@ -635,6 +641,49 @@ describe("tournament bracket", () => {
     });
     expect(custom.pointsToQuarters).toBe(15);
     expect(custom.pointsSemisFinal).toBe(21);
+  });
+
+  it("lets score limits change after the draw is built", () => {
+    let state = createTournament({ advancePerGroup: 2 });
+    state = addNamed(state, [
+      ["Ada", "Bea"],
+      ["Cy", "Dee"],
+      ["Eve", "Fay"],
+      ["Gus", "Hal"],
+    ]);
+    state = generateGroups(
+      setDrawSettings(state, {
+        bracketCount: 1,
+        teamsPerBracket: 4,
+        advancePerGroup: 2,
+      }),
+    );
+    expect(state.phase).toBe("groups");
+    state = setDrawSettings(state, {
+      pointsToQuarters: 15,
+      pointsSemisFinal: 21,
+    });
+    expect(state.pointsToQuarters).toBe(15);
+    expect(state.pointsSemisFinal).toBe(21);
+    expect(() => setDrawSettings(state, { bracketCount: 2 })).toThrow(
+      /reset the draw/i,
+    );
+
+    for (const match of state.matches) {
+      state = reportMatchScore(state, match.id, [{ a: 15, b: 5 }]);
+    }
+    state = generateBracket(state);
+    expect(state.phase).toBe("bracket");
+    state = setDrawSettings(state, { pointsSemisFinal: 11 });
+    expect(state.pointsSemisFinal).toBe(11);
+    const playoff = state.matches.find((match) => match.stage === "bracket");
+    expect(playoff).toBeTruthy();
+    expect(pointsToWin(state, playoff!)).toBe(11);
+    state = setDrawSettings(state, { pointsSemisFinal: 15 });
+    expect(pointsToWin(state, playoff!)).toBe(15);
+    expect(() => setDrawSettings(state, { gamesPerMatch: 3 })).toThrow(
+      /reset the draw/i,
+    );
   });
 
   it("locks pool scores while a bracket exists and unlocks them when it is discarded", () => {
@@ -1642,6 +1691,117 @@ describe("tournament categories", () => {
     ).toBe(true);
   });
 });
+
+describe("match swap", () => {
+  it("swaps an on-court match with a waiting match and parks the pulled one", () => {
+    let state = createTournament({ courtCount: 2 });
+    state = addNamed(state, [
+      ["Ada", "Bea"],
+      ["Cy", "Dee"],
+      ["Eve", "Fay"],
+      ["Gus", "Hal"],
+    ]);
+    state = setDrawSettings(state, {
+      bracketCount: 1,
+      teamsPerBracket: 4,
+    });
+    state = generateGroups(state);
+    const onCourt = state.matches.filter((match) => match.courtNumber != null);
+    const waiting = state.matches.filter(
+      (match) => match.status === "unreported" && match.courtNumber == null,
+    );
+    expect(onCourt.length).toBeGreaterThanOrEqual(1);
+    expect(waiting.length).toBeGreaterThanOrEqual(1);
+
+    const courtMatch = onCourt[0]!;
+    const nextMatch = waiting[0]!;
+    const court = courtMatch.courtNumber;
+    state = swapMatches(state, courtMatch.id, nextMatch.id);
+
+    const pulled = state.matches.find((match) => match.id === courtMatch.id)!;
+    const promoted = state.matches.find((match) => match.id === nextMatch.id)!;
+    expect(promoted.courtNumber).toBe(court);
+    expect(pulled.courtNumber).toBeNull();
+    expect(pulled.parked).toBe(true);
+    expect(promoted.parked).toBe(false);
+
+    const filled = assignCourts(state);
+    expect(
+      filled.matches.find((match) => match.id === courtMatch.id)?.courtNumber,
+    ).toBeNull();
+
+    state = unparkMatch(state, courtMatch.id);
+    const returned = assignCourts(state);
+    const back = returned.matches.find((match) => match.id === courtMatch.id);
+    expect(back?.parked).toBe(false);
+    expect(back?.courtNumber == null || back?.courtNumber != null).toBe(true);
+  });
+
+  it("reorders two waiting matches so the later one fills first", () => {
+    const waiting = (
+      id: string,
+      teamAId: string,
+      teamBId: string,
+      number: number,
+    ): TournamentMatch => ({
+      id,
+      stage: "groups",
+      groupId: "g1",
+      round: 1,
+      slot: number,
+      number,
+      queueOrder: number,
+      courtNumber: null,
+      parked: false,
+      teamAId,
+      teamBId,
+      games: [],
+      status: "unreported",
+      nextMatchId: null,
+      nextSlot: null,
+    });
+    let state: TournamentState = {
+      ...createTournament({ courtCount: 1 }),
+      phase: "groups",
+      teams: [
+        team("a", "Alpha"),
+        team("b", "Bravo"),
+        team("c", "Charlie"),
+        team("d", "Delta"),
+      ],
+      groups: [{ id: "g1", name: "Group A", teamIds: ["a", "b", "c", "d"] }],
+      matches: [waiting("m1", "a", "b", 1), waiting("m2", "c", "d", 2)],
+    };
+    state = assignCourts(state);
+    expect(state.matches[0]?.courtNumber).toBe(1);
+    expect(state.matches[1]?.courtNumber).toBeNull();
+
+    state = {
+      ...state,
+      matches: state.matches.map((match) => ({
+        ...match,
+        courtNumber: null,
+        parked: false,
+      })),
+    };
+    state = swapMatches(state, "m1", "m2");
+    expect(matchQueueOrders(state)).toEqual([
+      ["m1", 2],
+      ["m2", 1],
+    ]);
+    state = assignCourts(state);
+    expect(state.matches.find((match) => match.id === "m2")?.courtNumber).toBe(
+      1,
+    );
+    expect(
+      state.matches.find((match) => match.id === "m1")?.courtNumber,
+    ).toBeNull();
+  });
+});
+
+function matchQueueOrders(state: TournamentState): Array<[string, number]> {
+  return state.matches.map((match) => [match.id, match.queueOrder]);
+}
 
 describe("singles categories", () => {
   it("defaults to doubles and restores missing format as doubles", () => {

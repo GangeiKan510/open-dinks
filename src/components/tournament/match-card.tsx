@@ -20,17 +20,30 @@ export function MatchCard({
   groupName,
   onReport,
   onClear,
+  swapSelectedId = null,
+  onSwapSelect,
+  onUnpark,
 }: {
   state: TournamentState;
   match: TournamentMatch;
   groupName?: string | null;
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
+  swapSelectedId?: string | null;
+  onSwapSelect?: (matchId: string) => void;
+  onUnpark?: (matchId: string) => void;
 }) {
   const label = groupName
     ? `M${match.number} – ${groupName}`
     : `M${match.number}`;
   const winnerId = matchWinnerId(match);
+  const canSwap =
+    match.status === "unreported" &&
+    Boolean(match.teamAId) &&
+    Boolean(match.teamBId) &&
+    onSwapSelect != null;
+  const selected = swapSelectedId === match.id;
+  const picking = swapSelectedId != null && !selected;
 
   if (match.status === "bye") {
     const advancer = teamName(state, match.teamAId ?? match.teamBId);
@@ -48,7 +61,14 @@ export function MatchCard({
   const waiting = !match.teamAId || !match.teamBId;
 
   return (
-    <article className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+    <article
+      className={cn(
+        "rounded-xl border bg-[var(--surface)] p-4",
+        selected
+          ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/40"
+          : "border-[var(--border)]",
+      )}
+    >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{label}</h3>
         <CourtBadge match={match} />
@@ -92,6 +112,31 @@ export function MatchCard({
           />
         </>
       )}
+      {canSwap || (match.parked && onUnpark) ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {canSwap ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={selected || picking ? "default" : "outline"}
+              aria-pressed={selected}
+              onClick={() => onSwapSelect(match.id)}
+            >
+              {selected ? "Cancel swap" : picking ? "Swap with this" : "Swap"}
+            </Button>
+          ) : null}
+          {match.parked && onUnpark ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => onUnpark(match.id)}
+            >
+              Return to queue
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -108,6 +153,13 @@ function CourtBadge({ match }: { match: TournamentMatch }) {
     return (
       <span className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
         Reported
+      </span>
+    );
+  }
+  if (match.parked) {
+    return (
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+        Parked
       </span>
     );
   }
