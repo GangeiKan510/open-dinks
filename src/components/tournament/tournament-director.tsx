@@ -49,6 +49,8 @@ import {
   setCategoryFormat,
   setDrawSettings,
   stageProgress,
+  swapMatches,
+  unparkMatch,
   wildcardTeamIds,
   startOverEvent,
   undoUnscoredDraw,
@@ -476,6 +478,26 @@ function TournamentPanels({
   undoOpen: boolean;
   setUndoOpen: (open: boolean) => void;
 }) {
+  const [swapSelectedId, setSwapSelectedId] = useState<string | null>(null);
+
+  function handleSwapSelect(matchId: string) {
+    if (swapSelectedId == null) {
+      setSwapSelectedId(matchId);
+      return;
+    }
+    if (swapSelectedId === matchId) {
+      setSwapSelectedId(null);
+      return;
+    }
+    const swapped = run(() => swapMatches(state, swapSelectedId, matchId));
+    setSwapSelectedId(null);
+    if (!swapped) return;
+  }
+
+  function handleUnpark(matchId: string) {
+    run(() => unparkMatch(state, matchId));
+  }
+
   return (
     <>
       <CategoryBar
@@ -483,6 +505,7 @@ function TournamentPanels({
         confirmRemove={confirmRemove}
         onSelect={(categoryId) => {
           setPicked(null);
+          setSwapSelectedId(null);
           runEvent(() => selectCategory(event, categoryId));
         }}
         onAdd={(name) => runEvent(() => addCategory(event, name))}
@@ -546,21 +569,46 @@ function TournamentPanels({
             </TabsList>
 
             <TabsContent value="groups" className="space-y-6">
-              <StageToolbar
-                filter={filter}
-                onFilter={setFilter}
-                onEdit={() => {
-                  if (confirm === "edit") run(() => resetDraw(state));
-                  else setConfirm("edit");
-                }}
-                onStart={() => {
-                  if (confirm === "start")
-                    runEvent(() => startOverEvent(event));
-                  else setConfirm("start");
-                }}
-                confirm={confirm}
-                onCancelConfirm={() => setConfirm(null)}
-              />
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <StageToolbar
+                  filter={filter}
+                  onFilter={setFilter}
+                  onEdit={() => {
+                    if (confirm === "edit") run(() => resetDraw(state));
+                    else setConfirm("edit");
+                  }}
+                  onStart={() => {
+                    if (confirm === "start")
+                      runEvent(() => startOverEvent(event));
+                    else setConfirm("start");
+                  }}
+                  confirm={confirm}
+                  onCancelConfirm={() => setConfirm(null)}
+                />
+                <div className="w-44 shrink-0">
+                  <NumberSetting
+                    id="live-points-to-quarters"
+                    label="Play to (groups & quarters)"
+                    min={1}
+                    max={99}
+                    value={state.pointsToQuarters}
+                    onChange={(pointsToQuarters) =>
+                      run(() => setDrawSettings(state, { pointsToQuarters }))
+                    }
+                  />
+                </div>
+              </div>
+              {swapSelectedId ? (
+                <p className="text-sm text-[var(--muted)]">
+                  Tap Swap with this on another match to interchange courts or
+                  queue order. Tap Cancel swap to abort.
+                </p>
+              ) : (
+                <p className="text-sm text-[var(--muted)]">
+                  Use Swap when a player would get consecutive games — pull a
+                  match off court or reorder who is up next.
+                </p>
+              )}
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
                 <MatchColumn
                   state={state}
@@ -568,6 +616,9 @@ function TournamentPanels({
                   filter={filter}
                   onReport={report}
                   onClear={clear}
+                  swapSelectedId={swapSelectedId}
+                  onSwapSelect={handleSwapSelect}
+                  onUnpark={handleUnpark}
                 />
                 <StandingsColumn
                   state={state}
@@ -579,14 +630,34 @@ function TournamentPanels({
             </TabsContent>
 
             <TabsContent value="bracket" className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-[var(--muted)]">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <p className="max-w-2xl text-sm text-[var(--muted)]">
                   Winners move forward. Third place can be played as soon as the
                   semifinals are done. Changing a score pulls that team back out
-                  of the next round.
+                  of the next round. Use Swap to interchange courts or queue
+                  order.
                 </p>
+                <div className="w-40 shrink-0">
+                  <NumberSetting
+                    id="live-points-semis-final"
+                    label="Play to (semis & final)"
+                    min={1}
+                    max={99}
+                    value={state.pointsSemisFinal}
+                    onChange={(pointsSemisFinal) =>
+                      run(() => setDrawSettings(state, { pointsSemisFinal }))
+                    }
+                  />
+                </div>
               </div>
-              <BracketBoard state={state} onReport={report} onClear={clear} />
+              <BracketBoard
+                state={state}
+                onReport={report}
+                onClear={clear}
+                swapSelectedId={swapSelectedId}
+                onSwapSelect={handleSwapSelect}
+                onUnpark={handleUnpark}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -1173,7 +1244,7 @@ function SetupForm({
           />
           <NumberSetting
             id="points-to-quarters"
-            label="Points to quarters"
+            label="Play to (groups & quarters)"
             min={1}
             max={99}
             value={state.pointsToQuarters}
@@ -1183,7 +1254,7 @@ function SetupForm({
           />
           <NumberSetting
             id="points-semis-final"
-            label="Semis and final"
+            label="Play to (semis & final)"
             min={1}
             max={99}
             value={state.pointsSemisFinal}
@@ -1579,12 +1650,18 @@ function MatchColumn({
   filter,
   onReport,
   onClear,
+  swapSelectedId,
+  onSwapSelect,
+  onUnpark,
 }: {
   state: TournamentState;
   stage: "groups" | "bracket";
   filter: MatchFilter;
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
+  swapSelectedId: string | null;
+  onSwapSelect: (matchId: string) => void;
+  onUnpark: (matchId: string) => void;
 }) {
   const matches = state.matches.filter((match) => {
     if (match.stage !== stage || match.status === "bye") return false;
@@ -1613,6 +1690,9 @@ function MatchColumn({
             }
             onReport={onReport}
             onClear={onClear}
+            swapSelectedId={swapSelectedId}
+            onSwapSelect={onSwapSelect}
+            onUnpark={onUnpark}
           />
         ))
       )}
@@ -1667,10 +1747,16 @@ function BracketBoard({
   state,
   onReport,
   onClear,
+  swapSelectedId,
+  onSwapSelect,
+  onUnpark,
 }: {
   state: TournamentState;
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
+  swapSelectedId: string | null;
+  onSwapSelect: (matchId: string) => void;
+  onUnpark: (matchId: string) => void;
 }) {
   const columns = bracketColumns(state);
 
@@ -1688,6 +1774,9 @@ function BracketBoard({
                   match={match}
                   onReport={onReport}
                   onClear={onClear}
+                  swapSelectedId={swapSelectedId}
+                  onSwapSelect={onSwapSelect}
+                  onUnpark={onUnpark}
                 />
               ))}
             </div>

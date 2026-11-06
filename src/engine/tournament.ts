@@ -57,7 +57,17 @@ export interface TournamentMatch {
   slot: number;
   /** Stable label within the stage, shown as M1, M2, … */
   number: number;
+  /**
+   * Court-fill order among waiting matches. Defaults to `number`.
+   * Directors can swap this to change who plays next.
+   */
+  queueOrder: number;
   courtNumber: number | null;
+  /**
+   * When true, court assignment skips this match until the director
+   * returns it to the queue or swaps it onto a court.
+   */
+  parked: boolean;
   teamAId: string | null;
   teamBId: string | null;
   games: GameScore[];
@@ -345,7 +355,13 @@ export function setDrawSettings(
   state: TournamentState,
   settings: DrawSettings,
 ): TournamentState {
-  if (state.phase !== "setup") {
+  const changingFormat =
+    settings.gamesPerMatch !== undefined ||
+    settings.bracketCount !== undefined ||
+    settings.teamsPerBracket !== undefined ||
+    settings.advancePerGroup !== undefined ||
+    settings.knockoutFill !== undefined;
+  if (state.phase !== "setup" && changingFormat) {
     throw new TournamentError("Reset the draw before changing the format.");
   }
   const teamsPerBracket =
@@ -453,11 +469,7 @@ export function normalizeTournamentState(
       bracketIndex: keptBracketIndex(team.bracketIndex, bracketCount),
       club: sanitizeClub(team.club),
     })),
-    matches: state.matches.map((match) => ({
-      ...match,
-      live: sanitizeLive(match.live),
-      claim: sanitizeClaim(match.claim),
-    })),
+    matches: state.matches.map((match) => sanitizeMatchFields(match)),
   };
   if (normalized.phase !== "bracket") return normalized;
   return syncBracket(normalized);
@@ -777,8 +789,10 @@ export function generateGroups(state: TournamentState): TournamentState {
           groupId: group.id,
           round: round + 1,
           slot,
-          number: number++,
+          number,
+          queueOrder: number,
           courtNumber: null,
+          parked: false,
           teamAId: pair[0],
           teamBId: pair[1],
           games: [],
@@ -786,6 +800,7 @@ export function generateGroups(state: TournamentState): TournamentState {
           nextMatchId: null,
           nextSlot: null,
         });
+        number += 1;
       });
     }
   }
@@ -826,6 +841,7 @@ export function reportMatchScore(
           games: clean,
           status: "reported" as const,
           courtNumber: null,
+          parked: false,
           live: null,
           claim: null,
         }
@@ -854,6 +870,7 @@ export function clearMatchScore(
           games: [],
           status: "unreported" as const,
           courtNumber: null,
+          parked: false,
           live: null,
           claim: null,
         }
@@ -1204,8 +1221,10 @@ export function generateBracket(state: TournamentState): TournamentState {
         groupId: null,
         round,
         slot,
-        number: number++,
+        number,
+        queueOrder: number,
         courtNumber: null,
+        parked: false,
         teamAId: null,
         teamBId: null,
         games: [],
@@ -1216,6 +1235,7 @@ export function generateBracket(state: TournamentState): TournamentState {
             : `bracket-r${round + 1}-s${Math.floor(slot / 2)}`,
         nextSlot: round === rounds ? null : slot % 2 === 0 ? "a" : "b",
       });
+      number += 1;
     }
   }
 
@@ -1674,6 +1694,7 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
         match.stage === stage &&
         match.status === "unreported" &&
         match.courtNumber == null &&
+        !match.parked &&
         match.teamAId &&
         match.teamBId
       ) {
@@ -1681,14 +1702,10 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
       }
     }
   }
-  waiting.sort(
-    (a, b) =>
-      a.match.round - b.match.round ||
-      a.match.number - b.match.number ||
-      a.category.id.localeCompare(b.category.id),
-  );
+  waiting.sort(compareWaitingSlots);
 
   for (const slot of waiting) {
+    if (slot.match.parked) continue;
     if (!slot.match.teamAId || !slot.match.teamBId) continue;
     const teamA = `${slot.category.id}:${slot.match.teamAId}`;
     const teamB = `${slot.category.id}:${slot.match.teamBId}`;
@@ -1744,17 +1761,13 @@ export function upcomingMatches(
       }
     }
   }
-  waiting.sort(
-    (a, b) =>
-      a.match.round - b.match.round ||
-      a.match.number - b.match.number ||
-      a.category.id.localeCompare(b.category.id),
-  );
+  waiting.sort(compareWaitingSlots);
 
   const next: Array<{ category: TournamentState; match: TournamentMatch }> = [];
   const limit = Math.max(event.courtCount, 1);
   for (const slot of waiting) {
     if (next.length >= limit) break;
+    if (slot.match.parked) continue;
     if (!slot.match.teamAId || !slot.match.teamBId) continue;
     const teamA = `${slot.category.id}:${slot.match.teamAId}`;
     const teamB = `${slot.category.id}:${slot.match.teamBId}`;
@@ -1764,6 +1777,76 @@ export function upcomingMatches(
     busy.add(teamB);
   }
   return next;
+}
+
+/**
+ * Swaps court assignment and queue order between two unreported matches.
+ * Pulling a match off court parks it so court fill does not immediately
+ * put it back on.
+ */
+export function swapMatches(
+  state: TournamentState,
+  matchIdA: string,
+  matchIdB: string,
+): TournamentState {
+  if (matchIdA === matchIdB) {
+    throw new TournamentError("Pick two different matches to swap.");
+  }
+  if (state.phase === "setup") {
+    throw new TournamentError("Build the draw before swapping matches.");
+  }
+  const active = state.phase === "bracket" ? "bracket" : "groups";
+  const first = findMatch(state, matchIdA);
+  const second = findMatch(state, matchIdB);
+  assertSwappableMatch(first, active);
+  assertSwappableMatch(second, active);
+
+  const courtA = first.courtNumber;
+  const courtB = second.courtNumber;
+  const orderA = matchQueueRank(first);
+  const orderB = matchQueueRank(second);
+
+  const matches = state.matches.map((match) => {
+    if (match.id === matchIdA) {
+      return {
+        ...match,
+        courtNumber: courtB,
+        queueOrder: orderB,
+        parked: courtB == null && courtA != null,
+      };
+    }
+    if (match.id === matchIdB) {
+      return {
+        ...match,
+        courtNumber: courtA,
+        queueOrder: orderA,
+        parked: courtA == null && courtB != null,
+      };
+    }
+    return match;
+  });
+
+  return { ...state, matches };
+}
+
+/** Puts a parked match back in line for the next free court. */
+export function unparkMatch(
+  state: TournamentState,
+  matchId: string,
+): TournamentState {
+  const match = findMatch(state, matchId);
+  if (!match.parked) return state;
+  if (match.status !== "unreported") {
+    throw new TournamentError(
+      "Only unreported matches can return to the queue.",
+    );
+  }
+  return {
+    ...state,
+    matches: state.matches.map((item) =>
+      item.id === matchId ? { ...item, parked: false } : item,
+    ),
+  };
 }
 
 /** Keeps the event name and settings, clears teams and the draw. */
@@ -1822,10 +1905,11 @@ export function assignCourts(state: TournamentState): TournamentState {
         match.stage === active &&
         match.status === "unreported" &&
         match.courtNumber == null &&
+        !match.parked &&
         match.teamAId &&
         match.teamBId,
     )
-    .sort((a, b) => a.round - b.round || a.number - b.number);
+    .sort(compareWaitingMatches);
 
   for (const match of waiting) {
     if (!match.teamAId || !match.teamBId) continue;
@@ -2313,7 +2397,9 @@ function attachThirdPlace(matches: TournamentMatch[]): TournamentMatch[] {
     round: lastRound,
     slot: 1,
     number,
+    queueOrder: number,
     courtNumber: null,
+    parked: false,
     teamAId: null,
     teamBId: null,
     games: [],
@@ -2396,7 +2482,9 @@ function assertGames(
     round: 1,
     slot: 0,
     number: 1,
+    queueOrder: 1,
     courtNumber: null,
+    parked: false,
     teamAId,
     teamBId,
     games: clean,
@@ -2498,6 +2586,60 @@ function findMatch(state: TournamentState, matchId: string): TournamentMatch {
   const match = state.matches.find((item) => item.id === matchId);
   if (!match) throw new TournamentError("That match is not on the draw.");
   return match;
+}
+
+function matchQueueRank(match: TournamentMatch): number {
+  return typeof match.queueOrder === "number" ? match.queueOrder : match.number;
+}
+
+function compareWaitingMatches(a: TournamentMatch, b: TournamentMatch): number {
+  return (
+    matchQueueRank(a) - matchQueueRank(b) ||
+    a.round - b.round ||
+    a.number - b.number
+  );
+}
+
+function compareWaitingSlots(
+  a: { category: TournamentState; match: TournamentMatch },
+  b: { category: TournamentState; match: TournamentMatch },
+): number {
+  return (
+    compareWaitingMatches(a.match, b.match) ||
+    a.category.id.localeCompare(b.category.id)
+  );
+}
+
+function assertSwappableMatch(
+  match: TournamentMatch,
+  active: "groups" | "bracket",
+) {
+  if (match.stage !== active) {
+    throw new TournamentError("Only matches in the live stage can be swapped.");
+  }
+  if (match.status !== "unreported") {
+    throw new TournamentError("Only unreported matches can be swapped.");
+  }
+  if (!match.teamAId || !match.teamBId) {
+    throw new TournamentError("Both sides have to be set before swapping.");
+  }
+}
+
+function sanitizeMatchFields(match: TournamentMatch): TournamentMatch {
+  const number =
+    typeof match.number === "number" && Number.isFinite(match.number)
+      ? match.number
+      : 0;
+  return {
+    ...match,
+    queueOrder:
+      typeof match.queueOrder === "number" && Number.isFinite(match.queueOrder)
+        ? match.queueOrder
+        : number,
+    parked: match.parked === true,
+    live: sanitizeLive(match.live),
+    claim: sanitizeClaim(match.claim),
+  };
 }
 
 function assertSetup(state: TournamentState) {
