@@ -653,11 +653,12 @@ function UmpireMatch({
   onFinish: () => void;
 }) {
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const singles = category.format === "singles";
   const live = match.live;
   const scoreA = live?.scoreA ?? 0;
   const scoreB = live?.scoreB ?? 0;
   const serving = live?.serving ?? null;
-  const server = live?.server ?? 2;
+  const server = live?.server ?? (singles ? 1 : 2);
   const gameNumber = (live?.gameIndex ?? match.games.length) + 1;
   const canScore = serving != null;
   const canUndo = (live?.past.length ?? 0) > 0;
@@ -674,8 +675,9 @@ function UmpireMatch({
       : serving === "b"
         ? (live?.firstServerB ?? null)
         : null;
-  const servingPlayer =
-    servingPlayers && servingFirst != null
+  const servingPlayer = singles
+    ? (servingPlayers?.[0] ?? null)
+    : servingPlayers && servingFirst != null
       ? servingPlayers[server === 1 ? servingFirst : servingFirst === 0 ? 1 : 0]
       : null;
 
@@ -722,6 +724,7 @@ function UmpireMatch({
           score={scoreA}
           serving={serving === "a"}
           server={server}
+          singles={singles}
           onChooseSide={() => onChooseSide("a")}
           onSetFirstServer={(playerIndex) => onSetFirstServer("a", playerIndex)}
         />
@@ -732,6 +735,7 @@ function UmpireMatch({
           score={scoreB}
           serving={serving === "b"}
           server={server}
+          singles={singles}
           onChooseSide={() => onChooseSide("b")}
           onSetFirstServer={(playerIndex) => onSetFirstServer("b", playerIndex)}
         />
@@ -739,23 +743,29 @@ function UmpireMatch({
 
       <p className="shrink-0 py-2 text-center text-sm text-white/60">
         {serving
-          ? `${servingPlayer ?? teamName(category, serving === "a" ? match.teamAId : match.teamBId)} · ${server === 1 ? "1st" : "2nd"} server`
-          : "Tap a player to mark that team's first server, then tap the team that serves."}
+          ? singles
+            ? `${servingPlayer ?? teamName(category, serving === "a" ? match.teamAId : match.teamBId)} serving`
+            : `${servingPlayer ?? teamName(category, serving === "a" ? match.teamAId : match.teamBId)} · ${server === 1 ? "1st" : "2nd"} server`
+          : singles
+            ? "Tap who serves first."
+            : "Tap a player to mark that team's first server, then tap the team that serves."}
       </p>
 
       <div className="shrink-0 space-y-2">
-        <div className="grid grid-cols-2 gap-3">
-          <ServerButton
-            label="1st server"
-            pressed={server === 1}
-            onClick={() => onSetServer(1)}
-          />
-          <ServerButton
-            label="2nd server"
-            pressed={server === 2}
-            onClick={() => onSetServer(2)}
-          />
-        </div>
+        {singles ? null : (
+          <div className="grid grid-cols-2 gap-3">
+            <ServerButton
+              label="1st server"
+              pressed={server === 1}
+              onClick={() => onSetServer(1)}
+            />
+            <ServerButton
+              label="2nd server"
+              pressed={server === 2}
+              onClick={() => onSetServer(2)}
+            />
+          </div>
+        )}
         {confirmEnd ? (
           <div className="space-y-3 rounded-2xl border border-white/15 bg-white/5 p-4">
             <p className="text-center text-lg">
@@ -829,10 +839,12 @@ function UmpireMatch({
 function teamPlayers(
   state: TournamentState,
   teamId: string | null,
-): [string, string] | null {
+): string[] | null {
   if (!teamId) return null;
   const players = state.teams.find((team) => team.id === teamId)?.players;
-  if (!players || !players[0] || !players[1]) return null;
+  if (!players?.[0]) return null;
+  if (state.format === "singles") return [players[0]];
+  if (!players[1]) return null;
   return [players[0], players[1]];
 }
 
@@ -852,19 +864,25 @@ function TeamScore({
   score,
   serving,
   server,
+  singles,
   onChooseSide,
   onSetFirstServer,
 }: {
   name: string;
-  players: [string, string] | null;
+  players: string[] | null;
   firstServer: 0 | 1 | null;
   score: number;
   serving: boolean;
   server: 1 | 2;
+  singles: boolean;
   onChooseSide: () => void;
   onSetFirstServer: (playerIndex: 0 | 1) => void;
 }) {
-  const active = serving ? activePlayerIndex(firstServer, server) : null;
+  const active = serving
+    ? singles
+      ? 0
+      : activePlayerIndex(firstServer, server)
+    : null;
   return (
     <div
       className={cn(
@@ -879,11 +897,13 @@ function TeamScore({
           <span className="text-lg leading-tight">{name}</span>
           {serving ? (
             <span className="shrink-0 rounded-full bg-[var(--highlight)] px-2 py-0.5 text-xs font-medium text-[var(--ink)]">
-              {active != null && players
-                ? players[active]
-                : server === 1
-                  ? "1st server"
-                  : "2nd server"}
+              {singles
+                ? "Serving"
+                : active != null && players
+                  ? players[active]
+                  : server === 1
+                    ? "1st server"
+                    : "2nd server"}
             </span>
           ) : null}
         </span>
@@ -891,7 +911,7 @@ function TeamScore({
           {score}
         </span>
       </button>
-      {players ? (
+      {!singles && players ? (
         <span className="mt-2 grid grid-cols-2 gap-2">
           {players.map((player, index) => {
             const slot = index === 0 ? 0 : 1;

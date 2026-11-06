@@ -40,6 +40,7 @@ import {
   reportMatchScore,
   resetDraw,
   setCategoryCourts,
+  setCategoryFormat,
   setDrawSettings,
   startOver,
   startOverEvent,
@@ -1639,5 +1640,78 @@ describe("tournament categories", () => {
     expect(
       cleared.categories.every((category) => category.phase === "setup"),
     ).toBe(true);
+  });
+});
+
+describe("singles categories", () => {
+  it("defaults to doubles and restores missing format as doubles", () => {
+    expect(createTournament().format).toBe("doubles");
+    const legacy = {
+      ...createTournament(),
+      format: undefined,
+    } as unknown as TournamentState;
+    expect(normalizeTournamentState(legacy).format).toBe("doubles");
+  });
+
+  it("switches format only while the draw is empty", () => {
+    let state = setCategoryFormat(createTournament(), "singles");
+    expect(state.format).toBe("singles");
+    state = addTeam(state, "Ada");
+    expect(state.teams[0]).toMatchObject({
+      name: "Ada",
+      players: ["Ada"],
+    });
+    expect(() => setCategoryFormat(state, "doubles")).toThrow(
+      /clear the players/i,
+    );
+    expect(() => addTeam(state, " ")).toThrow(/player name/i);
+    expect(() => addTeam(state, "ada")).toThrow(/already in the draw/i);
+  });
+
+  it("builds a singles draw and sides out to the other player", () => {
+    let state = setCategoryFormat(
+      setDrawSettings(createTournament({ courtCount: 1 }), {
+        bracketCount: 1,
+        teamsPerBracket: 2,
+        gamesPerMatch: 1,
+        pointsToQuarters: 2,
+      }),
+      "singles",
+    );
+    state = addTeam(state, "Ada");
+    state = addTeam(state, "Bea");
+    state = generateGroups(state);
+    const matchId = state.matches[0]!.id;
+
+    state = umpireChooseSide(state, matchId, "a");
+    expect(state.matches[0]?.live).toMatchObject({
+      serving: "a",
+      server: 1,
+      firstServerA: 0,
+      firstServerB: 0,
+    });
+    state = umpirePoint(state, matchId);
+    state = umpireSideout(state, matchId);
+    expect(state.matches[0]?.live).toMatchObject({
+      serving: "b",
+      server: 1,
+      scoreA: 1,
+      scoreB: 0,
+    });
+    expect(() => umpireSetServer(state, matchId, 2)).toThrow(/one server/i);
+
+    state = umpirePoint(state, matchId);
+    state = umpirePoint(state, matchId);
+    state = umpireFinishGame(state, matchId);
+    expect(state.matches[0]?.status).toBe("reported");
+    expect(state.matches[0]?.games).toEqual([{ a: 1, b: 2 }]);
+  });
+
+  it("keeps singles format after start over", () => {
+    let state = setCategoryFormat(createTournament(), "singles");
+    state = addTeam(state, "Ada");
+    state = startOver(state);
+    expect(state.format).toBe("singles");
+    expect(state.teams).toEqual([]);
   });
 });
