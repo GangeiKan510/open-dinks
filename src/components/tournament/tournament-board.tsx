@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   bracketChampion,
@@ -107,7 +107,11 @@ export function TournamentBoard({
             </h1>
             <p className="mt-2 text-sm tracking-wide text-[var(--highlight)]">
               {event.categories
-                .map((category) => displayDivision(category))
+                .map((category) =>
+                  category.format === "singles"
+                    ? `${displayDivision(category)} Singles`
+                    : displayDivision(category),
+                )
                 .join(" · ")}
             </p>
           </div>
@@ -243,16 +247,54 @@ const TIER_SECTION: Record<SponsorTier, string> = {
   nickel: "bg-[#3d474e] text-[#f4f7f8]",
 };
 
+type SponsorGroup = {
+  tier: SponsorTier;
+  logos: TournamentSponsor[];
+};
+
 function SponsorTicker({ sponsors }: { sponsors: TournamentSponsor[] }) {
   const logos = sponsors.filter((sponsor) => isSponsorLogoUrl(sponsor.url));
   const groups = SPONSOR_TIERS.map((tier) => ({
     tier,
     logos: logos.filter((sponsor) => sponsor.tier === tier),
   })).filter((group) => group.logos.length > 0);
+  const layoutKey = groups
+    .map(
+      (group) =>
+        `${group.tier}:${group.logos.map((sponsor) => sponsor.id).join(",")}`,
+    )
+    .join("|");
+  const railRef = useRef<HTMLElement>(null);
+  const unitRef = useRef<HTMLDivElement>(null);
+  const [copies, setCopies] = useState(1);
+
+  useLayoutEffect(() => {
+    const rail = railRef.current;
+    const unit = unitRef.current;
+    if (!rail || !unit || layoutKey.length === 0) return;
+
+    const sync = () => {
+      const unitWidth = unit.getBoundingClientRect().width;
+      const railWidth = rail.getBoundingClientRect().width;
+      if (unitWidth <= 0 || railWidth <= 0) return;
+      // Each animated half must span the viewport so a single logo still
+      // paints a full-width bar and the -50% loop stays seamless.
+      setCopies(Math.max(1, Math.ceil(railWidth / unitWidth)));
+    };
+
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(rail);
+    observer.observe(unit);
+    return () => observer.disconnect();
+  }, [layoutKey]);
+
   if (groups.length === 0) return null;
-  const seconds = Math.max(24, logos.length * 8);
+
+  const seconds = Math.max(28, copies * 12 + logos.length * 4);
   return (
     <section
+      ref={railRef}
       aria-label="Sponsors"
       className="fixed inset-x-0 bottom-0 z-30 overflow-hidden border-t border-white/10 bg-[var(--ink)]"
     >
@@ -260,25 +302,47 @@ function SponsorTicker({ sponsors }: { sponsors: TournamentSponsor[] }) {
         className="sponsor-ticker-track flex w-max items-stretch"
         style={{ ["--ticker-duration" as string]: `${seconds}s` }}
       >
-        <TickerSequence groups={groups} />
-        <TickerSequence groups={groups} copy />
+        <TickerHalf groups={groups} copies={copies} />
+        <TickerHalf groups={groups} copies={copies} copy />
+      </div>
+      <div
+        className="pointer-events-none absolute top-0 -left-[9999px] -z-10 opacity-0"
+        aria-hidden
+      >
+        <div ref={unitRef} className="flex w-max items-stretch">
+          <TickerSequence groups={groups} />
+        </div>
       </div>
     </section>
   );
 }
 
-function TickerSequence({
+function TickerHalf({
   groups,
+  copies,
   copy = false,
 }: {
-  groups: Array<{ tier: SponsorTier; logos: TournamentSponsor[] }>;
+  groups: SponsorGroup[];
+  copies: number;
   copy?: boolean;
 }) {
   return (
     <div
-      className={copy ? "sponsor-ticker-copy flex" : "flex"}
+      className={
+        copy ? "sponsor-ticker-copy flex min-w-full" : "flex min-w-full"
+      }
       aria-hidden={copy || undefined}
     >
+      {Array.from({ length: copies }, (_, index) => (
+        <TickerSequence key={index} groups={groups} />
+      ))}
+    </div>
+  );
+}
+
+function TickerSequence({ groups }: { groups: SponsorGroup[] }) {
+  return (
+    <div className="flex shrink-0 items-stretch">
       {groups.map((group) => (
         <div
           key={group.tier}

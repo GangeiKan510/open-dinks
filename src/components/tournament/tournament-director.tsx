@@ -46,6 +46,7 @@ import {
   resetDraw,
   selectCategory,
   setCategoryCourts,
+  setCategoryFormat,
   setDrawSettings,
   stageProgress,
   wildcardTeamIds,
@@ -302,11 +303,14 @@ export function TournamentDirector({
           </h1>
           <p className="text-[var(--muted)]">
             {displayDivision(state)}
+            {state.format === "singles" ? " · Singles" : " · Doubles"}
             {event.categories.length > 1
               ? ` · ${event.categories.length} categories`
               : ""}
             {state.phase === "setup"
-              ? " · Add teams, then build brackets"
+              ? state.format === "singles"
+                ? " · Add players, then build brackets"
+                : " · Add teams, then build brackets"
               : ` · ${event.courtCount} courts`}
           </p>
           <p className="max-w-xl text-sm text-[var(--muted)]">
@@ -1057,6 +1061,8 @@ function SetupForm({
   const [playerA, setPlayerA] = useState("");
   const [playerB, setPlayerB] = useState("");
   const [clubName, setClubName] = useState("");
+  const singles = state.format === "singles";
+  const entryNoun = singles ? "players" : "teams";
   let planMessage = "";
   let planReady = false;
   if (state.teams.length >= 2) {
@@ -1070,7 +1076,7 @@ function SetupForm({
       const noun = state.bracketCount === 1 ? "bracket" : "brackets";
       planMessage = sizes.every((size) => size === sizes[0])
         ? `${state.bracketCount} ${noun} of ${sizes[0]}.`
-        : `${state.bracketCount} brackets: ${sizes.join(", ")} teams.`;
+        : `${state.bracketCount} brackets: ${sizes.join(", ")} ${entryNoun}.`;
     } catch (caught) {
       planMessage = caught instanceof TournamentError ? caught.message : "";
     }
@@ -1084,7 +1090,7 @@ function SetupForm({
     (usingAssignments ? assignmentIssue == null : planReady);
   const buildMessage =
     state.teams.length < 2
-      ? "Add at least 2 teams to build brackets."
+      ? `Add at least 2 ${entryNoun} to build brackets.`
       : usingAssignments
         ? (assignmentIssue ?? "Using the brackets you assigned.")
         : planMessage;
@@ -1117,6 +1123,42 @@ function SetupForm({
               )
             }
           />
+        </div>
+        <div className="space-y-2">
+          <p
+            id="category-format-label"
+            className="text-sm font-medium leading-none text-[var(--foreground)]"
+          >
+            Format
+          </p>
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-labelledby="category-format-label"
+          >
+            {(
+              [
+                ["doubles", "Doubles"],
+                ["singles", "Singles"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={state.format === value ? "default" : "outline"}
+                aria-pressed={state.format === value}
+                onClick={() => run(() => setCategoryFormat(state, value))}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-sm text-[var(--muted)]">
+            {singles
+              ? "One player a side. Clear the list before switching back to doubles."
+              : "Two players a side. Clear the list before switching to singles."}
+          </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberSetting
@@ -1163,7 +1205,7 @@ function SetupForm({
           />
           <NumberSetting
             id="teams-per-bracket"
-            label="Teams per bracket"
+            label={singles ? "Players per bracket" : "Teams per bracket"}
             min={2}
             max={8}
             value={state.teamsPerBracket}
@@ -1216,11 +1258,11 @@ function SetupForm({
           </div>
         </div>
         <p className="text-sm text-[var(--muted)]">
-          Teams per bracket is the round-robin group, not the final. Advance per
-          bracket is how many teams from each one move into a separate final
-          bracket. When the teams moving on do not fill the final bracket, Bye
-          leaves the open spots empty and Wild card fills them with the
-          next-best teams, ranked by wins, then point differential, then points
+          {singles ? "Players" : "Teams"} per bracket is the round-robin group,
+          not the final. Advance per bracket is how many from each one move into
+          a separate final bracket. When those moving on do not fill the final
+          bracket, Bye leaves the open spots empty and Wild card fills them with
+          the next-best, ranked by wins, then point differential, then points
           scored. Games per match is how many scores you enter. Groups and every
           round through the quarterfinals play to the first point total.
           Semifinals and the final play to the second.
@@ -1230,7 +1272,7 @@ function SetupForm({
       <section className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-[family-name:var(--font-display)] text-2xl">
-            Teams
+            {singles ? "Players" : "Teams"}
           </h2>
           <span className="text-sm tabular-nums text-[var(--muted)]">
             {state.teams.length}
@@ -1240,14 +1282,18 @@ function SetupForm({
           className="flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            const added = run(() => addTeam(state, playerA, playerB));
+            const added = run(() =>
+              singles
+                ? addTeam(state, playerA)
+                : addTeam(state, playerA, playerB),
+            );
             if (!added) return;
             setPlayerA("");
             setPlayerB("");
           }}
         >
           <div className="min-w-[8rem] flex-1 space-y-1">
-            <Label htmlFor="player-a">Player 1</Label>
+            <Label htmlFor="player-a">{singles ? "Player" : "Player 1"}</Label>
             <Input
               id="player-a"
               value={playerA}
@@ -1255,16 +1301,18 @@ function SetupForm({
               placeholder="Smith"
             />
           </div>
-          <div className="min-w-[8rem] flex-1 space-y-1">
-            <Label htmlFor="player-b">Player 2</Label>
-            <Input
-              id="player-b"
-              value={playerB}
-              onChange={(event) => setPlayerB(event.target.value)}
-              placeholder="Crozier"
-            />
-          </div>
-          <Button type="submit">Add team</Button>
+          {singles ? null : (
+            <div className="min-w-[8rem] flex-1 space-y-1">
+              <Label htmlFor="player-b">Player 2</Label>
+              <Input
+                id="player-b"
+                value={playerB}
+                onChange={(event) => setPlayerB(event.target.value)}
+                placeholder="Crozier"
+              />
+            </div>
+          )}
+          <Button type="submit">{singles ? "Add player" : "Add team"}</Button>
         </form>
         <form
           className="flex flex-wrap items-end gap-2"
@@ -1308,15 +1356,15 @@ function SetupForm({
           </ul>
         ) : null}
         <p className="text-sm text-[var(--muted)]">
-          Add each club once, then pick it on the team. The scoreboard totals
-          match wins for that club across every category.
+          Add each club once, then pick it on the {singles ? "player" : "team"}.
+          The scoreboard totals match wins for that club across every category.
         </p>
         {state.teams.length === 0 ? (
           <Button
             variant="secondary"
             onClick={() => run(() => addSampleTeams(state))}
           >
-            Use 8 sample teams
+            {singles ? "Use 8 sample players" : "Use 8 sample teams"}
           </Button>
         ) : (
           <ul className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
@@ -1426,7 +1474,9 @@ function SetupForm({
         <p className="text-sm text-[var(--muted)]">
           {buildMessage}
           {state.teams.length > 0
-            ? " Pick a bracket for each team, or auto-fill, then build."
+            ? singles
+              ? " Pick a bracket for each player, or auto-fill, then build."
+              : " Pick a bracket for each team, or auto-fill, then build."
             : ""}
         </p>
       </section>

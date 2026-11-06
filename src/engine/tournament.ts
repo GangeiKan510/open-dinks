@@ -5,10 +5,14 @@ export type TournamentPhase = "setup" | "groups" | "bracket";
 
 export type TournamentMatchStatus = "unreported" | "reported" | "bye";
 
+/** Doubles is two players a side. Singles is one player a side. */
+export type TournamentFormat = "doubles" | "singles";
+
 export interface TournamentTeam {
   id: string;
   name: string;
-  players: [string, string];
+  /** One name for singles, two for doubles. */
+  players: [string] | [string, string];
   /** Round-robin bracket during setup. Null until the director assigns one. */
   bracketIndex: number | null;
   /** Club this team scores for. Null until the director assigns one. */
@@ -106,6 +110,8 @@ export interface TournamentState {
    * Wild card takes the next-best teams from every bracket.
    */
   knockoutFill: KnockoutFill;
+  /** Doubles (default) or singles for this category. */
+  format: TournamentFormat;
   phase: TournamentPhase;
   teams: TournamentTeam[];
   groups: TournamentGroup[];
@@ -134,6 +140,7 @@ export interface CreateTournamentInput {
   teamsPerBracket?: number;
   advancePerGroup?: number;
   knockoutFill?: KnockoutFill;
+  format?: TournamentFormat;
 }
 
 /** Bye leaves an open final spot empty. Wild card fills it with the next-best team. */
@@ -228,6 +235,17 @@ export const SAMPLE_TEAMS: readonly (readonly [string, string])[] = [
   ["Curley", "Yang"],
 ];
 
+export const SAMPLE_SINGLES: readonly string[] = [
+  "Smith",
+  "Torres",
+  "Fernandez",
+  "Murrieta",
+  "Egure",
+  "Dobson",
+  "Touzel",
+  "Curley",
+];
+
 export function createTournament(
   input: CreateTournamentInput = {},
 ): TournamentState {
@@ -247,6 +265,7 @@ export function createTournament(
       input.teamsPerBracket ?? 4,
     ),
     knockoutFill: normalizeKnockoutFill(input.knockoutFill),
+    format: normalizeFormat(input.format),
     phase: "setup",
     teams: [],
     groups: [],
@@ -419,8 +438,18 @@ export function normalizeTournamentState(
     teamsPerBracket,
     advancePerGroup: clampAdvance(state.advancePerGroup, teamsPerBracket),
     knockoutFill: normalizeKnockoutFill(state.knockoutFill),
+    format: normalizeFormat(
+      (state as TournamentState & { format?: unknown }).format,
+    ),
     teams: state.teams.map((team) => ({
       ...team,
+      players: sanitizePlayers(
+        team.players,
+        normalizeFormat(
+          (state as TournamentState & { format?: unknown }).format,
+        ),
+        team.name,
+      ),
       bracketIndex: keptBracketIndex(team.bracketIndex, bracketCount),
       club: sanitizeClub(team.club),
     })),
@@ -434,16 +463,55 @@ export function normalizeTournamentState(
   return syncBracket(normalized);
 }
 
+export function setCategoryFormat(
+  state: TournamentState,
+  format: TournamentFormat,
+): TournamentState {
+  assertSetup(state);
+  const next = normalizeFormat(format);
+  if (state.format === next) return state;
+  if (state.teams.length > 0) {
+    throw new TournamentError(
+      "Clear the players before switching doubles or singles.",
+    );
+  }
+  return { ...state, format: next };
+}
+
 export function addTeam(
   state: TournamentState,
   playerA: string,
-  playerB: string,
+  playerB = "",
 ): TournamentState {
   assertSetup(state);
   if (state.teams.length >= MAX_TEAMS) {
     throw new TournamentError("This draw already has 64 teams.");
   }
   const a = clip(playerA.trim(), MAX_PLAYER);
+  if (state.format === "singles") {
+    if (!a) throw new TournamentError("Enter a player name.");
+    if (
+      state.teams.some((team) => team.name.toLowerCase() === a.toLowerCase())
+    ) {
+      throw new TournamentError("That player is already in the draw.");
+    }
+    return {
+      ...state,
+      teams: [
+        ...state.teams,
+        {
+          id: nextId(
+            "team-",
+            state.teams.map((team) => team.id),
+          ),
+          name: a,
+          players: [a],
+          bracketIndex: null,
+          club: null,
+        },
+      ],
+    };
+  }
   const b = clip(playerB.trim(), MAX_PLAYER);
   if (!a || !b) throw new TournamentError("Enter both player names.");
   const name = `${a} / ${b}`;
@@ -662,6 +730,9 @@ export function removeTeam(
 }
 
 export function addSampleTeams(state: TournamentState): TournamentState {
+  if (state.format === "singles") {
+    return SAMPLE_SINGLES.reduce((next, name) => addTeam(next, name), state);
+  }
   return SAMPLE_TEAMS.reduce(
     (next, pair) => addTeam(next, pair[0], pair[1]),
     state,
@@ -671,7 +742,11 @@ export function addSampleTeams(state: TournamentState): TournamentState {
 export function generateGroups(state: TournamentState): TournamentState {
   assertSetup(state);
   if (state.teams.length < 2) {
-    throw new TournamentError("Add at least 2 teams before building brackets.");
+    throw new TournamentError(
+      state.format === "singles"
+        ? "Add at least 2 players before building brackets."
+        : "Add at least 2 teams before building brackets.",
+    );
   }
   const dealt = state.teams.some((team) => team.bracketIndex != null)
     ? manualBracketGroups(state)
@@ -853,23 +928,30 @@ function assertCanOfficiate(state: TournamentState, match: TournamentMatch) {
   }
 }
 
-function freshLive(gameIndex: number): RallyLive {
+function freshLive(
+  gameIndex: number,
+  format: TournamentFormat = "doubles",
+): RallyLive {
+  const singles = format === "singles";
   return {
     gameIndex,
     scoreA: 0,
     scoreB: 0,
     serving: null,
-    server: 2,
+    server: singles ? 1 : 2,
     past: [],
-    firstServerA: null,
-    firstServerB: null,
+    firstServerA: singles ? 0 : null,
+    firstServerB: singles ? 0 : null,
   };
 }
 
-function ensureLive(match: TournamentMatch): RallyLive {
+function ensureLive(
+  match: TournamentMatch,
+  format: TournamentFormat = "doubles",
+): RallyLive {
   const live = sanitizeLive(match.live);
   if (live && live.gameIndex === match.games.length) return live;
-  return freshLive(match.games.length);
+  return freshLive(match.games.length, format);
 }
 
 function remember(live: RallyLive): RallySnapshot[] {
@@ -898,7 +980,7 @@ function writeLive(
   };
 }
 
-/** The serving team for this rally. The game still starts on server 2. */
+/** The serving side for this rally. Doubles starts on server 2; singles on 1. */
 export function umpireChooseSide(
   state: TournamentState,
   matchId: string,
@@ -909,7 +991,7 @@ export function umpireChooseSide(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   return writeLive(state, matchId, {
     ...live,
     past: remember(live),
@@ -929,10 +1011,14 @@ export function umpireSetFirstServer(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  if (playerIndex !== 0 && playerIndex !== 1) {
+  if (state.format === "singles") {
+    if (playerIndex !== 0) {
+      throw new TournamentError("Singles has only one player a side.");
+    }
+  } else if (playerIndex !== 0 && playerIndex !== 1) {
     throw new TournamentError("Pick one of the two players.");
   }
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   return writeLive(state, matchId, {
     ...live,
     ...(side === "a"
@@ -951,7 +1037,10 @@ export function umpireSetServer(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  if (state.format === "singles" && server !== 1) {
+    throw new TournamentError("Singles only uses one server.");
+  }
+  const live = ensureLive(match, state.format);
   return writeLive(state, matchId, {
     ...live,
     past: remember(live),
@@ -968,7 +1057,7 @@ export function umpirePoint(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   if (!live.serving) {
     throw new TournamentError("Choose who serves first.");
   }
@@ -986,8 +1075,9 @@ export function umpirePoint(
 }
 
 /**
- * Lost rally. Server 1 hands the serve to server 2 on the same team.
- * Server 2 hands it to the other team, who start on server 1.
+ * Lost rally. Doubles: server 1 hands the serve to server 2 on the same team;
+ * server 2 hands it to the other team on server 1. Singles: the serve always
+ * changes sides.
  */
 export function umpireSideout(
   state: TournamentState,
@@ -998,9 +1088,17 @@ export function umpireSideout(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   if (!live.serving) {
     throw new TournamentError("Choose who serves first.");
+  }
+  if (state.format === "singles") {
+    return writeLive(state, matchId, {
+      ...live,
+      past: remember(live),
+      serving: live.serving === "a" ? "b" : "a",
+      server: 1,
+    });
   }
   if (live.server === 1) {
     return writeLive(state, matchId, {
@@ -1026,7 +1124,7 @@ export function umpireUndo(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   const previous = live.past[live.past.length - 1];
   if (!previous) throw new TournamentError("Nothing to undo.");
   return writeLive(state, matchId, {
@@ -1045,7 +1143,7 @@ export function umpireFinishGame(
   const match = findMatch(state, matchId);
   assertCanOfficiate(state, match);
   assertCaller(match, umpireId, now);
-  const live = ensureLive(match);
+  const live = ensureLive(match, state.format);
   if (live.scoreA === live.scoreB) {
     throw new TournamentError("A game can't end in a tie.");
   }
@@ -1063,7 +1161,7 @@ export function umpireFinishGame(
         ),
       },
       matchId,
-      freshLive(games.length),
+      freshLive(games.length, state.format),
     );
   }
   return reportMatchScore(state, matchId, games);
@@ -1417,6 +1515,7 @@ export function startOverEvent(event: TournamentEvent): TournamentEvent {
         teamsPerBracket: category.teamsPerBracket,
         advancePerGroup: category.advancePerGroup,
         knockoutFill: category.knockoutFill,
+        format: category.format,
       }),
       id: category.id,
     })),
@@ -1680,6 +1779,7 @@ export function startOver(state: TournamentState): TournamentState {
     teamsPerBracket: state.teamsPerBracket,
     advancePerGroup: state.advancePerGroup,
     knockoutFill: state.knockoutFill,
+    format: state.format,
   });
 }
 
@@ -2553,6 +2653,36 @@ function groupLetter(index: number): string {
 
 function clip(value: string, max: number): string {
   return value.slice(0, max);
+}
+
+function normalizeFormat(value: unknown): TournamentFormat {
+  return value === "singles" ? "singles" : "doubles";
+}
+
+function sanitizePlayers(
+  value: unknown,
+  format: TournamentFormat,
+  teamName: string,
+): [string] | [string, string] {
+  const names = Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => clip(item.trim(), MAX_PLAYER))
+        .filter(Boolean)
+    : [];
+  if (format === "singles") {
+    const solo = names[0] || clip(teamName.trim(), MAX_PLAYER) || "Player";
+    return [solo];
+  }
+  if (names.length >= 2) return [names[0], names[1]];
+  const fromName = teamName
+    .split("/")
+    .map((part) => clip(part.trim(), MAX_PLAYER))
+    .filter(Boolean);
+  if (fromName.length >= 2) return [fromName[0], fromName[1]];
+  const a = names[0] || fromName[0] || "Player A";
+  const b = names[1] || "Player B";
+  return [a, b];
 }
 
 function sanitizeSponsor(value: unknown): TournamentSponsor | null {
