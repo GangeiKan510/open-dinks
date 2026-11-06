@@ -172,12 +172,13 @@ export function TournamentBoard({
                   Up next
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {upNext.map(({ category, match }) => (
+                  {upNext.map(({ category, match }, index) => (
                     <CourtTile
                       key={`${category.id}:${match.id}`}
                       state={category}
                       match={match}
                       queued
+                      queuePosition={index + 1}
                     />
                   ))}
                 </div>
@@ -427,18 +428,29 @@ function CourtTile({
   state,
   match,
   queued = false,
+  queuePosition,
 }: {
   state: TournamentState;
   match: TournamentMatch;
   queued?: boolean;
+  queuePosition?: number;
 }) {
   const group = state.groups.find((item) => item.id === match.groupId);
   const live = !queued && match.live?.serving ? match.live : null;
+  const nextUp = queued && queuePosition === 1;
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-3 flex items-center justify-between text-sm">
+    <article
+      className={
+        nextUp
+          ? "rounded-2xl border border-[var(--highlight)]/50 bg-white/5 p-4 ring-1 ring-[var(--highlight)]/30"
+          : "rounded-2xl border border-white/10 bg-white/5 p-4"
+      }
+    >
+      <div className="mb-3 flex items-center justify-between gap-2 text-sm">
         <span className="text-[var(--highlight)]">
-          {queued ? `M${match.number}` : `Court ${match.courtNumber}`}
+          {queued
+            ? queueLabel(queuePosition, match.number)
+            : `Court ${match.courtNumber}`}
         </span>
         <span className="truncate text-white/50">
           {displayDivision(state)}
@@ -459,6 +471,21 @@ function CourtTile({
       />
     </article>
   );
+}
+
+function queueLabel(position: number | undefined, matchNumber: number): string {
+  if (position == null) return `M${matchNumber}`;
+  if (position === 1) return `Next · M${matchNumber}`;
+  return `${ordinal(position)} · M${matchNumber}`;
+}
+
+function ordinal(value: number): string {
+  const ones = value % 10;
+  const tens = value % 100;
+  if (ones === 1 && tens !== 11) return `${value}st`;
+  if (ones === 2 && tens !== 12) return `${value}nd`;
+  if (ones === 3 && tens !== 13) return `${value}rd`;
+  return `${value}th`;
 }
 
 function ScoreLine({

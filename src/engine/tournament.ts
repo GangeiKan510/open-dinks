@@ -1728,7 +1728,11 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
   return { ...event, categories: prepared };
 }
 
-/** Ready matches that are not on a court, in the order a free court would take them. */
+/**
+ * Ready matches that are not on a court, in the order a free court would
+ * take them. Caps the list to courts those categories can actually fill,
+ * so a 2-court category does not look like four matches are equally next.
+ */
 export function upcomingMatches(
   event: TournamentEvent,
 ): Array<{ category: TournamentState; match: TournamentMatch }> {
@@ -1763,8 +1767,16 @@ export function upcomingMatches(
   }
   waiting.sort(compareWaitingSlots);
 
+  const fillableCourts = new Set<number>();
+  for (const slot of waiting) {
+    if (slot.match.parked) continue;
+    for (const court of courtsForCategory(slot.category)) {
+      fillableCourts.add(court);
+    }
+  }
+  const limit = Math.max(fillableCourts.size, 1);
+
   const next: Array<{ category: TournamentState; match: TournamentMatch }> = [];
-  const limit = Math.max(event.courtCount, 1);
   for (const slot of waiting) {
     if (next.length >= limit) break;
     if (slot.match.parked) continue;
