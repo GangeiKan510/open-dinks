@@ -531,6 +531,42 @@ describe("tournament courts", () => {
       expect(playing.has(slot.match.teamBId)).toBe(false);
     }
   });
+
+  it("limits up next to the courts a category can fill, in queue order", () => {
+    let state = createTournament({ courtCount: 4 });
+    state = addNamed(state, [
+      ["Ada", "Bea"],
+      ["Cy", "Dee"],
+      ["Eve", "Fay"],
+      ["Gus", "Hal"],
+      ["Ivy", "Jen"],
+      ["Kim", "Lee"],
+      ["Mo", "Ned"],
+      ["Ora", "Pam"],
+    ]);
+    state = generateGroups(
+      setCategoryCourts(
+        setDrawSettings(state, {
+          bracketCount: 1,
+          teamsPerBracket: 8,
+        }),
+        [1, 2],
+      ),
+    );
+    const event: TournamentEvent = {
+      ...createTournamentEvent({ courtCount: 4 }),
+      name: state.name,
+      activeCategoryId: state.id,
+      categories: [state],
+    };
+
+    expect(
+      state.matches.filter((match) => match.courtNumber != null),
+    ).toHaveLength(2);
+    const next = upcomingMatches(event);
+    expect(next).toHaveLength(2);
+    expect(next.map((slot) => slot.match.number)).toEqual([3, 4]);
+  });
 });
 
 describe("tournament bracket", () => {
