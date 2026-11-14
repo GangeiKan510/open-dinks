@@ -741,6 +741,57 @@ export function removeTeam(
   };
 }
 
+/**
+ * Fixes a typo or wrong player name after the draw is built.
+ * Keeps the same team id so matches and standings stay linked.
+ */
+export function renameTeam(
+  state: TournamentState,
+  teamId: string,
+  playerA: string,
+  playerB = "",
+): TournamentState {
+  const team = state.teams.find((item) => item.id === teamId);
+  if (!team) throw new TournamentError("That team is not in the draw.");
+
+  const a = clip(playerA.trim(), MAX_PLAYER);
+  if (state.format === "singles") {
+    if (!a) throw new TournamentError("Enter a player name.");
+    if (
+      state.teams.some(
+        (item) =>
+          item.id !== teamId && item.name.toLowerCase() === a.toLowerCase(),
+      )
+    ) {
+      throw new TournamentError("That player is already in the draw.");
+    }
+    return {
+      ...state,
+      teams: state.teams.map((item) =>
+        item.id === teamId ? { ...item, name: a, players: [a] } : item,
+      ),
+    };
+  }
+
+  const b = clip(playerB.trim(), MAX_PLAYER);
+  if (!a || !b) throw new TournamentError("Enter both player names.");
+  const name = `${a} / ${b}`;
+  if (
+    state.teams.some(
+      (item) =>
+        item.id !== teamId && item.name.toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    throw new TournamentError("That team is already in the draw.");
+  }
+  return {
+    ...state,
+    teams: state.teams.map((item) =>
+      item.id === teamId ? { ...item, name, players: [a, b] } : item,
+    ),
+  };
+}
+
 export function addSampleTeams(state: TournamentState): TournamentState {
   if (state.format === "singles") {
     return SAMPLE_SINGLES.reduce((next, name) => addTeam(next, name), state);
@@ -1729,9 +1780,9 @@ export function assignEventCourts(event: TournamentEvent): TournamentEvent {
 }
 
 /**
- * Ready matches that are not on a court, in the order a free court would
- * take them. Caps the list to courts those categories can actually fill,
- * so a 2-court category does not look like four matches are equally next.
+ * Next matches in queue order, capped to the courts those categories can
+ * fill (e.g. 2 courts → 2 "Up next"). Includes matches whose teams are
+ * still finishing on court — they are still next in line.
  */
 export function upcomingMatches(
   event: TournamentEvent,
@@ -1739,15 +1790,6 @@ export function upcomingMatches(
   const playing = event.categories.filter(
     (category) => category.phase !== "setup",
   );
-  const busy = new Set<string>();
-  for (const category of playing) {
-    const stage = category.phase === "bracket" ? "bracket" : "groups";
-    for (const match of category.matches) {
-      if (match.stage !== stage || match.courtNumber == null) continue;
-      if (match.teamAId) busy.add(`${category.id}:${match.teamAId}`);
-      if (match.teamBId) busy.add(`${category.id}:${match.teamBId}`);
-    }
-  }
 
   const waiting: Array<{ category: TournamentState; match: TournamentMatch }> =
     [];
@@ -1758,6 +1800,7 @@ export function upcomingMatches(
         match.stage === stage &&
         match.status === "unreported" &&
         match.courtNumber == null &&
+        !match.parked &&
         match.teamAId &&
         match.teamBId
       ) {
@@ -1769,32 +1812,28 @@ export function upcomingMatches(
 
   const fillableCourts = new Set<number>();
   for (const slot of waiting) {
-    if (slot.match.parked) continue;
     for (const court of courtsForCategory(slot.category)) {
       fillableCourts.add(court);
     }
   }
+  // When every ready match is already on court, still size the list from
+  // the courts those playing categories can use.
+  if (fillableCourts.size === 0) {
+    for (const category of playing) {
+      for (const court of courtsForCategory(category)) {
+        fillableCourts.add(court);
+      }
+    }
+  }
   const limit = Math.max(fillableCourts.size, 1);
 
-  const next: Array<{ category: TournamentState; match: TournamentMatch }> = [];
-  for (const slot of waiting) {
-    if (next.length >= limit) break;
-    if (slot.match.parked) continue;
-    if (!slot.match.teamAId || !slot.match.teamBId) continue;
-    const teamA = `${slot.category.id}:${slot.match.teamAId}`;
-    const teamB = `${slot.category.id}:${slot.match.teamBId}`;
-    if (busy.has(teamA) || busy.has(teamB)) continue;
-    next.push(slot);
-    busy.add(teamA);
-    busy.add(teamB);
-  }
-  return next;
+  return waiting.slice(0, limit);
 }
 
 /**
  * Swaps court assignment and queue order between two unreported matches.
- * Pulling a match off court parks it so court fill does not immediately
- * put it back on.
+ * A match pulled off court returns to the waiting queue (Up next) at the
+ * other match's place — it is not parked.
  */
 export function swapMatches(
   state: TournamentState,
@@ -1824,7 +1863,7 @@ export function swapMatches(
         ...match,
         courtNumber: courtB,
         queueOrder: orderB,
-        parked: courtB == null && courtA != null,
+        parked: false,
       };
     }
     if (match.id === matchIdB) {
@@ -1832,7 +1871,7 @@ export function swapMatches(
         ...match,
         courtNumber: courtA,
         queueOrder: orderA,
-        parked: courtA == null && courtB != null,
+        parked: false,
       };
     }
     return match;
