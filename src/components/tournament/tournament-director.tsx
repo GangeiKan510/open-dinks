@@ -91,7 +91,7 @@ import {
 } from "@/lib/tournament-document";
 import { createClient } from "@/lib/supabase/client";
 
-type MatchFilter = "unreported" | "court" | "all";
+type MatchFilter = "unreported" | "reported" | "court" | "all";
 type LiveView = "groups" | "bracket" | "settings";
 
 /** Coalesce rapid director edits before writing the full tournament document. */
@@ -400,6 +400,14 @@ export function TournamentDirector({
               Have the umpire scan this. That phone can enter the score for the
               court it is calling. Anyone with the scoreboard link can only
               watch.
+            </p>
+            <p
+              className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
+              role="note"
+            >
+              <span className="font-medium">Important.</span> Only one umpire
+              phone can call a court. To switch umpires, that phone has to leave
+              the court it is calling before the next umpire can take over.
             </p>
             <p className="break-all text-xs text-[var(--muted)]">{umpireUrl}</p>
           </div>
@@ -1511,7 +1519,7 @@ function CategoryCourts({
     <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium">Courts for {division}</h2>
+          <h2 className="text-sm font-medium">Courts used for {division}</h2>
           <p className="max-w-xl text-sm text-[var(--muted)]">
             Tap courts this category can use. Venue courts come from Settings —
             leave at least one on.
@@ -1524,7 +1532,7 @@ function CategoryCourts({
       <div
         className="grid gap-3 p-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
         role="group"
-        aria-label={`Courts for ${division}`}
+        aria-label={`Courts used for ${division}`}
       >
         {Array.from({ length: state.courtCount }, (_, index) => {
           const number = index + 1;
@@ -2063,6 +2071,7 @@ function StageToolbar({
       {(
         [
           ["unreported", "Unreported"],
+          ["reported", "Reported"],
           ["court", "On court"],
           ["all", "All matches"],
         ] as const
@@ -2106,6 +2115,7 @@ function MatchColumn({
   const matches = state.matches.filter((match) => {
     if (match.stage !== stage || match.status === "bye") return false;
     if (filter === "unreported") return match.status === "unreported";
+    if (filter === "reported") return match.status === "reported";
     if (filter === "court") return match.courtNumber != null;
     return true;
   });

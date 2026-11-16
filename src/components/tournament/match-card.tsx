@@ -1,5 +1,6 @@
 "use client";
 
+import { Volume2 } from "lucide-react";
 import { useState } from "react";
 import {
   isThirdPlaceMatch,
@@ -13,6 +14,11 @@ import {
   type TournamentTeam,
 } from "@/engine/tournament";
 import { Button } from "@/components/ui/button";
+import {
+  formatCourtCallAnnouncement,
+  formatWarmupAnnouncement,
+  speakAnnouncement,
+} from "@/lib/speech-announcer";
 import { cn } from "@/lib/utils";
 
 export function MatchCard({
@@ -82,7 +88,7 @@ export function MatchCard({
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{label}</h3>
-        <CourtBadge match={match} upNext={upNext} />
+        <CourtBadge state={state} match={match} upNext={upNext} />
       </div>
       {waiting ? (
         <div className="space-y-2 text-sm">
@@ -153,18 +159,61 @@ export function MatchCard({
   );
 }
 
+function matchPlayerNames(
+  state: TournamentState,
+  match: TournamentMatch,
+): string[] {
+  const names: string[] = [];
+  for (const teamId of [match.teamAId, match.teamBId]) {
+    const team = teamId
+      ? state.teams.find((item) => item.id === teamId)
+      : undefined;
+    if (!team) continue;
+    for (const player of team.players) {
+      const trimmed = player.trim();
+      if (trimmed) names.push(trimmed);
+    }
+  }
+  return names;
+}
+
+function AnnounceButton({ label, text }: { label: string; text: string }) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className="h-7 w-7 shrink-0 px-0"
+      aria-label={label}
+      onClick={() => speakAnnouncement(text)}
+    >
+      <Volume2 className="h-4 w-4" aria-hidden />
+    </Button>
+  );
+}
+
 function CourtBadge({
+  state,
   match,
   upNext,
 }: {
+  state: TournamentState;
   match: TournamentMatch;
   upNext: boolean;
 }) {
+  const names = matchPlayerNames(state, match);
   if (match.courtNumber != null) {
+    const courtNumber = match.courtNumber;
     return (
-      <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs font-medium text-[var(--accent-fg)]">
-        Court {match.courtNumber}
-      </span>
+      <div className="flex items-center gap-1">
+        <AnnounceButton
+          label={`Announce players to proceed to court ${courtNumber}`}
+          text={formatCourtCallAnnouncement(names, courtNumber)}
+        />
+        <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs font-medium text-[var(--accent-fg)]">
+          Court {courtNumber}
+        </span>
+      </div>
     );
   }
   if (match.status === "reported") {
@@ -190,9 +239,15 @@ function CourtBadge({
   }
   if (upNext) {
     return (
-      <span className="rounded-full bg-[var(--highlight)]/20 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.14em] text-[var(--highlight)]">
-        Up next
-      </span>
+      <div className="flex items-center gap-1">
+        <AnnounceButton
+          label="Announce players to start warming up"
+          text={formatWarmupAnnouncement(names)}
+        />
+        <span className="rounded-full bg-[var(--highlight)]/20 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.14em] text-[var(--highlight)]">
+          Up next
+        </span>
+      </div>
     );
   }
   return (
