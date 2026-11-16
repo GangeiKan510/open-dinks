@@ -40,7 +40,9 @@ jobs:
           version: latest
 
       - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD" --yes
 
+      # CLI v3 applies db push to the local stack unless --remote is set, and
+      # hosted changes fail in CI unless --yes is passed on the command.
       - name: Push migrations
-        run: supabase db push
+        run: supabase db push --remote --yes
