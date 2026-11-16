@@ -232,3 +232,26 @@ export async function loadTournamentByToken(
   const ready = readyFromRow(data);
   return ready.status === "ready" ? ready : null;
 }
+
+/** The signed-in account that owns this tournament can share its scoreboard. */
+export async function viewerOwnsTournament(
+  tournamentId: string,
+): Promise<boolean> {
+  if (!isSupabaseConfigured() || !tournamentId) return false;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("tournaments")
+    .select("created_by")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error("[tournament] owner check failed", error.code);
+    return false;
+  }
+  return data.created_by === user.id;
+}

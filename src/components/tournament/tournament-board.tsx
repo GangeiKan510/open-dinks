@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { QrCode } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { SessionQr } from "@/components/session/session-qr";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   bracketChampion,
@@ -27,6 +29,7 @@ import {
   type TournamentState,
 } from "@/engine/tournament";
 import { PRODUCT_NAME } from "@/lib/facility";
+import { scoreboardQrDownloadName } from "@/lib/scoreboard-qr";
 import { createClient } from "@/lib/supabase/client";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import { cn } from "@/lib/utils";
@@ -34,12 +37,18 @@ import { cn } from "@/lib/utils";
 export function TournamentBoard({
   tournamentId,
   initialEvent,
+  publicToken = "",
+  canShareScoreboard = false,
 }: {
   tournamentId: string;
   initialEvent: TournamentEvent;
+  publicToken?: string;
+  canShareScoreboard?: boolean;
 }) {
   const [event, setEvent] = useState(initialEvent);
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const [showScoreboardQr, setShowScoreboardQr] = useState(false);
+  const [scoreboardUrl, setScoreboardUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -117,7 +126,7 @@ export function TournamentBoard({
                 .join(" · ")}
             </p>
           </div>
-          <div className="text-right text-sm text-white/60">
+          <div className="flex flex-col items-end gap-2 text-right text-sm text-white/60">
             <div>
               {playing.length === 0 ? "Draw not built" : "Categories live"}
             </div>
@@ -126,14 +135,45 @@ export function TournamentBoard({
                 {reported.reported}/{reported.total} reported
               </div>
             )}
-            <Link
-              href="/tournament"
-              className="text-[var(--highlight)] underline"
-            >
-              Director
-            </Link>
+            {canShareScoreboard ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-white/20 text-[var(--paper)] hover:bg-white/10"
+                aria-expanded={showScoreboardQr}
+                onClick={() => {
+                  setScoreboardUrl(
+                    `${window.location.origin}/tournament/board/${publicToken}`,
+                  );
+                  setShowScoreboardQr((open) => !open);
+                }}
+              >
+                <QrCode className="h-4 w-4" aria-hidden />
+                Scoreboard QR
+              </Button>
+            ) : null}
           </div>
         </header>
+
+        {showScoreboardQr && scoreboardUrl ? (
+          <section className="flex flex-wrap items-center gap-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <SessionQr
+              url={scoreboardUrl}
+              alt="Scoreboard QR code"
+              downloadFileName={scoreboardQrDownloadName(event.name)}
+            />
+            <div className="max-w-md space-y-2">
+              <h2 className="font-[family-name:var(--font-display)] text-2xl">
+                Scoreboard link
+              </h2>
+              <p className="text-sm text-white/70">
+                Anyone who scans this can watch. They cannot enter scores.
+              </p>
+              <p className="break-all text-xs text-white/50">{scoreboardUrl}</p>
+            </div>
+          </section>
+        ) : null}
 
         {clubs.length > 0 ? <ClubWins rows={clubs} /> : null}
 

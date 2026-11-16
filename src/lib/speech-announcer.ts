@@ -46,6 +46,22 @@ export function formatPrepareAnnouncement(playerNames: string[]): string {
   return `${list}, please prepare for your game.`;
 }
 
+export function formatCourtCallAnnouncement(
+  playerNames: string[],
+  courtNumber: number,
+): string {
+  const list = formatPlayerListForSpeech(playerNames);
+  const court = `court ${courtNumber}`;
+  if (!list) return `Please proceed to ${court} for your game.`;
+  return `${list}, please proceed to ${court} for your game.`;
+}
+
+export function formatWarmupAnnouncement(playerNames: string[]): string {
+  const list = formatPlayerListForSpeech(playerNames);
+  if (!list) return "Please start warming up for your game.";
+  return `${list}, please start warming up for your game.`;
+}
+
 export function formatStartSessionAnnouncement(
   courtName: string,
   playerNames: string[],
