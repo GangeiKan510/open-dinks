@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { Monitor, QrCode, Trophy } from "lucide-react";
+import { Check, Monitor, QrCode, Trophy } from "lucide-react";
 import {
   activeCategory,
   addCategory,
@@ -38,26 +38,28 @@ import {
   removeClub,
   removeSponsor,
   removeTeam,
+  renameTeam,
   isSponsorTier,
   setSponsorTier,
   SPONSOR_TIER_LABELS,
   SPONSOR_TIERS,
   reportMatchScore,
-  resetDraw,
   selectCategory,
   setCategoryCourts,
   setCategoryFormat,
   setDrawSettings,
   stageProgress,
   swapMatches,
+  teamName,
   unparkMatch,
+  upcomingMatches,
   wildcardTeamIds,
-  startOverEvent,
   undoUnscoredDraw,
   TournamentError,
   updateTournamentDetails,
   type GameScore,
   type TournamentEvent,
+  type TournamentMatch,
   type SponsorTier,
   type TournamentSponsor,
   type TournamentState,
@@ -90,6 +92,22 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 type MatchFilter = "unreported" | "court" | "all";
+type LiveView = "groups" | "bracket" | "settings";
+
+/** Coalesce rapid director edits before writing the full tournament document. */
+const DIRECTOR_SAVE_DEBOUNCE_MS = 400;
+
+function resolveLiveView(
+  phase: TournamentState["phase"],
+  picked: LiveView | null,
+): LiveView {
+  if (picked === "settings") return "settings";
+  if (phase === "bracket") {
+    if (picked === "groups" || picked === "bracket") return picked;
+    return "bracket";
+  }
+  return "groups";
+}
 
 export function TournamentDirector({
   tournamentId,
@@ -113,6 +131,7 @@ export function TournamentDirector({
   const savingRef = useRef(false);
   const waitersRef = useRef<Array<(ok: boolean) => void>>([]);
   const flushRef = useRef<() => Promise<void>>(async () => {});
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updatedAtRef = useRef(initialUpdatedAt);
   const remoteRef = useRef<{
     event: TournamentEvent;
@@ -120,15 +139,14 @@ export function TournamentDirector({
   } | null>(null);
   const state = activeCategory(event);
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<"groups" | "bracket" | null>(null);
+  const [picked, setPicked] = useState<LiveView | null>(null);
   const [filter, setFilter] = useState<MatchFilter>("unreported");
-  const [confirm, setConfirm] = useState<"edit" | "start" | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [undoOpen, setUndoOpen] = useState(false);
   const [showUmpire, setShowUmpire] = useState(false);
   const [umpireUrl, setUmpireUrl] = useState<string | null>(null);
   const [desk, setDesk] = useState<"tournament" | "sponsors">("tournament");
-  const view = state.phase === "bracket" ? (picked ?? "bracket") : "groups";
+  const view = resolveLiveView(state.phase, picked);
 
   const adopt = useCallback((next: TournamentEvent, updatedAt: string) => {
     if (
@@ -207,6 +225,14 @@ export function TournamentDirector({
     flushRef.current = flush;
   }, [flush]);
 
+  const scheduleFlush = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void flushRef.current();
+    }, DIRECTOR_SAVE_DEBOUNCE_MS);
+  }, []);
+
   const commit = useCallback(
     (next: TournamentEvent) => {
       setEvent(next);
@@ -214,10 +240,12 @@ export function TournamentDirector({
       const pending = new Promise<boolean>((resolve) => {
         waitersRef.current.push(resolve);
       });
-      void flush();
+      // Coalesce rapid edits (name typing, toggles) into one document write
+      // so Realtime does not fan out a full tournament blob on every keystroke.
+      scheduleFlush();
       return pending;
     },
-    [flush],
+    [scheduleFlush],
   );
 
   useEffect(() => {
@@ -249,13 +277,18 @@ export function TournamentDirector({
           const next = tournamentEventFromDocument(row.document);
           if (!next || typeof row.updated_at !== "string") return;
           remoteRef.current = { event: next, updatedAt: row.updated_at };
-          if (pendingRef.current > 0) return;
+          if (pendingRef.current > 0 || pendingEventRef.current) return;
           adopt(next, row.updated_at);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void flushRef.current();
     };
   }, [adopt, tournamentId]);
 
@@ -263,7 +296,6 @@ export function TournamentDirector({
     try {
       commit(action());
       setError(null);
-      setConfirm(null);
       setConfirmRemove(false);
       return true;
     } catch (caught) {
@@ -422,7 +454,6 @@ export function TournamentDirector({
           state={state}
           view={view}
           filter={filter}
-          confirm={confirm}
           confirmRemove={confirmRemove}
           champion={champion}
           run={run}
@@ -431,7 +462,6 @@ export function TournamentDirector({
           clear={clear}
           setPicked={setPicked}
           setFilter={setFilter}
-          setConfirm={setConfirm}
           setConfirmRemove={setConfirmRemove}
           undoOpen={undoOpen}
           setUndoOpen={setUndoOpen}
@@ -446,7 +476,6 @@ function TournamentPanels({
   state,
   view,
   filter,
-  confirm,
   confirmRemove,
   champion,
   run,
@@ -455,30 +484,33 @@ function TournamentPanels({
   clear,
   setPicked,
   setFilter,
-  setConfirm,
   setConfirmRemove,
   undoOpen,
   setUndoOpen,
 }: {
   event: TournamentEvent;
   state: TournamentState;
-  view: "groups" | "bracket";
+  view: LiveView;
   filter: MatchFilter;
-  confirm: "edit" | "start" | null;
   confirmRemove: boolean;
   champion: ReturnType<typeof bracketChampion>;
   run: (action: () => TournamentState) => boolean;
   runEvent: (action: () => TournamentEvent) => boolean;
   report: (matchId: string, games: GameScore[]) => void;
   clear: (matchId: string) => void;
-  setPicked: (picked: "groups" | "bracket" | null) => void;
+  setPicked: (picked: LiveView | null) => void;
   setFilter: (filter: MatchFilter) => void;
-  setConfirm: (confirm: "edit" | "start" | null) => void;
   setConfirmRemove: (confirm: boolean) => void;
   undoOpen: boolean;
   setUndoOpen: (open: boolean) => void;
 }) {
   const [swapSelectedId, setSwapSelectedId] = useState<string | null>(null);
+  const [swapTargetId, setSwapTargetId] = useState<string | null>(null);
+
+  function clearSwapSelection() {
+    setSwapSelectedId(null);
+    setSwapTargetId(null);
+  }
 
   function handleSwapSelect(matchId: string) {
     if (swapSelectedId == null) {
@@ -486,17 +518,31 @@ function TournamentPanels({
       return;
     }
     if (swapSelectedId === matchId) {
-      setSwapSelectedId(null);
+      clearSwapSelection();
       return;
     }
-    const swapped = run(() => swapMatches(state, swapSelectedId, matchId));
-    setSwapSelectedId(null);
-    if (!swapped) return;
+    setSwapTargetId(matchId);
   }
 
   function handleUnpark(matchId: string) {
     run(() => unparkMatch(state, matchId));
   }
+
+  function handleRenameTeam(teamId: string, playerA: string, playerB?: string) {
+    return run(() => renameTeam(state, teamId, playerA, playerB ?? ""));
+  }
+
+  const swapFrom =
+    swapSelectedId != null
+      ? state.matches.find((match) => match.id === swapSelectedId)
+      : undefined;
+  const swapTo =
+    swapTargetId != null
+      ? state.matches.find((match) => match.id === swapTargetId)
+      : undefined;
+  const upNextIds = new Set(
+    upcomingMatches(event).map((slot) => slot.match.id),
+  );
 
   return (
     <>
@@ -505,7 +551,7 @@ function TournamentPanels({
         confirmRemove={confirmRemove}
         onSelect={(categoryId) => {
           setPicked(null);
-          setSwapSelectedId(null);
+          clearSwapSelection();
           runEvent(() => selectCategory(event, categoryId));
         }}
         onAdd={(name) => runEvent(() => addCategory(event, name))}
@@ -536,12 +582,16 @@ function TournamentPanels({
       ) : (
         <div className="space-y-6">
           {canUndoDraw(state) ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-              <p className="text-sm text-[var(--muted)]">
-                No scores yet. Undo this draw to change courts or the setup.
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3">
+              <p className="text-sm text-amber-100">
+                No scores yet — you can still undo{" "}
+                {state.phase === "bracket" ? "the final" : "these brackets"} to
+                change courts or the setup.
               </p>
               <Button
                 type="button"
+                size="sm"
+                className="border-amber-300/50 bg-amber-300/15 text-amber-50 hover:bg-amber-300/25"
                 variant="outline"
                 onClick={() => setUndoOpen(true)}
               >
@@ -551,9 +601,15 @@ function TournamentPanels({
           ) : null}
           <Tabs
             value={view}
-            onValueChange={(value) =>
-              setPicked(value === "bracket" ? "bracket" : "groups")
-            }
+            onValueChange={(value) => {
+              if (
+                value === "settings" ||
+                value === "bracket" ||
+                value === "groups"
+              ) {
+                setPicked(value);
+              }
+            }}
           >
             <TabsList aria-label="Tournament stages">
               <TabsTrigger value="groups">
@@ -566,47 +622,23 @@ function TournamentPanels({
                   <Progress state={state} stage="bracket" />
                 ) : null}
               </TabsTrigger>
+              <TabsTrigger value="settings">Category Settings</TabsTrigger>
             </TabsList>
 
             <TabsContent value="groups" className="space-y-6">
               <div className="flex flex-wrap items-end justify-between gap-4">
-                <StageToolbar
-                  filter={filter}
-                  onFilter={setFilter}
-                  onEdit={() => {
-                    if (confirm === "edit") run(() => resetDraw(state));
-                    else setConfirm("edit");
-                  }}
-                  onStart={() => {
-                    if (confirm === "start")
-                      runEvent(() => startOverEvent(event));
-                    else setConfirm("start");
-                  }}
-                  confirm={confirm}
-                  onCancelConfirm={() => setConfirm(null)}
-                />
-                <div className="w-44 shrink-0">
-                  <NumberSetting
-                    id="live-points-to-quarters"
-                    label="Play to (groups & quarters)"
-                    min={1}
-                    max={99}
-                    value={state.pointsToQuarters}
-                    onChange={(pointsToQuarters) =>
-                      run(() => setDrawSettings(state, { pointsToQuarters }))
-                    }
-                  />
-                </div>
+                <StageToolbar filter={filter} onFilter={setFilter} />
               </div>
               {swapSelectedId ? (
                 <p className="text-sm text-[var(--muted)]">
-                  Tap Swap with this on another match to interchange courts or
-                  queue order. Tap Cancel swap to abort.
+                  Tap Swap with this on another match, then confirm the preview.
+                  Tap Cancel swap to abort.
                 </p>
               ) : (
                 <p className="text-sm text-[var(--muted)]">
                   Use Swap when a player would get consecutive games — pull a
-                  match off court or reorder who is up next.
+                  match off court or reorder who is up next. Fix name typos in
+                  Category Settings.
                 </p>
               )}
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
@@ -619,6 +651,7 @@ function TournamentPanels({
                   swapSelectedId={swapSelectedId}
                   onSwapSelect={handleSwapSelect}
                   onUnpark={handleUnpark}
+                  upNextIds={upNextIds}
                 />
                 <StandingsColumn
                   state={state}
@@ -630,26 +663,12 @@ function TournamentPanels({
             </TabsContent>
 
             <TabsContent value="bracket" className="space-y-6">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <p className="max-w-2xl text-sm text-[var(--muted)]">
-                  Winners move forward. Third place can be played as soon as the
-                  semifinals are done. Changing a score pulls that team back out
-                  of the next round. Use Swap to interchange courts or queue
-                  order.
-                </p>
-                <div className="w-40 shrink-0">
-                  <NumberSetting
-                    id="live-points-semis-final"
-                    label="Play to (semis & final)"
-                    min={1}
-                    max={99}
-                    value={state.pointsSemisFinal}
-                    onChange={(pointsSemisFinal) =>
-                      run(() => setDrawSettings(state, { pointsSemisFinal }))
-                    }
-                  />
-                </div>
-              </div>
+              <p className="max-w-2xl text-sm text-[var(--muted)]">
+                Winners move forward. Third place can be played as soon as the
+                semifinals are done. Changing a score pulls that team back out
+                of the next round. Use Swap to interchange courts or queue
+                order. Fix name typos in Category Settings.
+              </p>
               <BracketBoard
                 state={state}
                 onReport={report}
@@ -657,11 +676,38 @@ function TournamentPanels({
                 swapSelectedId={swapSelectedId}
                 onSwapSelect={handleSwapSelect}
                 onUnpark={handleUnpark}
+                upNextIds={upNextIds}
+              />
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-6">
+              <CategorySettingsPanel
+                state={state}
+                run={run}
+                onRenameTeam={handleRenameTeam}
               />
             </TabsContent>
           </Tabs>
         </div>
       )}
+      <SwapConfirmDialog
+        open={Boolean(swapFrom && swapTo)}
+        state={state}
+        from={swapFrom}
+        to={swapTo}
+        upNextIds={upNextIds}
+        onOpenChange={(open) => {
+          if (!open) setSwapTargetId(null);
+        }}
+        onConfirm={() => {
+          if (!swapSelectedId || !swapTargetId) return;
+          const swapped = run(() =>
+            swapMatches(state, swapSelectedId, swapTargetId),
+          );
+          clearSwapSelection();
+          if (!swapped) return;
+        }}
+      />
       <UndoBracketDialog
         open={undoOpen}
         phase={state.phase}
@@ -717,6 +763,125 @@ function UndoBracketDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function SwapConfirmDialog({
+  open,
+  state,
+  from,
+  to,
+  upNextIds,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  state: TournamentState;
+  from: TournamentMatch | undefined;
+  to: TournamentMatch | undefined;
+  upNextIds: ReadonlySet<string>;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  if (!from || !to) return null;
+
+  const summary = swapResultSummary(from, to);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Swap these matches?</DialogTitle>
+          <DialogDescription>{summary}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <SwapMatchPreview state={state} match={from} upNextIds={upNextIds} />
+          <p className="text-center text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+            swaps with
+          </p>
+          <SwapMatchPreview state={state} match={to} upNextIds={upNextIds} />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            Confirm swap
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SwapMatchPreview({
+  state,
+  match,
+  upNextIds,
+}: {
+  state: TournamentState;
+  match: TournamentMatch;
+  upNextIds: ReadonlySet<string>;
+}) {
+  const group = state.groups.find((item) => item.id === match.groupId);
+  const label = group ? `M${match.number} – ${group.name}` : `M${match.number}`;
+  const status = matchQueueStatus(match, upNextIds.has(match.id));
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">{label}</p>
+        <span className={matchStatusBadgeClass(match, status)}>{status}</span>
+      </div>
+      <p className="truncate text-sm">{teamName(state, match.teamAId)}</p>
+      <p className="truncate text-sm">{teamName(state, match.teamBId)}</p>
+    </div>
+  );
+}
+
+function matchStatusBadgeClass(match: TournamentMatch, status: string): string {
+  if (match.courtNumber != null) {
+    return "rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs font-medium text-[var(--accent-fg)]";
+  }
+  if (status === "Up next") {
+    return "rounded-full bg-[var(--highlight)]/20 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.14em] text-[var(--highlight)]";
+  }
+  return "text-xs uppercase tracking-[0.14em] text-[var(--muted)]";
+}
+
+function matchQueueStatus(match: TournamentMatch, upNext: boolean): string {
+  if (match.courtNumber != null) return `Court ${match.courtNumber}`;
+  if (match.parked) return "Parked";
+  if (!match.teamAId || !match.teamBId) return "Waiting";
+  if (upNext) return "Up next";
+  return "In queue";
+}
+
+function swapResultSummary(from: TournamentMatch, to: TournamentMatch): string {
+  const fromCourt = from.courtNumber;
+  const toCourt = to.courtNumber;
+  if (fromCourt != null && toCourt == null) {
+    return `After the swap, ${matchLabel(to)} goes onto Court ${fromCourt}, and ${matchLabel(from)} returns to the queue.`;
+  }
+  if (fromCourt == null && toCourt != null) {
+    return `After the swap, ${matchLabel(from)} goes onto Court ${toCourt}, and ${matchLabel(to)} returns to the queue.`;
+  }
+  if (fromCourt != null && toCourt != null) {
+    return `These matches will swap courts: ${matchLabel(from)} moves to Court ${toCourt}, and ${matchLabel(to)} moves to Court ${fromCourt}.`;
+  }
+  const fromOrder =
+    typeof from.queueOrder === "number" ? from.queueOrder : from.number;
+  const toOrder = typeof to.queueOrder === "number" ? to.queueOrder : to.number;
+  if (fromOrder <= toOrder) {
+    return `These waiting matches will swap queue order. ${matchLabel(to)} will be ahead of ${matchLabel(from)}.`;
+  }
+  return `These waiting matches will swap queue order. ${matchLabel(from)} will be ahead of ${matchLabel(to)}.`;
+}
+
+function matchLabel(match: TournamentMatch): string {
+  return `M${match.number}`;
 }
 
 function Progress({
@@ -1062,6 +1227,273 @@ function CategoryBar({
   );
 }
 
+function CategorySettingsPanel({
+  state,
+  run,
+  onRenameTeam,
+}: {
+  state: TournamentState;
+  run: (action: () => TournamentState) => boolean;
+  onRenameTeam: (teamId: string, playerA: string, playerB?: string) => boolean;
+}) {
+  const singles = state.format === "singles";
+  const sortedTeams = state.teams
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <section className="space-y-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="space-y-1">
+          <h2 className="font-[family-name:var(--font-display)] text-2xl">
+            Category
+          </h2>
+          <p className="text-sm text-[var(--muted)]">
+            Update names and scoring for this category. Draw shape stays locked
+            while matches are live.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="live-tournament-name">Tournament</Label>
+          <Input
+            id="live-tournament-name"
+            value={state.name}
+            onChange={(event) =>
+              run(() =>
+                updateTournamentDetails(state, { name: event.target.value }),
+              )
+            }
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="live-division-name">Category</Label>
+          <Input
+            id="live-division-name"
+            value={state.division}
+            onChange={(event) =>
+              run(() =>
+                updateTournamentDetails(state, {
+                  division: event.target.value,
+                }),
+              )
+            }
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <NumberSetting
+            id="live-settings-points-to-quarters"
+            label="Play to (groups & quarters)"
+            min={1}
+            max={99}
+            value={state.pointsToQuarters}
+            onChange={(pointsToQuarters) =>
+              run(() => setDrawSettings(state, { pointsToQuarters }))
+            }
+          />
+          <NumberSetting
+            id="live-settings-points-semis-final"
+            label="Play to (semis & final)"
+            min={1}
+            max={99}
+            value={state.pointsSemisFinal}
+            onChange={(pointsSemisFinal) =>
+              run(() => setDrawSettings(state, { pointsSemisFinal }))
+            }
+          />
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Draw format</h3>
+            <span className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+              Locked while live
+            </span>
+          </div>
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-[var(--muted)]">Format</dt>
+              <dd className="font-medium">{singles ? "Singles" : "Doubles"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">Games per match</dt>
+              <dd className="font-medium">{state.gamesPerMatch}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">Brackets</dt>
+              <dd className="font-medium">{state.bracketCount}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">
+                {singles ? "Players" : "Teams"} per bracket
+              </dt>
+              <dd className="font-medium">{state.teamsPerBracket}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">Advance per bracket</dt>
+              <dd className="font-medium">{state.advancePerGroup}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">Open spots</dt>
+              <dd className="font-medium">
+                {state.knockoutFill === "wildcard" ? "Wild card" : "Bye"}
+              </dd>
+            </div>
+          </dl>
+          <p className="text-sm text-[var(--muted)]">
+            Use the undo banner above while there are no scores if you need to
+            change format, brackets, or open spots.
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            <h2 className="font-[family-name:var(--font-display)] text-2xl">
+              {singles ? "Players" : "Teams"}
+            </h2>
+            <p className="text-sm text-[var(--muted)]">
+              Fix typos without rebuilding the draw. Matches and standings keep
+              the same entries.
+            </p>
+          </div>
+          <span className="text-sm tabular-nums text-[var(--muted)]">
+            {state.teams.length}
+          </span>
+        </div>
+        {sortedTeams.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-sm text-[var(--muted)]">
+            No {singles ? "players" : "teams"} in this category.
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)]">
+            {sortedTeams.map((team, index) => {
+              const group =
+                team.bracketIndex != null
+                  ? bracketName(team.bracketIndex)
+                  : null;
+              return (
+                <li
+                  key={team.id}
+                  className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+                      {index + 1}
+                      {group ? ` · ${group}` : ""}
+                      {team.club ? ` · ${team.club}` : ""}
+                    </p>
+                    <SettingsTeamEditor
+                      team={team}
+                      format={state.format}
+                      onRename={onRenameTeam}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SettingsTeamEditor({
+  team,
+  format,
+  onRename,
+}: {
+  team: TournamentState["teams"][number];
+  format: TournamentState["format"];
+  onRename: (teamId: string, playerA: string, playerB?: string) => boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [playerA, setPlayerA] = useState(team.players[0] ?? "");
+  const [playerB, setPlayerB] = useState(team.players[1] ?? "");
+
+  function startEdit() {
+    setPlayerA(team.players[0] ?? "");
+    setPlayerB(team.players[1] ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    const ok =
+      format === "singles"
+        ? onRename(team.id, playerA)
+        : onRename(team.id, playerA, playerB);
+    if (ok) setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="truncate font-medium">{team.name}</p>
+        <Button type="button" size="sm" variant="outline" onClick={startEdit}>
+          Edit name
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Input
+        aria-label={format === "singles" ? "Player name" : "Player 1"}
+        value={playerA}
+        autoFocus
+        onChange={(event) => setPlayerA(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            save();
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setEditing(false);
+          }
+        }}
+        className="h-9 min-w-0 flex-1"
+      />
+      {format === "doubles" ? (
+        <>
+          <span className="text-sm text-[var(--muted)]">/</span>
+          <Input
+            aria-label="Player 2"
+            value={playerB}
+            onChange={(event) => setPlayerB(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                save();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setEditing(false);
+              }
+            }}
+            className="h-9 min-w-0 flex-1"
+          />
+        </>
+      ) : null}
+      <Button type="button" size="sm" onClick={save}>
+        Save
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => setEditing(false)}
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
 function CategoryCourts({
   state,
   run,
@@ -1073,42 +1505,72 @@ function CategoryCourts({
     state.courtNumbers.length === 0
       ? Array.from({ length: state.courtCount }, (_, index) => index + 1)
       : state.courtNumbers;
+  const division = displayDivision(state);
+
   return (
-    <section className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">
-          Courts for {displayDivision(state)}
-        </h2>
-        <p className="text-sm text-[var(--muted)]">
-          These courts come from Settings. Uncheck any this category should not
-          use.
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium">Courts for {division}</h2>
+          <p className="max-w-xl text-sm text-[var(--muted)]">
+            Tap courts this category can use. Venue courts come from Settings —
+            leave at least one on.
+          </p>
+        </div>
+        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+          {selected.length} of {state.courtCount} selected
         </p>
       </div>
       <div
-        className="flex flex-wrap gap-2"
+        className="grid gap-3 p-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
         role="group"
-        aria-label={`Courts for ${displayDivision(state)}`}
+        aria-label={`Courts for ${division}`}
       >
         {Array.from({ length: state.courtCount }, (_, index) => {
           const number = index + 1;
           const checked = selected.includes(number);
           return (
-            <label
+            <button
               key={number}
-              className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+              type="button"
+              aria-pressed={checked}
+              onClick={() => {
+                const next = checked
+                  ? selected.filter((court) => court !== number)
+                  : [...selected, number];
+                run(() => setCategoryCourts(state, next));
+              }}
+              className={
+                checked
+                  ? "flex items-center justify-between gap-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-left transition-colors hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  : "flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-left text-[var(--muted)] transition-colors hover:border-[var(--accent)]/40 hover:bg-[var(--surface-3)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              }
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => {
-                  const next = checked
-                    ? selected.filter((court) => court !== number)
-                    : [...selected, number];
-                  run(() => setCategoryCourts(state, next));
-                }}
-              />
-              Court {number}
-            </label>
+              <span className="space-y-0.5">
+                <span className="block text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                  Court
+                </span>
+                <span
+                  className={
+                    checked
+                      ? "block text-lg font-semibold text-[var(--accent-fg-soft)]"
+                      : "block text-lg font-semibold"
+                  }
+                >
+                  {number}
+                </span>
+              </span>
+              <span
+                className={
+                  checked
+                    ? "flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-fg)]"
+                    : "flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)]"
+                }
+                aria-hidden
+              >
+                {checked ? <Check className="h-4 w-4" /> : null}
+              </span>
+            </button>
           );
         })}
       </div>
@@ -1592,17 +2054,9 @@ function NumberSetting({
 function StageToolbar({
   filter,
   onFilter,
-  onEdit,
-  onStart,
-  confirm,
-  onCancelConfirm,
 }: {
   filter: MatchFilter;
   onFilter: (filter: MatchFilter) => void;
-  onEdit: () => void;
-  onStart: () => void;
-  confirm: "edit" | "start" | null;
-  onCancelConfirm: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -1624,22 +2078,6 @@ function StageToolbar({
           {label}
         </Button>
       ))}
-      <Button type="button" size="sm" variant="outline" onClick={onEdit}>
-        {confirm === "edit" ? "Discard scores and edit teams" : "Edit teams"}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onStart}>
-        {confirm === "start" ? "Erase this tournament" : "Start over"}
-      </Button>
-      {confirm ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onCancelConfirm}
-        >
-          Cancel
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -1653,6 +2091,7 @@ function MatchColumn({
   swapSelectedId,
   onSwapSelect,
   onUnpark,
+  upNextIds,
 }: {
   state: TournamentState;
   stage: "groups" | "bracket";
@@ -1662,6 +2101,7 @@ function MatchColumn({
   swapSelectedId: string | null;
   onSwapSelect: (matchId: string) => void;
   onUnpark: (matchId: string) => void;
+  upNextIds: ReadonlySet<string>;
 }) {
   const matches = state.matches.filter((match) => {
     if (match.stage !== stage || match.status === "bye") return false;
@@ -1693,6 +2133,7 @@ function MatchColumn({
             swapSelectedId={swapSelectedId}
             onSwapSelect={onSwapSelect}
             onUnpark={onUnpark}
+            upNext={upNextIds.has(match.id)}
           />
         ))
       )}
@@ -1750,6 +2191,7 @@ function BracketBoard({
   swapSelectedId,
   onSwapSelect,
   onUnpark,
+  upNextIds,
 }: {
   state: TournamentState;
   onReport: (matchId: string, games: GameScore[]) => void;
@@ -1757,6 +2199,7 @@ function BracketBoard({
   swapSelectedId: string | null;
   onSwapSelect: (matchId: string) => void;
   onUnpark: (matchId: string) => void;
+  upNextIds: ReadonlySet<string>;
 }) {
   const columns = bracketColumns(state);
 
@@ -1777,6 +2220,7 @@ function BracketBoard({
                   swapSelectedId={swapSelectedId}
                   onSwapSelect={onSwapSelect}
                   onUnpark={onUnpark}
+                  upNext={upNextIds.has(match.id)}
                 />
               ))}
             </div>

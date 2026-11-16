@@ -84,3 +84,16 @@ export function isNewerTimestamp(candidate: string, current: string): boolean {
   if (Number.isNaN(previous)) return true;
   return next > previous;
 }
+
+/**
+ * Live rally ticks only. These can be coalesced before write so the board
+ * still updates quickly without a full-document broadcast on every point.
+ */
+export function isLiveScoreOnlyPatches(patches: MatchFieldPatch[]): boolean {
+  if (patches.length === 0) return false;
+  return patches.every((patch) => {
+    if (patch.insert) return false;
+    const keys = Object.keys(patch.set);
+    return keys.length === 1 && keys[0] === "live";
+  });
+}
