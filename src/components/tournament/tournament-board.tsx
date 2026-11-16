@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { QrCode } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { SessionQr } from "@/components/session/session-qr";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   bracketChampion,
@@ -11,6 +13,8 @@ import {
   formatDiff,
   groupStandings,
   isSponsorLogoUrl,
+  isThirdPlaceMatch,
+  matchWinnerId,
   wildcardTeamIds,
   pointsToWin,
   SPONSOR_TIER_LABELS,
@@ -25,6 +29,7 @@ import {
   type TournamentState,
 } from "@/engine/tournament";
 import { PRODUCT_NAME } from "@/lib/facility";
+import { scoreboardQrDownloadName } from "@/lib/scoreboard-qr";
 import { createClient } from "@/lib/supabase/client";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import { cn } from "@/lib/utils";
@@ -32,12 +37,18 @@ import { cn } from "@/lib/utils";
 export function TournamentBoard({
   tournamentId,
   initialEvent,
+  publicToken = "",
+  canShareScoreboard = false,
 }: {
   tournamentId: string;
   initialEvent: TournamentEvent;
+  publicToken?: string;
+  canShareScoreboard?: boolean;
 }) {
   const [event, setEvent] = useState(initialEvent);
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const [showScoreboardQr, setShowScoreboardQr] = useState(false);
+  const [scoreboardUrl, setScoreboardUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -115,7 +126,7 @@ export function TournamentBoard({
                 .join(" · ")}
             </p>
           </div>
-          <div className="text-right text-sm text-white/60">
+          <div className="flex flex-col items-end gap-2 text-right text-sm text-white/60">
             <div>
               {playing.length === 0 ? "Draw not built" : "Categories live"}
             </div>
@@ -124,14 +135,45 @@ export function TournamentBoard({
                 {reported.reported}/{reported.total} reported
               </div>
             )}
-            <Link
-              href="/tournament"
-              className="text-[var(--highlight)] underline"
-            >
-              Director
-            </Link>
+            {canShareScoreboard ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-white/20 text-[var(--paper)] hover:bg-white/10"
+                aria-expanded={showScoreboardQr}
+                onClick={() => {
+                  setScoreboardUrl(
+                    `${window.location.origin}/tournament/board/${publicToken}`,
+                  );
+                  setShowScoreboardQr((open) => !open);
+                }}
+              >
+                <QrCode className="h-4 w-4" aria-hidden />
+                Scoreboard QR
+              </Button>
+            ) : null}
           </div>
         </header>
+
+        {showScoreboardQr && scoreboardUrl ? (
+          <section className="flex flex-wrap items-center gap-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <SessionQr
+              url={scoreboardUrl}
+              alt="Scoreboard QR code"
+              downloadFileName={scoreboardQrDownloadName(event.name)}
+            />
+            <div className="max-w-md space-y-2">
+              <h2 className="font-[family-name:var(--font-display)] text-2xl">
+                Scoreboard link
+              </h2>
+              <p className="text-sm text-white/70">
+                Anyone who scans this can watch. They cannot enter scores.
+              </p>
+              <p className="break-all text-xs text-white/50">{scoreboardUrl}</p>
+            </div>
+          </section>
+        ) : null}
 
         {clubs.length > 0 ? <ClubWins rows={clubs} /> : null}
 
@@ -584,57 +626,175 @@ function GroupCard({
 
 function BracketStrip({ state }: { state: TournamentState }) {
   const columns = bracketColumns(state);
+  const champion = bracketChampion(state);
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
-        Finals
-      </h2>
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {columns.map((column) => (
-          <div key={column.key} className="w-64 shrink-0 space-y-4">
-            {column.groups.map((group) => (
-              <div key={group.label} className="space-y-2">
-                <h3 className="text-sm text-white/60">{group.label}</h3>
-                {group.matches.map((match) => (
-                  <article
-                    key={match.id}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
-                  >
-                    {match.status === "bye" ? (
-                      <p>
-                        {teamName(state, match.teamAId ?? match.teamBId)} · bye
-                      </p>
-                    ) : (
-                      <>
-                        <BoardSide
-                          name={teamName(state, match.teamAId)}
-                          scores={match.games.map((game) => game.a)}
-                        />
-                        <BoardSide
-                          name={teamName(state, match.teamBId)}
-                          scores={match.games.map((game) => game.b)}
-                        />
-                      </>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ))}
-          </div>
-        ))}
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-[var(--highlight)]">
+            Knockout
+          </p>
+          <h2 className="mt-1 font-[family-name:var(--font-display)] text-3xl md:text-4xl">
+            Finals
+          </h2>
+        </div>
+        {champion ? (
+          <p className="rounded-full border border-[var(--highlight)]/40 bg-[var(--highlight)]/10 px-4 py-1.5 text-sm text-[var(--highlight)]">
+            Champion · {champion.name}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex gap-5 overflow-x-auto pb-2">
+        {columns.map((column, columnIndex) => {
+          const lastRound = columnIndex === columns.length - 1;
+          return (
+            <div
+              key={column.key}
+              className={cn("shrink-0 space-y-4", lastRound ? "w-72" : "w-64")}
+            >
+              {column.groups.map((group) => (
+                <div key={group.label} className="space-y-3">
+                  <h3 className="text-xs uppercase tracking-[0.2em] text-white/45">
+                    {group.label}
+                  </h3>
+                  {group.matches.map((match) => (
+                    <BoardBracketMatch
+                      key={match.id}
+                      state={state}
+                      match={match}
+                      emphasize={
+                        lastRound &&
+                        !isThirdPlaceMatch(match) &&
+                        match.status === "reported"
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function BoardSide({ name, scores }: { name: string; scores: number[] }) {
+function BoardBracketMatch({
+  state,
+  match,
+  emphasize = false,
+}: {
+  state: TournamentState;
+  match: TournamentMatch;
+  emphasize?: boolean;
+}) {
+  const winnerId = matchWinnerId(match);
+  const onCourt = match.courtNumber != null;
+  const reported = match.status === "reported";
+
+  if (match.status === "bye") {
+    return (
+      <article className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-4 py-3">
+        <p className="text-sm text-white/55">
+          {teamName(state, match.teamAId ?? match.teamBId)}
+          <span className="ml-2 uppercase tracking-[0.14em]">Bye</span>
+        </p>
+      </article>
+    );
+  }
+
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <span className="truncate">{name}</span>
-      <span className="shrink-0 tabular-nums text-white/70">
-        {scores.join("  ")}
+    <article
+      className={cn(
+        "rounded-2xl border px-3 py-3 transition-colors",
+        emphasize
+          ? "border-[var(--highlight)]/50 bg-[var(--highlight)]/10 shadow-[0_0_40px_-18px_var(--board-glow)]"
+          : onCourt
+            ? "border-[var(--highlight)]/35 bg-white/5 ring-1 ring-[var(--highlight)]/20"
+            : reported
+              ? "border-white/15 bg-white/[0.06]"
+              : "border-white/10 bg-white/[0.03]",
+      )}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <p className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+          M{match.number}
+          {isThirdPlaceMatch(match) ? " · Bronze" : ""}
+        </p>
+        {onCourt ? (
+          <span className="rounded-full bg-[var(--highlight)] px-2 py-0.5 text-[11px] font-medium text-[var(--ink)]">
+            Court {match.courtNumber}
+          </span>
+        ) : reported ? (
+          <span className="text-[11px] uppercase tracking-[0.14em] text-white/35">
+            Complete
+          </span>
+        ) : null}
+      </div>
+      <div className="space-y-1">
+        <BoardSide
+          name={teamName(state, match.teamAId)}
+          scores={match.games.map((game) => game.a)}
+          won={winnerId != null && winnerId === match.teamAId}
+          decided={winnerId != null}
+          pending={!match.teamAId}
+        />
+        <BoardSide
+          name={teamName(state, match.teamBId)}
+          scores={match.games.map((game) => game.b)}
+          won={winnerId != null && winnerId === match.teamBId}
+          decided={winnerId != null}
+          pending={!match.teamBId}
+        />
+      </div>
+    </article>
+  );
+}
+
+function BoardSide({
+  name,
+  scores,
+  won = false,
+  decided = false,
+  pending = false,
+}: {
+  name: string;
+  scores: number[];
+  won?: boolean;
+  decided?: boolean;
+  pending?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-xl px-2.5 py-2",
+        won && "bg-[var(--highlight)]/15",
+        decided && !won && "opacity-55",
+      )}
+    >
+      <span
+        className={cn(
+          "min-w-0 truncate text-base",
+          won && "font-semibold text-[var(--highlight)]",
+          pending && "text-white/35",
+          decided && !won && "text-white/70",
+        )}
+      >
+        {name}
       </span>
+      {scores.length > 0 ? (
+        <span
+          className={cn(
+            "shrink-0 tabular-nums",
+            won
+              ? "font-[family-name:var(--font-display)] text-2xl leading-none text-[var(--highlight)]"
+              : "text-sm text-white/55",
+          )}
+        >
+          {scores.join(" · ")}
+        </span>
+      ) : null}
     </div>
   );
 }

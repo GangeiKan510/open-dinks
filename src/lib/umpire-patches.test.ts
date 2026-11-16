@@ -5,7 +5,11 @@ import {
   type TournamentEvent,
   type TournamentMatch,
 } from "@/engine/tournament";
-import { isNewerTimestamp, matchFieldPatches } from "./umpire-patches";
+import {
+  isLiveScoreOnlyPatches,
+  isNewerTimestamp,
+  matchFieldPatches,
+} from "./umpire-patches";
 
 function match(
   id: string,
@@ -111,5 +115,20 @@ describe("umpire match patches", () => {
     expect(
       isNewerTimestamp("2026-10-21T02:00:01.000Z", "2026-10-21T02:00:02.000Z"),
     ).toBe(false);
+  });
+
+  it("marks rally ticks as live-only and finished games as not", () => {
+    const before = event([match("court-1", 5, 1)]);
+    const afterPoint = event([match("court-1", 6, 1)]);
+    const livePatches = matchFieldPatches(before, afterPoint);
+    expect(isLiveScoreOnlyPatches(livePatches)).toBe(true);
+
+    const finished = match("court-1", 11, 1);
+    finished.games = [{ a: 11, b: 5 }];
+    finished.status = "reported";
+    finished.live = undefined;
+    const afterGame = event([finished]);
+    const gamePatches = matchFieldPatches(before, afterGame);
+    expect(isLiveScoreOnlyPatches(gamePatches)).toBe(false);
   });
 });

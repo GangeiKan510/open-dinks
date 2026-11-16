@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { saveUmpirePatches } from "@/lib/tournament-client";
 import { tournamentEventFromDocument } from "@/lib/tournament-document";
 import {
+  isLiveScoreOnlyPatches,
   isNewerTimestamp,
   matchFieldPatches,
   type MatchFieldPatch,
@@ -48,6 +49,8 @@ type CourtAssignment = {
 
 const UMPIRE_ID_KEY = "opendinks.umpire-id";
 const CLAIM_HEARTBEAT_MS = 15_000;
+/** Coalesce rally ticks; game finish / claim / sideout still flush immediately. */
+const UMPIRE_LIVE_SAVE_DEBOUNCE_MS = 600;
 let memoryUmpireId: string | null = null;
 
 function clientUmpireId(): string {
@@ -88,6 +91,7 @@ export function TournamentUmpire({
   const queueRef = useRef<MatchFieldPatch[][]>([]);
   const savingRef = useRef(false);
   const drainRef = useRef<() => Promise<void>>(async () => {});
+  const liveSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteRef = useRef<{
     event: TournamentEvent;
     updatedAt: string;
@@ -164,17 +168,50 @@ export function TournamentUmpire({
     drainRef.current = drain;
   }, [drain]);
 
-  const commit = useCallback(
-    (next: TournamentEvent) => {
-      const patches = matchFieldPatches(eventRef.current, next);
-      eventRef.current = next;
-      setEvent(next);
+  const enqueuePatches = useCallback(
+    (patches: MatchFieldPatch[]) => {
       if (patches.length === 0) return;
       pendingRef.current += 1;
       queueRef.current.push(patches);
       void drain();
     },
     [drain],
+  );
+
+  const flushLiveSave = useCallback(() => {
+    if (liveSaveTimerRef.current) {
+      clearTimeout(liveSaveTimerRef.current);
+      liveSaveTimerRef.current = null;
+    }
+    const patches = matchFieldPatches(savedRef.current, eventRef.current);
+    enqueuePatches(patches);
+  }, [enqueuePatches]);
+
+  const commit = useCallback(
+    (next: TournamentEvent) => {
+      const patches = matchFieldPatches(eventRef.current, next);
+      eventRef.current = next;
+      setEvent(next);
+      if (patches.length === 0) return;
+
+      // Phone UI stays instant. Rally ticks coalesce into one document write
+      // so gym boards still feel live without a broadcast on every point.
+      if (isLiveScoreOnlyPatches(patches)) {
+        if (liveSaveTimerRef.current) clearTimeout(liveSaveTimerRef.current);
+        liveSaveTimerRef.current = setTimeout(() => {
+          liveSaveTimerRef.current = null;
+          const coalesced = matchFieldPatches(
+            savedRef.current,
+            eventRef.current,
+          );
+          enqueuePatches(coalesced);
+        }, UMPIRE_LIVE_SAVE_DEBOUNCE_MS);
+        return;
+      }
+
+      flushLiveSave();
+    },
+    [enqueuePatches, flushLiveSave],
   );
 
   useEffect(() => {
@@ -197,13 +234,23 @@ export function TournamentUmpire({
           const next = tournamentEventFromDocument(row.document);
           if (!next || typeof row.updated_at !== "string") return;
           remoteRef.current = { event: next, updatedAt: row.updated_at };
-          if (pendingRef.current > 0) return;
+          if (pendingRef.current > 0 || liveSaveTimerRef.current) return;
           adopt(next, row.updated_at);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
+      if (liveSaveTimerRef.current) {
+        clearTimeout(liveSaveTimerRef.current);
+        liveSaveTimerRef.current = null;
+        const coalesced = matchFieldPatches(savedRef.current, eventRef.current);
+        if (coalesced.length > 0) {
+          pendingRef.current += 1;
+          queueRef.current.push(coalesced);
+          void drainRef.current();
+        }
+      }
     };
   }, [adopt, tournamentId]);
 

@@ -7,6 +7,7 @@ import {
   addClub,
   addSponsor,
   addTeam,
+  renameTeam,
   assignCourts,
   assignTeamBracket,
   assignTeamClub,
@@ -45,7 +46,7 @@ import {
   startOver,
   startOverEvent,
   swapMatches,
-  unparkMatch,
+  teamName,
   umpireChooseSide,
   umpireClaimMatch,
   umpireFinishGame,
@@ -175,6 +176,35 @@ describe("tournament pools", () => {
     expect(() => generateGroups(state)).toThrow(TournamentError);
     expect(() => addTeam(state, " ", "Bea")).toThrow(/both player names/i);
     expect(() => addTeam(state, "ada", "bea")).toThrow(/already in the draw/i);
+  });
+
+  it("renames a team after the round-robin draw is built", () => {
+    let state = addNamed(createTournament(), [
+      ["Ada", "Bea"],
+      ["Cy", "Dee"],
+      ["Eve", "Fay"],
+      ["Gus", "Hal"],
+    ]);
+    state = generateGroups(
+      setDrawSettings(state, {
+        bracketCount: 1,
+        teamsPerBracket: 4,
+      }),
+    );
+    expect(state.phase).toBe("groups");
+    const teamId = state.teams[0]!.id;
+    state = renameTeam(state, teamId, "Ada", "Beatrice");
+    expect(state.teams.find((team) => team.id === teamId)).toMatchObject({
+      name: "Ada / Beatrice",
+      players: ["Ada", "Beatrice"],
+    });
+    expect(teamName(state, teamId)).toBe("Ada / Beatrice");
+    expect(() => renameTeam(state, teamId, "Cy", "Dee")).toThrow(
+      /already in the draw/i,
+    );
+    expect(() => renameTeam(state, teamId, "Ada", "")).toThrow(
+      /both player names/i,
+    );
   });
 
   it("refuses more teams than the brackets can hold", () => {
@@ -493,7 +523,7 @@ describe("tournament courts", () => {
     expect(next.matches[1].courtNumber).toBeNull();
   });
 
-  it("queues the next matches whose teams are not already on court", () => {
+  it("features the next court-count matches in queue as up next", () => {
     let state = createTournament({ courtCount: 2 });
     state = addNamed(state, [
       ["Smith", "Crozier"],
@@ -514,21 +544,16 @@ describe("tournament courts", () => {
       categories: [state],
     };
 
-    const onCourt = state.matches.filter((match) => match.courtNumber != null);
-    const playing = new Set(
-      onCourt.flatMap((match) => [match.teamAId, match.teamBId]),
-    );
+    expect(
+      state.matches.filter((match) => match.courtNumber != null),
+    ).toHaveLength(2);
     const next = upcomingMatches(event);
 
     expect(next).toHaveLength(2);
-    expect(next.map((slot) => slot.match.number)).toEqual(
-      [...next.map((slot) => slot.match.number)].sort((a, b) => a - b),
-    );
+    expect(next.map((slot) => slot.match.number)).toEqual([3, 4]);
     for (const slot of next) {
       expect(slot.match.courtNumber).toBeNull();
       expect(slot.match.status).toBe("unreported");
-      expect(playing.has(slot.match.teamAId)).toBe(false);
-      expect(playing.has(slot.match.teamBId)).toBe(false);
     }
   });
 
@@ -1729,7 +1754,7 @@ describe("tournament categories", () => {
 });
 
 describe("match swap", () => {
-  it("swaps an on-court match with a waiting match and parks the pulled one", () => {
+  it("swaps an on-court match with a waiting match into the queue", () => {
     let state = createTournament({ courtCount: 2 });
     state = addNamed(state, [
       ["Ada", "Bea"],
@@ -1746,31 +1771,30 @@ describe("match swap", () => {
     const waiting = state.matches.filter(
       (match) => match.status === "unreported" && match.courtNumber == null,
     );
-    expect(onCourt.length).toBeGreaterThanOrEqual(1);
+    expect(onCourt).toHaveLength(2);
     expect(waiting.length).toBeGreaterThanOrEqual(1);
 
     const courtMatch = onCourt[0]!;
     const nextMatch = waiting[0]!;
     const court = courtMatch.courtNumber;
+    const nextOrder = nextMatch.queueOrder;
     state = swapMatches(state, courtMatch.id, nextMatch.id);
 
     const pulled = state.matches.find((match) => match.id === courtMatch.id)!;
     const promoted = state.matches.find((match) => match.id === nextMatch.id)!;
     expect(promoted.courtNumber).toBe(court);
     expect(pulled.courtNumber).toBeNull();
-    expect(pulled.parked).toBe(true);
+    expect(pulled.parked).toBe(false);
     expect(promoted.parked).toBe(false);
+    expect(pulled.queueOrder).toBe(nextOrder);
 
     const filled = assignCourts(state);
     expect(
       filled.matches.find((match) => match.id === courtMatch.id)?.courtNumber,
     ).toBeNull();
-
-    state = unparkMatch(state, courtMatch.id);
-    const returned = assignCourts(state);
-    const back = returned.matches.find((match) => match.id === courtMatch.id);
-    expect(back?.parked).toBe(false);
-    expect(back?.courtNumber == null || back?.courtNumber != null).toBe(true);
+    expect(
+      filled.matches.find((match) => match.id === nextMatch.id)?.courtNumber,
+    ).toBe(court);
   });
 
   it("reorders two waiting matches so the later one fills first", () => {

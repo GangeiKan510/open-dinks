@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WARNING_MINUTES,
+  formatCourtCallAnnouncement,
   formatPlayerListForSpeech,
   formatPrepareAnnouncement,
+  formatWarmupAnnouncement,
   formatRemainingTimeAnnouncement,
   formatRemainingTimeForSpeech,
   formatStartSessionAnnouncement,
@@ -43,6 +45,31 @@ describe("speech announcer thresholds", () => {
     expect(formatPlayerListForSpeech(["Alex", "Blake"])).toBe("Alex and Blake");
     expect(formatPlayerListForSpeech(["Alex", "Blake", "Casey", "Drew"])).toBe(
       "Alex, Blake, Casey, and Drew",
+    );
+  });
+
+  it("formats a court call with the players and court number", () => {
+    expect(
+      formatCourtCallAnnouncement(
+        ["Fernandez", "McDonald", "Dobson", "Tibbett"],
+        1,
+      ),
+    ).toBe(
+      "Fernandez, McDonald, Dobson, and Tibbett, please proceed to court 1 for your game.",
+    );
+    expect(formatCourtCallAnnouncement([], 2)).toBe(
+      "Please proceed to court 2 for your game.",
+    );
+  });
+
+  it("formats a warmup call for the players who are up next", () => {
+    expect(
+      formatWarmupAnnouncement(["Smith", "Crozier", "Egure", "Carrell"]),
+    ).toBe(
+      "Smith, Crozier, Egure, and Carrell, please start warming up for your game.",
+    );
+    expect(formatWarmupAnnouncement([])).toBe(
+      "Please start warming up for your game.",
     );
   });
 

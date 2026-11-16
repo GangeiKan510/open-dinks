@@ -1,5 +1,6 @@
 "use client";
 
+import { Volume2 } from "lucide-react";
 import { useState } from "react";
 import {
   isThirdPlaceMatch,
@@ -10,8 +11,14 @@ import {
   type GameScore,
   type TournamentMatch,
   type TournamentState,
+  type TournamentTeam,
 } from "@/engine/tournament";
 import { Button } from "@/components/ui/button";
+import {
+  formatCourtCallAnnouncement,
+  formatWarmupAnnouncement,
+  speakAnnouncement,
+} from "@/lib/speech-announcer";
 import { cn } from "@/lib/utils";
 
 export function MatchCard({
@@ -20,18 +27,23 @@ export function MatchCard({
   groupName,
   onReport,
   onClear,
+  onRenameTeam,
   swapSelectedId = null,
   onSwapSelect,
   onUnpark,
+  upNext = false,
 }: {
   state: TournamentState;
   match: TournamentMatch;
   groupName?: string | null;
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
+  onRenameTeam?: (teamId: string, playerA: string, playerB?: string) => boolean;
   swapSelectedId?: string | null;
   onSwapSelect?: (matchId: string) => void;
   onUnpark?: (matchId: string) => void;
+  /** True when this match is among the next ones to fill a free court. */
+  upNext?: boolean;
 }) {
   const label = groupName
     ? `M${match.number} – ${groupName}`
@@ -46,19 +58,22 @@ export function MatchCard({
   const picking = swapSelectedId != null && !selected;
 
   if (match.status === "bye") {
-    const advancer = teamName(state, match.teamAId ?? match.teamBId);
+    const advancerId = match.teamAId ?? match.teamBId;
     return (
       <article className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
         <p className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
           {label} · Bye
         </p>
-        <p className="mt-1 font-medium">{advancer}</p>
+        <div className="mt-1">
+          <TeamName state={state} teamId={advancerId} onRename={onRenameTeam} />
+        </div>
         <p className="text-sm text-[var(--muted)]">Advances</p>
       </article>
     );
   }
 
   const waiting = !match.teamAId || !match.teamBId;
+  const onCourt = match.courtNumber != null;
 
   return (
     <article
@@ -66,24 +81,28 @@ export function MatchCard({
         "rounded-xl border bg-[var(--surface)] p-4",
         selected
           ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/40"
-          : "border-[var(--border)]",
+          : onCourt
+            ? "border-[var(--accent)] ring-1 ring-[var(--accent)]/40"
+            : "border-[var(--border)]",
       )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{label}</h3>
-        <CourtBadge match={match} />
+        <CourtBadge state={state} match={match} upNext={upNext} />
       </div>
       {waiting ? (
         <div className="space-y-2 text-sm">
-          <TeamLine
-            name={teamName(state, match.teamAId)}
-            won={false}
+          <TeamName
+            state={state}
+            teamId={match.teamAId}
             pending={!match.teamAId}
+            onRename={onRenameTeam}
           />
-          <TeamLine
-            name={teamName(state, match.teamBId)}
-            won={false}
+          <TeamName
+            state={state}
+            teamId={match.teamBId}
             pending={!match.teamBId}
+            onRename={onRenameTeam}
           />
           <p className="text-[var(--muted)]">
             {isThirdPlaceMatch(match)
@@ -101,14 +120,13 @@ export function MatchCard({
           </p>
           <ScoreForm
             key={`${match.id}:${match.teamAId}:${match.teamBId}:${match.status}:${state.gamesPerMatch}:${match.games.map((game) => `${game.a}-${game.b}`).join(",")}`}
+            state={state}
             match={match}
             gamesPerMatch={state.gamesPerMatch}
-            nameA={teamName(state, match.teamAId)}
-            nameB={teamName(state, match.teamBId)}
             winnerId={winnerId}
-            teamAId={match.teamAId}
             onReport={onReport}
             onClear={onClear}
+            onRenameTeam={onRenameTeam}
           />
         </>
       )}
@@ -118,7 +136,7 @@ export function MatchCard({
             <Button
               type="button"
               size="sm"
-              variant={selected || picking ? "default" : "outline"}
+              variant={picking ? "default" : "outline"}
               aria-pressed={selected}
               onClick={() => onSwapSelect(match.id)}
             >
@@ -141,12 +159,61 @@ export function MatchCard({
   );
 }
 
-function CourtBadge({ match }: { match: TournamentMatch }) {
+function matchPlayerNames(
+  state: TournamentState,
+  match: TournamentMatch,
+): string[] {
+  const names: string[] = [];
+  for (const teamId of [match.teamAId, match.teamBId]) {
+    const team = teamId
+      ? state.teams.find((item) => item.id === teamId)
+      : undefined;
+    if (!team) continue;
+    for (const player of team.players) {
+      const trimmed = player.trim();
+      if (trimmed) names.push(trimmed);
+    }
+  }
+  return names;
+}
+
+function AnnounceButton({ label, text }: { label: string; text: string }) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className="h-7 w-7 shrink-0 px-0"
+      aria-label={label}
+      onClick={() => speakAnnouncement(text)}
+    >
+      <Volume2 className="h-4 w-4" aria-hidden />
+    </Button>
+  );
+}
+
+function CourtBadge({
+  state,
+  match,
+  upNext,
+}: {
+  state: TournamentState;
+  match: TournamentMatch;
+  upNext: boolean;
+}) {
+  const names = matchPlayerNames(state, match);
   if (match.courtNumber != null) {
+    const courtNumber = match.courtNumber;
     return (
-      <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs font-medium text-[var(--accent-fg)]">
-        Court {match.courtNumber}
-      </span>
+      <div className="flex items-center gap-1">
+        <AnnounceButton
+          label={`Announce players to proceed to court ${courtNumber}`}
+          text={formatCourtCallAnnouncement(names, courtNumber)}
+        />
+        <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs font-medium text-[var(--accent-fg)]">
+          Court {courtNumber}
+        </span>
+      </div>
     );
   }
   if (match.status === "reported") {
@@ -163,53 +230,193 @@ function CourtBadge({ match }: { match: TournamentMatch }) {
       </span>
     );
   }
+  if (!match.teamAId || !match.teamBId) {
+    return (
+      <span className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+        Waiting
+      </span>
+    );
+  }
+  if (upNext) {
+    return (
+      <div className="flex items-center gap-1">
+        <AnnounceButton
+          label="Announce players to start warming up"
+          text={formatWarmupAnnouncement(names)}
+        />
+        <span className="rounded-full bg-[var(--highlight)]/20 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.14em] text-[var(--highlight)]">
+          Up next
+        </span>
+      </div>
+    );
+  }
   return (
     <span className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
-      Up next
+      In queue
     </span>
   );
 }
 
-function TeamLine({
-  name,
-  won,
-  pending,
+function TeamName({
+  state,
+  teamId,
+  won = false,
+  pending = false,
+  onRename,
 }: {
-  name: string;
-  won: boolean;
+  state: TournamentState;
+  teamId: string | null;
+  won?: boolean;
   pending?: boolean;
+  onRename?: (teamId: string, playerA: string, playerB?: string) => boolean;
 }) {
+  const team = teamId
+    ? state.teams.find((item) => item.id === teamId)
+    : undefined;
+  const name = teamName(state, teamId);
+  const canEdit = Boolean(onRename && team);
+
+  if (!canEdit || !team) {
+    return (
+      <p
+        className={cn(
+          "truncate text-sm",
+          won && "font-semibold text-[var(--accent)]",
+          pending && "text-[var(--muted)]",
+        )}
+      >
+        {name}
+      </p>
+    );
+  }
+
   return (
-    <p
-      className={cn(
-        "truncate text-sm",
-        won && "font-semibold",
-        pending && "text-[var(--muted)]",
-      )}
-    >
-      {name}
-    </p>
+    <EditableTeamName
+      team={team}
+      format={state.format}
+      won={won}
+      onRename={onRename!}
+    />
+  );
+}
+
+function EditableTeamName({
+  team,
+  format,
+  won,
+  onRename,
+}: {
+  team: TournamentTeam;
+  format: TournamentState["format"];
+  won: boolean;
+  onRename: (teamId: string, playerA: string, playerB?: string) => boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [playerA, setPlayerA] = useState(team.players[0] ?? "");
+  const [playerB, setPlayerB] = useState(team.players[1] ?? "");
+
+  function startEdit() {
+    setPlayerA(team.players[0] ?? "");
+    setPlayerB(team.players[1] ?? "");
+    setEditing(true);
+  }
+
+  function cancel() {
+    setEditing(false);
+  }
+
+  function save() {
+    const ok =
+      format === "singles"
+        ? onRename(team.id, playerA)
+        : onRename(team.id, playerA, playerB);
+    if (ok) setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={startEdit}
+        title="Edit name"
+        className={cn(
+          "block max-w-full truncate text-left text-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          won && "font-semibold text-[var(--accent)]",
+        )}
+      >
+        {team.name}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <input
+          aria-label="Player 1"
+          value={playerA}
+          autoFocus
+          onChange={(event) => setPlayerA(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              save();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancel();
+            }
+          }}
+          className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        />
+        {format === "doubles" ? (
+          <>
+            <span className="text-sm text-[var(--muted)]">/</span>
+            <input
+              aria-label="Player 2"
+              value={playerB}
+              onChange={(event) => setPlayerB(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  save();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancel();
+                }
+              }}
+              className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            />
+          </>
+        ) : null}
+        <Button type="button" size="sm" onClick={save}>
+          Save
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={cancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 
 function ScoreForm({
+  state,
   match,
   gamesPerMatch,
-  nameA,
-  nameB,
   winnerId,
-  teamAId,
   onReport,
   onClear,
+  onRenameTeam,
 }: {
+  state: TournamentState;
   match: TournamentMatch;
   gamesPerMatch: number;
-  nameA: string;
-  nameB: string;
   winnerId: string | null;
-  teamAId: string | null;
   onReport: (matchId: string, games: GameScore[]) => void;
   onClear: (matchId: string) => void;
+  onRenameTeam?: (teamId: string, playerA: string, playerB?: string) => boolean;
 }) {
   const [scores, setScores] = useState(() =>
     seedScores(match.games, gamesPerMatch),
@@ -246,16 +453,20 @@ function ScoreForm({
       }}
     >
       <ScoreRow
-        name={nameA}
-        won={winnerId != null && winnerId === teamAId}
+        state={state}
+        teamId={match.teamAId}
+        won={winnerId != null && winnerId === match.teamAId}
         values={scores.map((game) => game.a)}
         onChange={(index, value) => update(index, "a", value)}
+        onRenameTeam={onRenameTeam}
       />
       <ScoreRow
-        name={nameB}
-        won={winnerId != null && winnerId !== teamAId}
+        state={state}
+        teamId={match.teamBId}
+        won={winnerId != null && winnerId !== match.teamAId}
         values={scores.map((game) => game.b)}
         onChange={(index, value) => update(index, "b", value)}
+        onRenameTeam={onRenameTeam}
       />
       {error ? (
         <p className="text-sm text-red-700" role="alert">
@@ -293,31 +504,38 @@ function ScoreForm({
 }
 
 function ScoreRow({
-  name,
+  state,
+  teamId,
   won,
   values,
   onChange,
+  onRenameTeam,
 }: {
-  name: string;
+  state: TournamentState;
+  teamId: string | null;
   won: boolean;
   values: string[];
   onChange: (index: number, value: string) => void;
+  onRenameTeam?: (teamId: string, playerA: string, playerB?: string) => boolean;
 }) {
+  const label = teamName(state, teamId);
   return (
     <div className="flex items-center gap-2">
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-sm",
-          won && "font-semibold text-[var(--accent)]",
-        )}
-      >
-        {name}
-      </span>
+      <div className="min-w-0 flex-1">
+        <TeamName
+          state={state}
+          teamId={teamId}
+          won={won}
+          onRename={onRenameTeam}
+        />
+      </div>
       {values.map((value, index) => (
         <input
           key={index}
           aria-label={
-            values.length === 1 ? `${name} score` : `${name} game ${index + 1}`
+            values.length === 1
+              ? `${label} score`
+              : `${label} game ${index + 1}`
           }
           inputMode="numeric"
           value={value}
