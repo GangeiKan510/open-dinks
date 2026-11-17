@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Radio, Trophy } from "lucide-react";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
+import { OpenPlayPanel } from "@/components/venue/open-play-panel";
 import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
 import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
@@ -31,9 +32,6 @@ import { cn } from "@/lib/utils";
 
 const CARD =
   "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--highlight)_16%,transparent)]";
-
-const PANEL =
-  "rounded-xl border border-[var(--border)] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--accent-soft)_55%,var(--surface)),var(--surface))] p-5";
 
 function Stat({
   label,
@@ -384,66 +382,45 @@ export default async function DashboardPage() {
       <DashboardTabs
         pendingRequestCount={pendingRequests.length}
         openPlay={
-          <>
-            {liveSession ? (
-              <section className={PANEL}>
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--highlight)]">
-                  Live
-                </p>
-                <h2 className="mb-1 font-semibold">Session in progress</h2>
-                <p className="mb-4 text-sm text-[var(--muted)]">
-                  You can run one session at a time. End{" "}
-                  <span className="font-medium text-[var(--foreground)]">
-                    {liveSession.title}
-                  </span>{" "}
-                  from the host console before starting another.
-                </p>
-                <Button asChild>
-                  <Link href={`/s/${liveSession.public_token}/host`}>
-                    Open host console
-                  </Link>
-                </Button>
-              </section>
-            ) : (
-              <section className={PANEL}>
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--highlight)]">
-                  Open play
-                </p>
-                <h2 className="mb-1 font-semibold">Start open play</h2>
-                <p className="mb-4 text-sm text-[var(--muted)]">
-                  Going live opens a wallboard and a player check-in link for
-                  this session.
-                </p>
-                <OpenPlaySetupForm
-                  venueId={venue.id}
-                  defaultTitle={defaultOpenPlayTitle(venue.timezone)}
-                />
-              </section>
-            )}
-
-            <section className="space-y-3">
-              <h2 className="font-semibold text-[var(--foreground)]">
-                Past sessions
-              </h2>
-              {sessionRows.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/s/${s.public_token}/host`}
-                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm transition-colors hover:border-[var(--highlight)]/50 hover:bg-[var(--accent-soft)]"
-                >
-                  <span>{s.title}</span>
-                  <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-xs text-[var(--muted)]">
-                    Completed
-                  </span>
-                </Link>
-              ))}
-              {sessionRows.length === 0 ? (
-                <p className="text-sm text-[var(--muted)]">
-                  No past sessions yet.
-                </p>
-              ) : null}
-            </section>
-          </>
+          <OpenPlayPanel
+            startLabel={liveSession ? "Live" : "Start"}
+            sessions={sessionRows.map((session) => ({
+              id: session.id,
+              title: session.title,
+              publicToken: session.public_token,
+            }))}
+            start={
+              liveSession ? (
+                <>
+                  <h2 className="mb-1 font-semibold">Session in progress</h2>
+                  <p className="mb-4 text-sm text-[var(--muted)]">
+                    You can run one session at a time. End{" "}
+                    <span className="font-medium text-[var(--foreground)]">
+                      {liveSession.title}
+                    </span>{" "}
+                    from the host console before starting another.
+                  </p>
+                  <Button asChild>
+                    <Link href={`/s/${liveSession.public_token}/host`}>
+                      Open host console
+                    </Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <h2 className="mb-1 font-semibold">Start open play</h2>
+                  <p className="mb-4 text-sm text-[var(--muted)]">
+                    Going live opens a wallboard and a player check-in link for
+                    this session.
+                  </p>
+                  <OpenPlaySetupForm
+                    venueId={venue.id}
+                    defaultTitle={defaultOpenPlayTitle(venue.timezone)}
+                  />
+                </>
+              )
+            }
+          />
         }
         bookings={{
           venueId: venue.id,
