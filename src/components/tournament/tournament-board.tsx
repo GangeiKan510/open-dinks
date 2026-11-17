@@ -185,7 +185,7 @@ export function TournamentBoard({
         ) : (
           <>
             <section className="space-y-4">
-              <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
+              <h2 className="text-sm font-medium uppercase tracking-[0.2em] text-[var(--highlight)]">
                 On court
               </h2>
               {onCourt.length === 0 ? (
@@ -479,17 +479,29 @@ function CourtTile({
 }) {
   const group = state.groups.find((item) => item.id === match.groupId);
   const live = !queued && match.live?.serving ? match.live : null;
-  const nextUp = queued && queuePosition === 1;
+  const onCourt = !queued;
   return (
     <article
       className={
-        nextUp
-          ? "rounded-2xl border border-[var(--highlight)]/50 bg-white/5 p-4 ring-1 ring-[var(--highlight)]/30"
-          : "rounded-2xl border border-white/10 bg-white/5 p-4"
+        onCourt
+          ? "rounded-2xl border border-[var(--highlight)]/80 bg-[color-mix(in_srgb,var(--highlight)_16%,transparent)] p-4 shadow-[0_0_36px_-14px_color-mix(in_srgb,var(--highlight)_80%,transparent)]"
+          : "rounded-2xl border border-white/10 bg-white/[0.03] p-4"
       }
     >
       <div className="mb-3 flex items-center justify-between gap-2 text-sm">
-        <span className="text-[var(--highlight)]">
+        <span
+          className={
+            onCourt
+              ? "inline-flex items-center gap-2 text-base font-semibold text-[var(--highlight)]"
+              : "text-white/45"
+          }
+        >
+          {onCourt ? (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-[var(--highlight)]"
+              aria-hidden
+            />
+          ) : null}
           {queued
             ? queueLabel(queuePosition, match.number)
             : `Court ${match.courtNumber}`}
@@ -505,11 +517,13 @@ function CourtTile({
       <ScoreLine
         name={teamName(state, match.teamAId)}
         score={live ? live.scoreA : null}
+        prominent={onCourt}
       />
       <ScoreLine
         name={teamName(state, match.teamBId)}
         score={live ? live.scoreB : null}
-        muted
+        muted={!onCourt}
+        prominent={onCourt}
       />
     </article>
   );
@@ -534,18 +548,22 @@ function ScoreLine({
   name,
   score,
   muted = false,
+  prominent = false,
 }: {
   name: string;
   score: number | null;
   muted?: boolean;
+  prominent?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-0.5">
       <span
         className={
-          muted
-            ? "min-w-0 truncate text-lg text-white/80"
-            : "min-w-0 truncate text-lg"
+          prominent
+            ? "min-w-0 truncate text-xl font-medium text-white"
+            : muted
+              ? "min-w-0 truncate text-lg text-white/55"
+              : "min-w-0 truncate text-lg"
         }
       >
         {name}
