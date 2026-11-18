@@ -41,6 +41,9 @@ function bookingWriteError(
     console.error(`[bookings] ${context}: schema missing`, error);
     return { error: BOOKING_ERROR_MESSAGES.migrations };
   }
+  if (error.code === "P0403") {
+    return { error: BOOKING_ERROR_MESSAGES.clubLocked };
+  }
   if (error.code === "42501") {
     return { error: BOOKING_ERROR_MESSAGES.signInGoogle };
   }

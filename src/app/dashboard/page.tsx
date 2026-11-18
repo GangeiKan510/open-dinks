@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Radio, Trophy } from "lucide-react";
+import { Radio } from "lucide-react";
+import {
+  OpenPlansButton,
+  PlanSummary,
+  PlansProvider,
+  TournamentModeButton,
+} from "@/components/venue/host-plans";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
 import { OpenPlayPanel } from "@/components/venue/open-play-panel";
 import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
@@ -9,6 +15,9 @@ import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { billingNoticeMessage } from "@/lib/billing-messages";
+import { loadFeatureAccess } from "@/lib/billing-server";
+import { localDateISO } from "@/lib/entitlements";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import {
   buildHourlySlotGrid,
@@ -69,7 +78,11 @@ function Stat({
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ billing?: string; plans?: string }>;
+}) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto max-w-lg space-y-4 px-6 py-16">
@@ -211,6 +224,15 @@ export default async function DashboardPage() {
     supabase.from("profiles").select("theme").eq("id", user.id).maybeSingle(),
   ]);
 
+  const billingCode = (await searchParams)?.billing;
+  const billingNotice = billingNoticeMessage(billingCode);
+  const openPlans =
+    (await searchParams)?.plans === "open" || Boolean(billingNotice);
+  const access = await loadFeatureAccess(
+    supabase,
+    venue.facilityId,
+    venue.timezone,
+  );
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
   const courtRows = courts ?? [];
   const sessionRows = sessions ?? [];
@@ -326,142 +348,164 @@ export default async function DashboardPage() {
   );
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--highlight)]">
-            {formatBrandTitle(facility)}
-          </p>
-          <h1 className="font-[family-name:var(--font-display)] text-4xl">
-            {facility?.name ?? venue.name}
-          </h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/tournament">
-              <Trophy className="h-4 w-4 shrink-0" aria-hidden />
-              Tournament mode
-            </Link>
-          </Button>
-          <SignOutButton />
-        </div>
-      </header>
-
-      {liveSession ? (
-        <Link
-          href={`/s/${liveSession.public_token}/host`}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <Radio
-              className="h-4 w-4 shrink-0 animate-pulse text-[var(--highlight)]"
-              aria-hidden
-            />
-            Live now · {liveSession.title}
-          </span>
-          <span className="text-sm font-medium text-[var(--highlight)] underline">
-            Open host console
-          </span>
-        </Link>
-      ) : null}
-
-      <dl className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Courts" value={String(courtRows.length)} tone="accent" />
-        <Stat
-          label="Pending requests"
-          value={String(pendingRequests.length)}
-          tone={pendingRequests.length > 0 ? "attention" : "default"}
-        />
-        <Stat
-          label="Upcoming bookings"
-          value={String(upcomingBookings.length)}
-          tone={upcomingBookings.length > 0 ? "accent" : "default"}
-        />
-      </dl>
-
-      <DashboardTabs
-        pendingRequestCount={pendingRequests.length}
-        openPlay={
-          <OpenPlayPanel
-            startLabel={liveSession ? "Live" : "Start"}
-            sessions={sessionRows.map((session) => ({
-              id: session.id,
-              title: session.title,
-              publicToken: session.public_token,
-            }))}
-            start={
-              liveSession ? (
-                <>
-                  <h2 className="mb-1 font-semibold">Session in progress</h2>
-                  <p className="mb-4 text-sm text-[var(--muted)]">
-                    You can run one session at a time. End{" "}
-                    <span className="font-medium text-[var(--foreground)]">
-                      {liveSession.title}
-                    </span>{" "}
-                    from the host console before starting another.
-                  </p>
-                  <Button asChild>
-                    <Link href={`/s/${liveSession.public_token}/host`}>
-                      Open host console
-                    </Link>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <h2 className="mb-1 font-semibold">Start open play</h2>
-                  <p className="mb-4 text-sm text-[var(--muted)]">
-                    Going live opens a wallboard and a player check-in link for
-                    this session.
-                  </p>
-                  <OpenPlaySetupForm
-                    venueId={venue.id}
-                    defaultTitle={defaultOpenPlayTitle(venue.timezone)}
-                  />
-                </>
-              )
-            }
-          />
-        }
-        bookings={{
-          venueId: venue.id,
-          courts: courtRows,
-          bookings: bookingRows,
-          bookingsLoadError,
-          bookingHistory: bookingHistoryRows,
-          grid: bookingGrid,
-          timeZone: venue.timezone,
-          publicBookingUrl: `${siteUrl()}${bookingPath}`,
-          bookingPath,
-          coaches: coachesWithAvailability,
-          coachingBookings: coachingBookingRows,
-          coachingHistory: coachingHistoryRows,
-          coachingGrid,
-        }}
-        settings={
-          facility
-            ? {
-                facility,
-                courts: courtRows,
-                venueTimezone: venue.timezone,
-                bookingHours: {
-                  openHour: venue.bookingOpenHour,
-                  closeHour: venue.bookingCloseHour,
-                },
-                theme: resolveTheme(
-                  (await cookies()).get(THEME_COOKIE)?.value,
-                  profileResult.data?.theme,
-                ),
-              }
-            : null
-        }
-        settingsFallback={
-          <section className={CARD}>
-            <p className="text-sm text-[var(--muted)]">
-              Facility settings are unavailable right now.
+    <PlansProvider
+      access={access}
+      timeZone={venue.timezone}
+      today={localDateISO(venue.timezone, new Date())}
+      notice={billingNotice}
+      defaultOpen={openPlans}
+    >
+      <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--highlight)]">
+              {formatBrandTitle(facility)}
             </p>
-          </section>
-        }
-      />
-    </main>
+            <h1 className="font-[family-name:var(--font-display)] text-4xl">
+              {facility?.name ?? venue.name}
+            </h1>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {access.schemaReady ? (
+              <TournamentModeButton />
+            ) : (
+              <Button variant="outline" asChild>
+                <Link href="/tournament">Tournament mode</Link>
+              </Button>
+            )}
+            <SignOutButton />
+          </div>
+        </header>
+
+        {liveSession ? (
+          <Link
+            href={`/s/${liveSession.public_token}/host`}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Radio
+                className="h-4 w-4 shrink-0 animate-pulse text-[var(--highlight)]"
+                aria-hidden
+              />
+              Live now · {liveSession.title}
+            </span>
+            <span className="text-sm font-medium text-[var(--highlight)] underline">
+              Open host console
+            </span>
+          </Link>
+        ) : null}
+
+        {access.schemaReady ? <PlanSummary /> : null}
+
+        <dl className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Courts" value={String(courtRows.length)} tone="accent" />
+          <Stat
+            label="Pending requests"
+            value={String(pendingRequests.length)}
+            tone={pendingRequests.length > 0 ? "attention" : "default"}
+          />
+          <Stat
+            label="Upcoming bookings"
+            value={String(upcomingBookings.length)}
+            tone={upcomingBookings.length > 0 ? "accent" : "default"}
+          />
+        </dl>
+
+        <DashboardTabs
+          pendingRequestCount={pendingRequests.length}
+          openPlay={
+            <OpenPlayPanel
+              startLabel={liveSession ? "Live" : "Start"}
+              sessions={sessionRows.map((session) => ({
+                id: session.id,
+                title: session.title,
+                publicToken: session.public_token,
+              }))}
+              start={
+                liveSession ? (
+                  <>
+                    <h2 className="mb-1 font-semibold">Session in progress</h2>
+                    <p className="mb-4 text-sm text-[var(--muted)]">
+                      You can run one session at a time. End{" "}
+                      <span className="font-medium text-[var(--foreground)]">
+                        {liveSession.title}
+                      </span>{" "}
+                      from the host console before starting another.
+                    </p>
+                    <Button asChild>
+                      <Link href={`/s/${liveSession.public_token}/host`}>
+                        Open host console
+                      </Link>
+                    </Button>
+                  </>
+                ) : access.schemaReady && !access.openPlay ? (
+                  <>
+                    <h2 className="mb-1 font-semibold">Open play is paused</h2>
+                    <p className="mb-4 text-sm text-[var(--muted)]">
+                      Pay for a club month to start another session. A session
+                      that is already live can still be finished from the host
+                      console.
+                    </p>
+                    <OpenPlansButton>Compare plans</OpenPlansButton>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="mb-1 font-semibold">Start open play</h2>
+                    <p className="mb-4 text-sm text-[var(--muted)]">
+                      Going live opens a wallboard and a player check-in link
+                      for this session.
+                    </p>
+                    <OpenPlaySetupForm
+                      venueId={venue.id}
+                      defaultTitle={defaultOpenPlayTitle(venue.timezone)}
+                    />
+                  </>
+                )
+              }
+            />
+          }
+          bookings={{
+            venueId: venue.id,
+            courts: courtRows,
+            bookings: bookingRows,
+            bookingsLoadError,
+            bookingHistory: bookingHistoryRows,
+            grid: bookingGrid,
+            timeZone: venue.timezone,
+            publicBookingUrl: `${siteUrl()}${bookingPath}`,
+            bookingPath,
+            coaches: coachesWithAvailability,
+            coachingBookings: coachingBookingRows,
+            coachingHistory: coachingHistoryRows,
+            coachingGrid,
+            bookingLocked: access.schemaReady && !access.booking,
+          }}
+          settings={
+            facility
+              ? {
+                  facility,
+                  courts: courtRows,
+                  venueTimezone: venue.timezone,
+                  bookingHours: {
+                    openHour: venue.bookingOpenHour,
+                    closeHour: venue.bookingCloseHour,
+                  },
+                  theme: resolveTheme(
+                    (await cookies()).get(THEME_COOKIE)?.value,
+                    profileResult.data?.theme,
+                  ),
+                }
+              : null
+          }
+          settingsFallback={
+            <section className={CARD}>
+              <p className="text-sm text-[var(--muted)]">
+                Facility settings are unavailable right now.
+              </p>
+            </section>
+          }
+        />
+      </main>
+    </PlansProvider>
   );
 }

@@ -28,6 +28,9 @@ export default async function TournamentPage() {
   if (tournament.status === "missing-schema") {
     return <TournamentUnavailable missingSchema />;
   }
+  if (tournament.status === "locked") {
+    redirect("/dashboard?plans=open");
+  }
   if (tournament.status === "error") {
     return <TournamentUnavailable failed />;
   }

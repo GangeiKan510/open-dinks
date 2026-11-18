@@ -71,5 +71,5 @@ yarn build
 
 ## Product scope (v1)
 
-**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests)  
-**Out:** memberships, online payments, DUPR export, native apps
+**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests), club subscription (open play and booking), tournament day passes  
+**Out:** player memberships, DUPR export, native apps

@@ -3,6 +3,7 @@ import {
   type TournamentEvent,
 } from "@/engine/tournament";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { loadFeatureAccess } from "@/lib/billing-server";
 import { isPublicBooker } from "@/lib/host-access";
 import { normalizeCourtCount } from "@/lib/court-count";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -27,6 +28,7 @@ export type DirectorTournament =
   | { status: "not-host" }
   | { status: "unconfigured" }
   | { status: "missing-schema" }
+  | { status: "locked"; reason: "club" | "pass" }
   | { status: "error" };
 
 type TournamentRow = {
@@ -131,6 +133,18 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
   if (isPublicBooker(user)) {
     const venue = await loadAccountVenue(user.id, supabase);
     if (!venue) return { status: "not-host" };
+  }
+
+  const venue = await loadAccountVenue(user.id, supabase);
+  if (venue) {
+    const access = await loadFeatureAccess(
+      supabase,
+      venue.facilityId,
+      venue.timezone,
+    );
+    if (access.schemaReady && !access.tournament) {
+      return { status: "locked", reason: "pass" };
+    }
   }
 
   const { data, error } = await supabase

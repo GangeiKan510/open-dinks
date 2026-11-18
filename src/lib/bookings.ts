@@ -3,6 +3,7 @@
  * this window cannot affect the current wallboard, so it is not fetched.
  */
 import type { DbBookingStatus } from "@/lib/supabase/database.types";
+import { BILLING_ERROR_MESSAGES } from "@/lib/billing-messages";
 import { normalizeBookingHours } from "@/lib/booking-hours";
 
 const SESSION_BOOKING_LOOKBACK_MS = 6 * 60 * 60 * 1000;
@@ -30,6 +31,7 @@ export const BOOKING_ERROR_MESSAGES = {
   load: "Could not load bookings. Refresh the page.",
   migrations:
     "Bookings are not set up yet. Run the latest Supabase migrations, then try again.",
+  clubLocked: BILLING_ERROR_MESSAGES.booking,
 } as const;
 
 /** Longest single booking we accept, as a guard against typo'd end dates. */
@@ -177,6 +179,8 @@ export type PublicBookingVenue = {
   bookingOpenHour: number;
   bookingCloseHour: number;
   courts: PublicBookingCourt[];
+  /** False once the club trial and paid plan have both ended. */
+  acceptingBookings: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -200,6 +204,7 @@ export function parsePublicBookingVenue(
     bookingOpenHour,
     bookingCloseHour,
     courts,
+    acceptingBookings,
   } = value;
   if (typeof id !== "string" || typeof name !== "string") return null;
   if (typeof slug !== "string") return null;
@@ -229,6 +234,7 @@ export function parsePublicBookingVenue(
     bookingOpenHour: hours.openHour,
     bookingCloseHour: hours.closeHour,
     courts: parsedCourts,
+    acceptingBookings: acceptingBookings === false ? false : true,
   };
 }
 

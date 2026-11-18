@@ -100,6 +100,81 @@ export type Database = {
         };
         Relationships: [];
       };
+      facility_billing: {
+        Row: {
+          facility_id: string;
+          trial_ends_at: string;
+          club_status: "none" | "active" | "past_due" | "canceled";
+          club_period_end: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          facility_id: string;
+          trial_ends_at: string;
+          club_status?: "none" | "active" | "past_due" | "canceled";
+          club_period_end?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          facility_id?: string;
+          trial_ends_at?: string;
+          club_status?: "none" | "active" | "past_due" | "canceled";
+          club_period_end?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      tournament_passes: {
+        Row: {
+          id: string;
+          facility_id: string;
+          kind: "day" | "weekend";
+          starts_on: string;
+          ends_on: string;
+          paymongo_checkout_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          facility_id: string;
+          kind: "day" | "weekend";
+          starts_on: string;
+          ends_on: string;
+          paymongo_checkout_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          facility_id?: string;
+          kind?: "day" | "weekend";
+          starts_on?: string;
+          ends_on?: string;
+          paymongo_checkout_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      paymongo_payments: {
+        Row: {
+          checkout_id: string;
+          facility_id: string;
+          kind: "club" | "day" | "weekend";
+          created_at: string;
+        };
+        Insert: {
+          checkout_id: string;
+          facility_id: string;
+          kind: "club" | "day" | "weekend";
+          created_at?: string;
+        };
+        Update: {
+          checkout_id?: string;
+          facility_id?: string;
+          kind?: "club" | "day" | "weekend";
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       venues: {
         Row: {
           id: string;
@@ -622,6 +697,10 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      tournament_desk_open: {
+        Args: { p_token: string };
+        Returns: boolean;
+      };
       director_umpire_token: {
         Args: Record<string, never>;
         Returns: string;
