@@ -38,6 +38,8 @@ export type FeatureAccess = {
   phase: ClubPhase;
   trialDaysLeft: number;
   clubPeriodEnd: string | null;
+  /** First local date of the passes that cover today. */
+  tournamentStartsOn: string | null;
   /** Last local date of a pass that covers today, when tournament mode is open. */
   tournamentThrough: string | null;
 };
@@ -52,6 +54,29 @@ export type BillingSnapshot = {
 };
 
 const DAY_MS = 86_400_000;
+
+function formatCalendarDate(iso: string): string {
+  if (!isCalendarDate(iso)) return "";
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${iso}T00:00:00Z`));
+}
+
+/** One local day, or the first and last day of the paid tournament window. */
+export function formatTournamentDates(
+  startsOn: string | null,
+  endsOn: string | null,
+): string {
+  if (!startsOn || !endsOn) return "";
+  const start = formatCalendarDate(startsOn);
+  const end = formatCalendarDate(endsOn);
+  if (!start || !end) return "";
+  if (startsOn === endsOn) return start;
+  return `${start} – ${end}`;
+}
 
 export function formatPeso(amount: number): string {
   return new Intl.NumberFormat("en-PH", {
@@ -195,6 +220,14 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
     inFuture(snapshot.now, snapshot.clubPeriodEnd);
   const clubOpen = inTrial || clubPaid;
   const covering = snapshot.passes.filter((pass) => passCovers(pass, today));
+  const tournamentStartsOn =
+    covering.length === 0
+      ? null
+      : covering.reduce(
+          (earliest, pass) =>
+            pass.startsOn < earliest ? pass.startsOn : earliest,
+          covering[0]!.startsOn,
+        );
   const tournamentThrough =
     covering.length === 0
       ? null
@@ -211,6 +244,7 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
     phase: clubPaid ? "active" : inTrial ? "trial" : "locked",
     trialDaysLeft: trialLeft,
     clubPeriodEnd: clubPaid ? snapshot.clubPeriodEnd : null,
+    tournamentStartsOn,
     tournamentThrough,
   };
 }

@@ -26,6 +26,14 @@ export type BillingNoticeCode =
   | "cancel"
   | "locked";
 
+/** Drop a return-code query so a refresh does not repeat the notice. */
+export function pathWithoutSearchParam(href: string, key: string): string {
+  const url = new URL(href, "http://localhost");
+  url.searchParams.delete(key);
+  const query = url.searchParams.toString();
+  return `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+}
+
 /** PayMongo's return URL should not reopen the plans dialog. */
 export function billingNoticeOpensPlans(code: string | undefined): boolean {
   if (code === "success" || code === "cancel") return false;

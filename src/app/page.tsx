@@ -46,7 +46,7 @@ export default async function HomePage() {
         <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="animate-rise space-y-7">
             <Pill>For pickleball clubs</Pill>
-            <h1 className="max-w-xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
+            <h1 className="max-w-xl text-5xl font-semibold leading-[1.12] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
               One board for <span className="gradient-phrase">open play</span>,{" "}
               <span className="gradient-phrase">tournaments</span>, and{" "}
               <span className="gradient-phrase">court hours</span>.
@@ -138,9 +138,9 @@ export default async function HomePage() {
               Saturday open play, without the whiteboard.
             </h2>
             <p className="text-lg text-[var(--muted)]">
-              A player scans the session QR, gives a name and a skill, and sees
-              their place in the queue. You send the next group. The same list
-              is on every phone and on the gym TV.
+              You add each player from the host console. They open the public
+              session page and see the courts and their place in the queue. The
+              same list is on every phone and on the gym TV.
             </p>
           </Reveal>
 
@@ -322,8 +322,8 @@ export default async function HomePage() {
             first game.
           </h2>
           <p className="mx-auto max-w-xl text-lg text-[var(--muted)]">
-            Hosts sign in. Players join a session from a QR, or request a court
-            from your public link.
+            Hosts sign in and add players by name. Players follow the session
+            from the public page, or request a court from your public link.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" className="rounded-full" asChild>
@@ -402,12 +402,6 @@ export default async function HomePage() {
             >
               Reviews
             </a>
-            <PendingLink
-              href="/demo"
-              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              Local demo
-            </PendingLink>
           </div>
         </div>
       </footer>
@@ -420,7 +414,7 @@ const products = [
     href: "#open-play",
     kicker: "Open Play OS",
     title: "A fair queue, on the TV",
-    body: "Check-in, the next group, and every court stay in sync from the QR to the wallboard.",
+    body: "Check-in, the next group, and every court stay in sync from the public page to the wallboard.",
   },
   {
     href: "#tournament",
@@ -539,15 +533,15 @@ function HeroCollage() {
 
 const openPlaySteps = [
   {
-    title: "Players check themselves in",
-    body: "The QR opens the session. A name and a skill are enough. They see their spot in the queue, and whether they are on a court. Mixed Only also asks for a gender, because every team is mixed and no pair repeats.",
+    title: "Players follow the session",
+    body: "The public page shows every court, who is on it, and the waiting list. The host adds each name and skill, so the queue cannot be filled by someone who is not there. Mixed Only also needs a gender, because every team is mixed and no pair repeats.",
     media: (
       <Shot
         src="/assets/01-player-checkin.jpeg"
-        alt="A player holding a phone at the court gate, checking in as Sofia with skill Intermediate, while the session QR hangs on the fence."
+        alt="A player holding a phone at the court gate, looking at the live session."
         width={2400}
         height={1792}
-        brief="Check-in on a phone at the gate: name, skill, and the queue, with the session QR on the fence."
+        brief="The public session page on a phone at the gate: courts and the waiting list."
       />
     ),
   },
