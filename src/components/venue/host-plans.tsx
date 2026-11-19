@@ -42,6 +42,7 @@ import {
 import {
   CLUB_MONTHLY_PHP,
   formatPeso,
+  formatTournamentDateList,
   formatTournamentDates,
   TOURNAMENT_DAY_PHP,
   TOURNAMENT_MAX_DAYS,
@@ -113,7 +114,6 @@ export function PlansProvider({
           open={open}
           onOpenChange={setOpen}
           access={access}
-          timeZone={timeZone}
           today={today}
           notice={notice}
         />
@@ -136,7 +136,7 @@ export function AvailableTournamentLink() {
 export function TournamentModeButton() {
   const { access, openPlans } = usePlans();
 
-  if (access.tournament) {
+  if (access.tournamentSetup) {
     return <AvailableTournamentLink />;
   }
 
@@ -169,13 +169,10 @@ function PlanChip({ label, detail }: { label: string; detail: string }) {
 }
 
 function tournamentDetail(access: FeatureAccess): string {
-  const dates = formatTournamentDates(
-    access.tournamentStartsOn,
-    access.tournamentThrough,
-  );
-  if (!dates) return "";
-  if (access.tournamentGrace) return `${dates} · until 6:00 AM`;
-  return dates;
+  if (access.tournamentGrace && access.tournamentThrough) {
+    return `${formatTournamentDates(access.tournamentThrough, access.tournamentThrough)} · until 6:00 AM`;
+  }
+  return formatTournamentDateList(access.ownedTournamentDates);
 }
 
 export function PlanSummary() {
@@ -376,14 +373,12 @@ function PlansDialog({
   open,
   onOpenChange,
   access,
-  timeZone,
   today,
   notice,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   access: FeatureAccess;
-  timeZone: string;
   today: string;
   notice: string | null;
 }) {
@@ -422,6 +417,23 @@ function PlansDialog({
               <li>Court and coaching bookings</li>
               <li>Paying early adds another month</li>
             </ul>
+            {access.clubTrialAvailable ? (
+              <form action={startTrialAction} className="mt-auto pt-4">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="lg"
+                  className="w-full border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+                >
+                  <Clock className="h-4 w-4" aria-hidden />
+                  Start {TRIAL_DAYS}-day trial
+                </Button>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Open play and booking for {TRIAL_DAYS} days. Tournament days
+                  stay separate.
+                </p>
+              </form>
+            ) : null}
             <ClubPayForm
               label={access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
             />
@@ -446,11 +458,12 @@ function PlansDialog({
             </p>
             <TournamentDatesForm today={today} />
 
-            {access.tournament && access.tournamentThrough ? (
+            {access.tournamentGrace ? (
+              <p className="mt-3 text-sm">Open until 6:00 AM.</p>
+            ) : access.ownedTournamentDates.length > 0 ? (
               <p className="mt-3 text-sm">
-                {access.tournamentGrace
-                  ? "Open until 6:00 AM."
-                  : `Open through ${formatWhen(access.tournamentThrough, timeZone)}.`}
+                Paid for {formatTournamentDateList(access.ownedTournamentDates)}
+                . Brackets open on those days.
               </p>
             ) : null}
           </article>
@@ -553,6 +566,8 @@ function DiscountCodeFields({
 }
 
 function TournamentDatesForm({ today }: { today: string }) {
+  const { access } = usePlans();
+  const ownedDates = access.ownedTournamentDates;
   const [dates, setDates] = useState<string[]>([]);
   const totalCentavos = tournamentDatesPriceCentavos(dates);
   const total = totalCentavos == null ? null : totalCentavos / 100;
@@ -560,6 +575,7 @@ function TournamentDatesForm({ today }: { today: string }) {
 
   function toggleDate(iso: string) {
     setDates((current) => {
+      if (ownedDates.includes(iso)) return current;
       if (current.includes(iso)) return current.filter((item) => item !== iso);
       if (iso < today || current.length >= TOURNAMENT_MAX_DAYS) return current;
       return [...current, iso].sort();
@@ -577,6 +593,7 @@ function TournamentDatesForm({ today }: { today: string }) {
           id="tournament-day"
           today={today}
           dates={dates}
+          ownedDates={ownedDates}
           onToggle={toggleDate}
         />
       </div>
@@ -664,11 +681,13 @@ function TournamentDateField({
   id,
   today,
   dates,
+  ownedDates,
   onToggle,
 }: {
   id: string;
   today: string;
   dates: string[];
+  ownedDates: string[];
   onToggle: (iso: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -791,8 +810,9 @@ function TournamentDateField({
               {Array.from({ length: dayCount }, (_, index) => {
                 const day = index + 1;
                 const iso = `${month}-${String(day).padStart(2, "0")}`;
-                const selected = dates.includes(iso);
-                const disabled = iso < today || (atCap && !selected);
+                const paid = ownedDates.includes(iso);
+                const selected = !paid && dates.includes(iso);
+                const disabled = iso < today || paid || (atCap && !selected);
                 const dayLabel = formatTournamentDates(iso, iso);
                 return (
                   <button
@@ -801,13 +821,19 @@ function TournamentDateField({
                     disabled={disabled}
                     aria-pressed={selected}
                     aria-label={
-                      selected ? `Remove ${dayLabel}` : `Add ${dayLabel}`
+                      paid
+                        ? `Already paid ${dayLabel}`
+                        : selected
+                          ? `Remove ${dayLabel}`
+                          : `Add ${dayLabel}`
                     }
                     onClick={() => onToggle(iso)}
                     className={cn(
                       "mx-auto flex aspect-square w-full max-w-9 items-center justify-center rounded-full text-sm transition-colors",
                       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200",
                       "disabled:cursor-not-allowed disabled:text-white/25",
+                      paid &&
+                        "disabled:bg-white/10 disabled:text-white/45 disabled:line-through",
                       !disabled && !selected && "hover:bg-amber-400/15",
                       iso === today &&
                         !selected &&

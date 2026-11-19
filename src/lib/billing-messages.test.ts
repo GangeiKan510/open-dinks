@@ -12,6 +12,9 @@ describe("billing notices", () => {
     expect(paymentReceivedCopy({ applied: true, kinds: ["club"] })).toBe(
       "Your club month is active.",
     );
+    expect(paymentReceivedCopy({ applied: true, kinds: ["day"] })).toBe(
+      "Tournament mode is open. Brackets can be built on the days you bought.",
+    );
     expect(paymentReceivedCopy({ applied: false, kinds: [] })).toMatch(
       /upgrade reminder/,
     );

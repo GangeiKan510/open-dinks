@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TournamentDirector } from "@/components/tournament/tournament-director";
-import { loadAccountVenue } from "@/lib/account-venue";
-import { canonicalLiveSession } from "@/lib/live-session";
-import { createClient } from "@/lib/supabase/server";
 import { loadDirectorTournament } from "@/lib/tournament-server";
 
 export const metadata: Metadata = {
@@ -40,29 +37,10 @@ export default async function TournamentPage() {
       umpireToken={tournament.umpireToken}
       initialEvent={tournament.event}
       initialUpdatedAt={tournament.updatedAt}
-      openPlayHref={await liveOpenPlayHref()}
+      bracketsOpen={tournament.bracketsOpen}
+      bracketDates={tournament.bracketDates}
     />
   );
-}
-
-/** Host console for the venue's live session, or the dashboard when none is live. */
-async function liveOpenPlayHref(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return "/dashboard";
-
-  const venue = await loadAccountVenue(user.id, supabase);
-  if (!venue) return "/dashboard";
-
-  const { data } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("venue_id", venue.id)
-    .eq("status", "live");
-  const live = canonicalLiveSession(data ?? []);
-  return live ? `/s/${live.public_token}/host` : "/dashboard";
 }
 
 function TournamentUnavailable({

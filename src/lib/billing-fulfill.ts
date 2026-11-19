@@ -57,7 +57,7 @@ function isPaymentKind(value: string | undefined): value is PaymentKind {
   return value === "club" || value === "day" || value === "weekend";
 }
 
-/** A paid tournament pass is a plan choice, so the first-run gate can close. */
+/** Closes the first-run gate. A tournament pass does not use the club trial. */
 async function markPlanChosen(
   supabase: ReturnType<typeof createServiceClient>,
   facilityId: string,

@@ -4,7 +4,8 @@
  * Open play and booking run on a 7-day trial, then a ₱699 club month.
  * Tournament mode is separate. The host picks the dates, and they do not have
  * to be in a row. One to three days are ₱1,500 each. Four or more are ₱1,400
- * each. A day that was not picked stays locked. Each picked day stays open
+ * each. A day that was not picked stays locked. Setup opens as soon as a paid
+ * day is still ahead. Building brackets waits for that day, and stays open
  * until 6:00 AM the next morning. Consecutive days share that extra time
  * after the last day only. Players are not billed.
  */
@@ -41,9 +42,16 @@ export type TournamentPassWindow = {
 export type FeatureAccess = {
   openPlay: boolean;
   booking: boolean;
+  /** True on a paid day, and until 6:00 AM the next morning. Brackets use this. */
   tournament: boolean;
+  /** True while a paid day is still ahead, today, or inside the morning grace. */
+  tournamentSetup: boolean;
+  /** Paid dates from today onward. The date picker will not sell these again. */
+  ownedTournamentDates: string[];
   /** Paid club period. The trial does not count. */
   clubPaid: boolean;
+  /** True until the host starts the club trial or pays for a club month. */
+  clubTrialAvailable: boolean;
   phase: ClubPhase;
   trialDaysLeft: number;
   /** True until the host starts a trial or pays for club or tournament access. */
@@ -274,6 +282,60 @@ function passCovers(pass: TournamentPassWindow, day: string): boolean {
   );
 }
 
+function datesInPass(pass: TournamentPassWindow): string[] {
+  if (
+    !isCalendarDate(pass.startsOn) ||
+    !isCalendarDate(pass.endsOn) ||
+    pass.endsOn < pass.startsOn
+  ) {
+    return [];
+  }
+  const dates: string[] = [];
+  let cursor: string | null = pass.startsOn;
+  while (cursor && cursor <= pass.endsOn && dates.length < 400) {
+    dates.push(cursor);
+    cursor = addCalendarDays(cursor, 1);
+  }
+  return dates;
+}
+
+/** Paid calendar dates that are still today or later. */
+export function ownedTournamentDates(
+  passes: TournamentPassWindow[],
+  today: string,
+): string[] {
+  const owned = new Set<string>();
+  for (const pass of passes) {
+    for (const date of datesInPass(pass)) {
+      if (date >= today) owned.add(date);
+    }
+  }
+  return [...owned].sort();
+}
+
+/** Groups consecutive dates into the same label used for one pass. */
+export function formatTournamentDateList(dates: string[]): string {
+  const sorted = [...new Set(dates.filter(isCalendarDate))].sort();
+  const runs: { start: string; end: string }[] = [];
+  for (const date of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && addCalendarDays(last.end, 1) === date) last.end = date;
+    else runs.push({ start: date, end: date });
+  }
+  return runs
+    .map((run) => formatTournamentDates(run.start, run.end))
+    .join(", ");
+}
+
+/** Shown while setup is open and bracket building is still closed. */
+export function bracketBuildNotice(datesLabel: string): string {
+  const when = datesLabel.trim();
+  if (!when) {
+    return "Brackets can be built on a tournament day. You can still set up categories and teams.";
+  }
+  return `Brackets can be built on ${when}. You can still set up categories and teams.`;
+}
+
 export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
   const today = localDateISO(snapshot.timeZone, snapshot.now);
   const trialLeft = trialDaysLeft(snapshot.now, snapshot.trialEndsAt);
@@ -311,19 +373,27 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
           (latest, pass) => (pass.endsOn > latest ? pass.endsOn : latest),
           covering[0]!.endsOn,
         );
+  const tournament = tournamentThrough !== null;
+  const paidAhead = ownedTournamentDates(snapshot.passes, today);
+  const tournamentSetup = tournament || paidAhead.length > 0;
+  const clubTrialAvailable =
+    snapshot.trialEndsAt == null && snapshot.clubPeriodEnd == null;
 
   return {
     openPlay: clubOpen,
     booking: clubOpen,
-    tournament: tournamentThrough !== null,
+    tournament,
+    tournamentSetup,
+    ownedTournamentDates: paidAhead,
     clubPaid,
+    clubTrialAvailable,
     phase: clubPaid ? "active" : inTrial ? "trial" : "locked",
     trialDaysLeft: trialLeft,
     awaitingPlanChoice:
       snapshot.choiceMade === false &&
       !clubPaid &&
       !inTrial &&
-      tournamentThrough === null,
+      !tournamentSetup,
     clubPeriodEnd: clubPaid ? snapshot.clubPeriodEnd : null,
     tournamentStartsOn,
     tournamentThrough,

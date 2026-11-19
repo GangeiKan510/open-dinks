@@ -8,6 +8,8 @@ import {
   addCalendarDays,
   addUtcMonths,
   formatPeso,
+  bracketBuildNotice,
+  formatTournamentDateList,
   formatTournamentDates,
   nextClubPeriodEnd,
   parseTournamentDates,
@@ -130,6 +132,24 @@ describe("resolveFeatureAccess", () => {
     );
     expect(paid.awaitingPlanChoice).toBe(false);
     expect(paid.openPlay).toBe(true);
+    expect(paid.clubTrialAvailable).toBe(false);
+  });
+
+  it("keeps the club trial after a tournament pass", () => {
+    const access = resolveFeatureAccess(
+      snapshot({
+        choiceMade: true,
+        passes: [{ startsOn: "2026-11-27", endsOn: "2026-11-29" }],
+      }),
+    );
+    expect(access.awaitingPlanChoice).toBe(false);
+    expect(access.openPlay).toBe(false);
+    expect(access.clubTrialAvailable).toBe(true);
+
+    const used = resolveFeatureAccess(
+      snapshot({ trialEndsAt: "2026-11-01T00:00:00.000Z" }),
+    );
+    expect(used.clubTrialAvailable).toBe(false);
   });
 
   it("locks the club when the trial is over and no plan is paid", () => {
@@ -290,6 +310,48 @@ describe("tournament morning grace", () => {
     );
     expect(access.tournament).toBe(true);
     expect(access.tournamentGrace).toBe(false);
+    expect(access.tournamentSetup).toBe(true);
+  });
+
+  it("opens setup before the paid days and keeps bracket play closed", () => {
+    const access = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-20T06:00:00.000Z"),
+        passes: [{ startsOn: "2026-11-27", endsOn: "2026-11-29" }],
+      }),
+    );
+    expect(access.tournament).toBe(false);
+    expect(access.tournamentSetup).toBe(true);
+    expect(access.ownedTournamentDates).toEqual([
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29",
+    ]);
+    expect(formatTournamentDateList(access.ownedTournamentDates)).toBe(
+      formatTournamentDates("2026-11-27", "2026-11-29"),
+    );
+    expect(
+      bracketBuildNotice(formatTournamentDateList(access.ownedTournamentDates)),
+    ).toBe(
+      `Brackets can be built on ${formatTournamentDates("2026-11-27", "2026-11-29")}. You can still set up categories and teams.`,
+    );
+    expect(bracketBuildNotice("  ")).toBe(
+      "Brackets can be built on a tournament day. You can still set up categories and teams.",
+    );
+  });
+
+  it("does not offer a paid date that is already in the past", () => {
+    const access = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-20T06:00:00.000Z"),
+        passes: [
+          { startsOn: "2026-11-18", endsOn: "2026-11-18" },
+          { startsOn: "2026-11-27", endsOn: "2026-11-27" },
+        ],
+      }),
+    );
+    expect(access.ownedTournamentDates).toEqual(["2026-11-27"]);
+    expect(access.tournamentSetup).toBe(true);
   });
 });
 

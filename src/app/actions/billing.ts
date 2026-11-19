@@ -180,21 +180,21 @@ export async function startTrialAction(): Promise<void> {
   const supabase = createServiceClient();
   const { data: billing, error: loadError } = await supabase
     .from("facility_billing")
-    .select("choice_made_at, trial_ends_at")
+    .select("choice_made_at, trial_ends_at, club_period_end")
     .eq("facility_id", host.venue.facilityId)
     .maybeSingle();
   if (loadError) {
     console.error("[billing] trial load failed", loadError.code);
     notice("trial");
   }
-  if (billing?.choice_made_at || billing?.trial_ends_at) {
+  if (billing?.trial_ends_at || billing?.club_period_end) {
     redirect("/dashboard");
   }
 
   const row = {
     facility_id: host.venue.facilityId,
     trial_ends_at: new Date(now.getTime() + TRIAL_MS).toISOString(),
-    choice_made_at: now.toISOString(),
+    choice_made_at: billing?.choice_made_at ?? now.toISOString(),
     updated_at: now.toISOString(),
   };
   const { error } = billing
@@ -202,8 +202,8 @@ export async function startTrialAction(): Promise<void> {
         .from("facility_billing")
         .update(row)
         .eq("facility_id", host.venue.facilityId)
-        .is("choice_made_at", null)
         .is("trial_ends_at", null)
+        .is("club_period_end", null)
     : await supabase.from("facility_billing").insert(row);
   if (error) {
     console.error("[billing] trial start failed", error.code);
@@ -258,6 +258,9 @@ export async function startTournamentPassAction(
     host.venue.timezone,
   );
   if (!access.schemaReady) notice("checkout");
+  if (dates.some((date) => access.ownedTournamentDates.includes(date))) {
+    notice("owned");
+  }
 
   const amount = tournamentDatesPriceCentavos(dates);
   if (amount == null) notice("date");
