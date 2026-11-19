@@ -74,6 +74,43 @@ describe("account roster", () => {
     expect(rows[1]?.email).toBe("");
   });
 
+  it("labels a club that has not chosen a plan yet", () => {
+    const rows = buildAccountRoster({
+      now: NOW,
+      operatorIds: [],
+      names: [],
+      billing: [
+        {
+          facilityId: "fac",
+          trialEndsAt: null,
+          clubStatus: "none",
+          clubPeriodEnd: null,
+          choiceMade: false,
+        },
+      ],
+      memberships: [
+        {
+          userId: "host",
+          role: "owner",
+          venueName: "PicklePlace",
+          facilityId: "fac",
+          timeZone: "Asia/Manila",
+        },
+      ],
+      users: [
+        {
+          id: "host",
+          email: "ava@club.test",
+          createdAt: "2026-11-02T00:00:00.000Z",
+          lastSignInAt: null,
+          provider: "email",
+        },
+      ],
+    });
+
+    expect(rows[0]?.venues[0]?.plan).toBe("Choosing a plan");
+  });
+
   it("says when the list is shorter than the directory", () => {
     expect(rosterLimitNote(200, 240)).toBe("Showing 200 of 240 accounts.");
     expect(rosterLimitNote(3, 3)).toBeNull();

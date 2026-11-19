@@ -21,6 +21,8 @@ export type RosterBilling = {
   trialEndsAt: string | null;
   clubStatus: ClubStatus;
   clubPeriodEnd: string | null;
+  /** False while the host still has to pick a trial or a paid plan. */
+  choiceMade?: boolean;
 };
 
 export type AccountKind = "operator" | "host" | "player" | "account";
@@ -47,6 +49,7 @@ function planLabel(
   now: Date,
 ): string {
   if (!billing) return "No plan";
+  if (billing.choiceMade === false) return "Choosing a plan";
   const access = resolveFeatureAccess({
     now,
     timeZone,

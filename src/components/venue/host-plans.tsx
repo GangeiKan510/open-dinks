@@ -1,13 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { CalendarRange, Check, Clock, Crown, Lock, Trophy } from "lucide-react";
+import { createPortal } from "react-dom";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Calendar,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Crown,
+  Lock,
+  Trophy,
+  X,
+} from "lucide-react";
 import {
   startClubCheckoutAction,
   startTournamentPassAction,
+  startTrialAction,
 } from "@/app/actions/billing";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/venue/sign-out-button";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +41,12 @@ import {
   formatPeso,
   formatTournamentDates,
   TOURNAMENT_DAY_PHP,
-  TOURNAMENT_WEEKEND_PHP,
+  TOURNAMENT_MAX_DAYS,
+  TOURNAMENT_VOLUME_DAY_PHP,
+  TOURNAMENT_VOLUME_MIN_DAYS,
+  TRIAL_DAYS,
+  tournamentDatesPriceCentavos,
+  tournamentDayRatePhp,
   type FeatureAccess,
 } from "@/lib/entitlements";
 import { cn } from "@/lib/utils";
@@ -58,6 +84,7 @@ export function PlansProvider({
   timeZone,
   today,
   notice,
+  statusNotice,
   defaultOpen,
   children,
 }: {
@@ -65,6 +92,7 @@ export function PlansProvider({
   timeZone: string;
   today: string;
   notice: string | null;
+  statusNotice: string | null;
   defaultOpen: boolean;
   children: ReactNode;
 }) {
@@ -75,14 +103,18 @@ export function PlansProvider({
       value={{ openPlans: () => setOpen(true), access, timeZone }}
     >
       {children}
-      <PlansDialog
-        open={open}
-        onOpenChange={setOpen}
-        access={access}
-        timeZone={timeZone}
-        today={today}
-        notice={notice}
-      />
+      {access.awaitingPlanChoice ? (
+        <PlanChoiceDialog today={today} notice={statusNotice} />
+      ) : (
+        <PlansDialog
+          open={open}
+          onOpenChange={setOpen}
+          access={access}
+          timeZone={timeZone}
+          today={today}
+          notice={notice}
+        />
+      )}
     </PlansContext.Provider>
   );
 }
@@ -225,6 +257,120 @@ export function OpenPlansButton({
   );
 }
 
+function PlanChoiceDialog({
+  today,
+  notice,
+}: {
+  today: string;
+  notice: string | null;
+}) {
+  const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+
+  return (
+    <Dialog open onOpenChange={() => {}}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-4xl"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="pr-0">
+          <DialogTitle className="font-[family-name:var(--font-display)] text-2xl">
+            Choose how to open your club
+          </DialogTitle>
+          <DialogDescription>
+            Pick one to continue. A {TRIAL_DAYS}-day trial or a club month opens
+            open play and booking. Tournament days are separate.
+          </DialogDescription>
+        </DialogHeader>
+
+        {notice ? (
+          <p className="text-sm text-amber-300" role="alert">
+            {notice}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <article className="flex flex-col rounded-xl border border-[var(--accent)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-fg-soft)]">
+              <Clock className="h-3.5 w-3.5" aria-hidden />
+              Free trial
+            </p>
+            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--accent-fg-soft)]">
+              {TRIAL_DAYS} days
+            </p>
+            <p className="text-sm text-[var(--accent-fg-soft)]">
+              Open play and booking
+            </p>
+            <ul className="mt-4 space-y-1.5 text-sm">
+              <li>Host console and the public session page</li>
+              <li>Court and coaching bookings</li>
+              <li>Tournament mode stays locked</li>
+            </ul>
+            <form action={startTrialAction} className="mt-auto pt-4">
+              <Button
+                type="submit"
+                variant="outline"
+                size="lg"
+                className="w-full border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+              >
+                <Clock className="h-4 w-4" aria-hidden />
+                Start trial
+              </Button>
+            </form>
+          </article>
+
+          <article className="flex flex-col rounded-xl border border-[var(--highlight)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4 shadow-[0_0_32px_-18px_var(--highlight)]">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
+              <Check className="h-3.5 w-3.5" aria-hidden />
+              Club
+            </p>
+            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)]">
+              {clubPrice}
+            </p>
+            <p className="text-sm text-[var(--accent-fg-soft)]">for 1 month</p>
+            <ul className="mt-4 space-y-1.5 text-sm">
+              <li>Open play and the host console</li>
+              <li>Court and coaching bookings</li>
+              <li>Paying early adds another month</li>
+            </ul>
+            <form action={startClubCheckoutAction} className="mt-auto pt-4">
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
+              >
+                Pay for 1 month
+              </Button>
+            </form>
+          </article>
+
+          <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+              <Crown className="h-3.5 w-3.5" aria-hidden />
+              Tournament
+            </p>
+            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
+              {formatPeso(TOURNAMENT_DAY_PHP)}
+            </p>
+            <p className="text-sm text-amber-100/80">
+              A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+              {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked until
+              you start a trial or a club month.
+            </p>
+            <TournamentDatesForm today={today} />
+          </article>
+        </div>
+
+        <div className="flex justify-end">
+          <SignOutButton />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PlansDialog({
   open,
   onOpenChange,
@@ -241,8 +387,6 @@ function PlansDialog({
   notice: string | null;
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
-  const dayPrice = formatPeso(TOURNAMENT_DAY_PHP);
-  const weekendPrice = formatPeso(TOURNAMENT_WEEKEND_PHP);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -284,78 +428,24 @@ function PlansDialog({
             </form>
           </article>
 
-          <article
-            className={cn(
-              "flex flex-col rounded-xl border p-4",
-              "border-amber-400/40 bg-amber-400/10",
-            )}
-          >
+          <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
             <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
               <Crown className="h-3.5 w-3.5" aria-hidden />
               Premium
             </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl">
+            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
               Tournament
             </p>
             <p className="text-sm text-amber-100/80">
               For tournament days only. Open play and booking stay on the club
               month.
             </p>
-            <ul className="mt-4 space-y-2 text-sm">
-              <li className="flex items-start justify-between gap-3">
-                <span className="inline-flex items-center gap-2">
-                  <Trophy
-                    className="h-4 w-4 shrink-0 text-amber-200"
-                    aria-hidden
-                  />
-                  One tournament day
-                </span>
-                <span className="font-medium">{dayPrice}</span>
-              </li>
-              <li className="flex items-start justify-between gap-3">
-                <span className="inline-flex items-center gap-2">
-                  <CalendarRange
-                    className="h-4 w-4 shrink-0 text-amber-200"
-                    aria-hidden
-                  />
-                  Four days in a row
-                </span>
-                <span className="font-medium">{weekendPrice}</span>
-              </li>
-            </ul>
-
-            <form action={startTournamentPassAction} className="mt-4 space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="tournament-starts-on"
-                  className="text-sm text-amber-100/80"
-                >
-                  First tournament day
-                </label>
-                <input
-                  id="tournament-starts-on"
-                  name="startsOn"
-                  type="date"
-                  required
-                  min={today}
-                  defaultValue={today}
-                  className="block w-full rounded-md border border-amber-200/30 bg-black/20 px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Button type="submit" name="kind" value="day">
-                  Buy 1 day
-                </Button>
-                <Button
-                  type="submit"
-                  name="kind"
-                  value="weekend"
-                  variant="outline"
-                >
-                  Buy 4 days
-                </Button>
-              </div>
-            </form>
+            <p className="mt-3 text-sm text-amber-100/80">
+              {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
+              {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+              {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
+            </p>
+            <TournamentDatesForm today={today} />
 
             {access.tournament && access.tournamentThrough ? (
               <p className="mt-3 text-sm">
@@ -366,5 +456,304 @@ function PlansDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TournamentDatesForm({ today }: { today: string }) {
+  const [dates, setDates] = useState<string[]>([]);
+  const totalCentavos = tournamentDatesPriceCentavos(dates);
+  const total = totalCentavos == null ? null : totalCentavos / 100;
+  const rate = dates.length === 0 ? null : tournamentDayRatePhp(dates.length);
+
+  function toggleDate(iso: string) {
+    setDates((current) => {
+      if (current.includes(iso)) return current.filter((item) => item !== iso);
+      if (iso < today || current.length >= TOURNAMENT_MAX_DAYS) return current;
+      return [...current, iso].sort();
+    });
+  }
+
+  return (
+    <form action={startTournamentPassAction} className="mt-4 space-y-3">
+      <input type="hidden" name="dates" value={dates.join(",")} />
+      <div className="space-y-1">
+        <label htmlFor="tournament-day" className="text-sm text-amber-100/80">
+          Tournament days
+        </label>
+        <TournamentDateField
+          id="tournament-day"
+          today={today}
+          dates={dates}
+          onToggle={toggleDate}
+        />
+      </div>
+      {dates.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {dates.map((date) => (
+            <li key={date}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-black/20 px-2.5 py-1 text-xs text-amber-50"
+                onClick={() => toggleDate(date)}
+              >
+                {formatTournamentDates(date, date)}
+                <X className="h-3 w-3" aria-hidden />
+                <span className="sr-only">Remove {date}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-amber-100/70">
+          Tap each day. They do not have to be in a row. Up to{" "}
+          {TOURNAMENT_MAX_DAYS} days.
+        </p>
+      )}
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full bg-amber-300 text-amber-950 hover:bg-amber-200"
+        disabled={dates.length === 0}
+      >
+        <Trophy className="h-4 w-4" aria-hidden />
+        {total == null || rate == null
+          ? "Pay for these days"
+          : `Pay ${formatPeso(total)} · ${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(rate)}`}
+      </Button>
+    </form>
+  );
+}
+
+const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
+
+function monthOf(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(Date.UTC(year!, monthIndex! - 1 + delta, 1))
+    .toISOString()
+    .slice(0, 7);
+}
+
+function monthLabel(month: string): string {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year!, monthIndex! - 1, 1)));
+}
+
+function leadingBlanks(month: string): number {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(Date.UTC(year!, monthIndex! - 1, 1)).getUTCDay();
+}
+
+function daysInMonth(month: string): number {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return new Date(Date.UTC(year!, monthIndex!, 0)).getUTCDate();
+}
+
+function fieldLabel(dates: string[]): string {
+  if (dates.length === 0) return "Select days";
+  if (dates.length === 1) return formatTournamentDates(dates[0]!, dates[0]!);
+  return `${dates.length} days`;
+}
+
+function TournamentDateField({
+  id,
+  today,
+  dates,
+  onToggle,
+}: {
+  id: string;
+  today: string;
+  dates: string[];
+  onToggle: (iso: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => monthOf(today));
+  const [box, setBox] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const atCap = dates.length >= TOURNAMENT_MAX_DAYS;
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const anchor = rootRef.current;
+    if (!anchor) return;
+
+    function place() {
+      const rect = anchor!.getBoundingClientRect();
+      const estimated = 348;
+      const gap = 8;
+      const spaceBelow = window.innerHeight - rect.bottom - gap;
+      const spaceAbove = rect.top - gap;
+      const openUp = spaceBelow < estimated && spaceAbove > spaceBelow;
+      setBox({
+        top: openUp
+          ? Math.max(8, rect.top - gap - estimated)
+          : rect.bottom + gap,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, month]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const blanks = leadingBlanks(month);
+  const dayCount = daysInMonth(month);
+  const label = fieldLabel(dates);
+  const calendar =
+    open && box
+      ? createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label={`Choose tournament days, ${monthLabel(month)}`}
+            style={{
+              position: "fixed",
+              top: box.top,
+              left: box.left,
+              width: box.width,
+              pointerEvents: "auto",
+              zIndex: 70,
+            }}
+            className="rounded-xl border border-white/10 bg-[var(--surface)] p-3 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.85)]"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="font-[family-name:var(--font-display)] text-base">
+                {monthLabel(month)}
+              </p>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  aria-label="Previous month"
+                  disabled={month <= monthOf(today)}
+                  onClick={() => setMonth((current) => shiftMonth(current, -1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-white/10 disabled:pointer-events-none disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next month"
+                  onClick={() => setMonth((current) => shiftMonth(current, 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-white/10"
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 text-center text-[10px] font-medium tracking-[0.14em] text-[var(--muted)] uppercase">
+              {WEEKDAYS.map((weekday) => (
+                <span key={weekday} className="py-1">
+                  {weekday}
+                </span>
+              ))}
+            </div>
+            <div className="mt-1 grid grid-cols-7 gap-y-1">
+              {Array.from({ length: blanks }, (_, index) => (
+                <span key={`blank-${index}`} />
+              ))}
+              {Array.from({ length: dayCount }, (_, index) => {
+                const day = index + 1;
+                const iso = `${month}-${String(day).padStart(2, "0")}`;
+                const selected = dates.includes(iso);
+                const disabled = iso < today || (atCap && !selected);
+                const dayLabel = formatTournamentDates(iso, iso);
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    disabled={disabled}
+                    aria-pressed={selected}
+                    aria-label={
+                      selected ? `Remove ${dayLabel}` : `Add ${dayLabel}`
+                    }
+                    onClick={() => onToggle(iso)}
+                    className={cn(
+                      "mx-auto flex aspect-square w-full max-w-9 items-center justify-center rounded-full text-sm transition-colors",
+                      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200",
+                      "disabled:cursor-not-allowed disabled:text-white/25",
+                      !disabled && !selected && "hover:bg-amber-400/15",
+                      iso === today &&
+                        !selected &&
+                        "ring-1 ring-inset ring-amber-300/80",
+                      selected && "bg-amber-300 font-semibold text-amber-950",
+                    )}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-center text-xs text-amber-100/70">
+              {dates.length === 0
+                ? "Tap a day to add it. Tap it again to remove it."
+                : `${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(tournamentDayRatePhp(dates.length))}`}
+            </p>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div ref={rootRef}>
+      <button
+        id={id}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          setMonth(monthOf(dates[0] ?? today));
+          setOpen((current) => !current);
+        }}
+        className={cn(
+          "flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-black/20 px-3 text-left text-sm",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200",
+          open ? "border-amber-300" : "border-amber-200/30",
+          dates.length === 0 ? "text-amber-100/60" : "text-amber-50",
+        )}
+      >
+        <span className="truncate">{label}</span>
+        <Calendar className="h-4 w-4 shrink-0 text-amber-100/80" aria-hidden />
+      </button>
+      {calendar}
+    </div>
   );
 }

@@ -242,7 +242,7 @@ export async function loadRoster(): Promise<
           service
             .from("facility_billing")
             .select(
-              "facility_id, trial_ends_at, club_status, club_period_end",
+              "facility_id, trial_ends_at, club_status, club_period_end, choice_made_at",
               {
                 count: "exact",
               },
@@ -294,6 +294,7 @@ export async function loadRoster(): Promise<
           trialEndsAt: row.trial_ends_at,
           clubStatus: row.club_status,
           clubPeriodEnd: row.club_period_end,
+          choiceMade: row.choice_made_at != null,
         },
       ];
     });
