@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ADMIN_ERROR_MESSAGES } from "@/lib/admin-messages";
+import { DISCOUNT_ADMIN_MESSAGES, parseDiscountDraft } from "@/lib/discounts";
 import { countOperators, requireOperator } from "@/lib/admin-server";
 import { mapAuthError } from "@/lib/auth-errors";
 import { isLocalSite } from "@/lib/env";
@@ -168,4 +169,69 @@ export async function toggleFeaturedFeedbackAction(
   revalidatePath("/admin/feedback");
   revalidatePath("/");
   redirect("/admin/feedback");
+}
+
+const DISCOUNT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function createDiscountCodeAction(
+  formData: FormData,
+): Promise<CreateResult> {
+  const gate = await requireOperator();
+  if (!gate.ok) return { ok: false, error: ADMIN_ERROR_MESSAGES.forbidden };
+  const draft = parseDiscountDraft({
+    code: formData.get("code"),
+    appliesTo: formData.get("appliesTo"),
+    mode: formData.get("mode"),
+    value: formData.get("value"),
+    expiresOn: formData.get("expiresOn"),
+    maxRedemptions: formData.get("maxRedemptions"),
+  });
+  if (!draft.ok) return draft;
+  if (!isServiceRoleConfigured()) {
+    return { ok: false, error: ADMIN_ERROR_MESSAGES.unconfigured };
+  }
+
+  const service = createServiceClient();
+  const { error } = await service.from("discount_codes").insert({
+    code: draft.draft.code,
+    applies_to: draft.draft.appliesTo,
+    percent_off: draft.draft.percentOff,
+    amount_off_centavos: draft.draft.amountOffCentavos,
+    expires_on: draft.draft.expiresOn,
+    max_redemptions: draft.draft.maxRedemptions,
+  });
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      return { ok: false, error: ADMIN_ERROR_MESSAGES.missingSchema };
+    }
+    if (error.code === "23505") {
+      return { ok: false, error: DISCOUNT_ADMIN_MESSAGES.exists };
+    }
+    console.error("[admin] discount create failed", error.code);
+    return { ok: false, error: DISCOUNT_ADMIN_MESSAGES.save };
+  }
+  revalidatePath("/admin/codes");
+  return { ok: true };
+}
+
+export async function toggleDiscountCodeAction(
+  formData: FormData,
+): Promise<void> {
+  const gate = await requireOperator();
+  if (!gate.ok) {
+    redirect(gate.reason === "signed-out" ? "/admin/login" : "/dashboard");
+  }
+  const id = String(formData.get("id") ?? "");
+  if (!DISCOUNT_ID.test(id) || !isServiceRoleConfigured()) {
+    redirect("/admin/codes");
+  }
+  const service = createServiceClient();
+  const { error } = await service
+    .from("discount_codes")
+    .update({ active: formData.get("active") === "true" })
+    .eq("id", id);
+  if (error) console.error("[admin] discount toggle failed", error.code);
+  revalidatePath("/admin/codes");
+  redirect("/admin/codes");
 }

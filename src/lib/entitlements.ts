@@ -4,7 +4,9 @@
  * Open play and booking run on a 7-day trial, then a ₱699 club month.
  * Tournament mode is separate. The host picks the dates, and they do not have
  * to be in a row. One to three days are ₱1,500 each. Four or more are ₱1,400
- * each. A day that was not picked stays locked. Players are not billed.
+ * each. A day that was not picked stays locked. Each picked day stays open
+ * until 6:00 AM the next morning. Consecutive days share that extra time
+ * after the last day only. Players are not billed.
  */
 
 export const TRIAL_DAYS = 7;
@@ -14,6 +16,8 @@ export const TOURNAMENT_DAY_PHP = 1500;
 export const TOURNAMENT_VOLUME_DAY_PHP = 1400;
 export const TOURNAMENT_VOLUME_MIN_DAYS = 4;
 export const TOURNAMENT_MAX_DAYS = 14;
+/** Hours after midnight that the last day of a run stays open. */
+export const TOURNAMENT_GRACE_HOURS = 6;
 /** Previous four-day price. Kept so older payments still report ₱4,000. */
 export const TOURNAMENT_WEEKEND_PHP = 4000;
 export const TOURNAMENT_WEEKEND_DAYS = 4;
@@ -47,8 +51,10 @@ export type FeatureAccess = {
   clubPeriodEnd: string | null;
   /** First local date of the passes that cover today. */
   tournamentStartsOn: string | null;
-  /** Last local date of a pass that covers today, when tournament mode is open. */
+  /** Last local date of a pass that covers now, including the morning grace. */
   tournamentThrough: string | null;
+  /** True when now is after midnight and before the grace cutoff. */
+  tournamentGrace: boolean;
 };
 
 export type BillingSnapshot = {
@@ -96,6 +102,22 @@ export function formatPeso(amount: number): string {
     currency: "PHP",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+/** Venue-local hour, 0 through 23. */
+export function localHour(timeZone: string, date: Date): number {
+  try {
+    const hour = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const value = Number(hour.find((part) => part.type === "hour")?.value);
+    if (!Number.isFinite(value)) return date.getUTCHours();
+    return value === 24 ? 0 : value;
+  } catch {
+    return date.getUTCHours();
+  }
 }
 
 /** Venue-local calendar day as YYYY-MM-DD. */
@@ -260,7 +282,20 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
     snapshot.clubStatus === "active" &&
     inFuture(snapshot.now, snapshot.clubPeriodEnd);
   const clubOpen = inTrial || clubPaid;
-  const covering = snapshot.passes.filter((pass) => passCovers(pass, today));
+  const todayCovering = snapshot.passes.filter((pass) =>
+    passCovers(pass, today),
+  );
+  const yesterday = addCalendarDays(today, -1);
+  const inGrace =
+    todayCovering.length === 0 &&
+    localHour(snapshot.timeZone, snapshot.now) < TOURNAMENT_GRACE_HOURS &&
+    yesterday != null;
+  const covering = todayCovering.length
+    ? todayCovering
+    : inGrace
+      ? snapshot.passes.filter((pass) => passCovers(pass, yesterday))
+      : [];
+  const tournamentGrace = inGrace && covering.length > 0;
   const tournamentStartsOn =
     covering.length === 0
       ? null
@@ -292,5 +327,6 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
     clubPeriodEnd: clubPaid ? snapshot.clubPeriodEnd : null,
     tournamentStartsOn,
     tournamentThrough,
+    tournamentGrace,
   };
 }

@@ -37,6 +37,7 @@ describe("billing notices", () => {
 
   it("opens the plans dialog for a checkout problem", () => {
     expect(billingNoticeOpensPlans("checkout")).toBe(true);
+    expect(billingNoticeOpensPlans("code")).toBe(true);
     expect(billingNoticeOpensPlans("locked")).toBe(true);
     expect(billingNoticeOpensPlans(undefined)).toBe(false);
   });

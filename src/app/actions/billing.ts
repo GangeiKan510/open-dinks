@@ -11,6 +11,15 @@ import {
   tournamentDatesPriceCentavos,
 } from "@/lib/entitlements";
 import { rememberCheckout } from "@/lib/billing-fulfill";
+import { BILLING_ERROR_MESSAGES } from "@/lib/billing-messages";
+import { loadDiscountOffer } from "@/lib/discount-codes";
+import {
+  checkoutDescription,
+  discountSummary,
+  normalizeDiscountCode,
+  priceWithDiscount,
+  type DiscountProduct,
+} from "@/lib/discounts";
 import { siteUrl } from "@/lib/env";
 import { isPublicBooker } from "@/lib/host-access";
 import { createPaymongoCheckout, isPaymongoConfigured } from "@/lib/paymongo";
@@ -33,6 +42,98 @@ async function hostFacility() {
   const venue = await loadAccountVenue(user.id, supabase);
   if (!venue) return null;
   return { supabase, user, venue };
+}
+
+async function priceCheckout(input: {
+  product: DiscountProduct;
+  listCentavos: number;
+  today: string;
+  codeRaw: string;
+  baseDescription: string;
+}): Promise<
+  | {
+      ok: true;
+      amount: number;
+      description: string;
+      extra: Record<string, string>;
+      summary: string | null;
+    }
+  | { ok: false; notice: "code" | "checkout" }
+> {
+  const code = normalizeDiscountCode(input.codeRaw);
+  if (input.codeRaw.trim() && !code) return { ok: false, notice: "code" };
+  if (!code) {
+    return {
+      ok: true,
+      amount: input.listCentavos,
+      description: input.baseDescription,
+      extra: {},
+      summary: null,
+    };
+  }
+
+  const loaded = await loadDiscountOffer(code);
+  if (loaded.status !== "found") return { ok: false, notice: "code" };
+  const quote = priceWithDiscount({
+    product: input.product,
+    listCentavos: input.listCentavos,
+    today: input.today,
+    offer: loaded.offer,
+  });
+  if (!quote) return { ok: false, notice: "code" };
+  return {
+    ok: true,
+    amount: quote.dueCentavos,
+    description: checkoutDescription({
+      base: input.baseDescription,
+      listCentavos: input.listCentavos,
+      dueCentavos: quote.dueCentavos,
+      code,
+    }),
+    extra: {
+      discount_code: code,
+      quoted_centavos: String(quote.dueCentavos),
+    },
+    summary: discountSummary({
+      listCentavos: input.listCentavos,
+      dueCentavos: quote.dueCentavos,
+      code,
+    }),
+  };
+}
+
+export async function previewDiscountAction(input: {
+  product: DiscountProduct;
+  dates: string;
+  code: string;
+}): Promise<{ ok: true; summary: string } | { ok: false; message: string }> {
+  const host = await hostFacility();
+  if (!host) return { ok: false, message: BILLING_ERROR_MESSAGES.signIn };
+  if (input.product !== "club" && input.product !== "day") {
+    return { ok: false, message: BILLING_ERROR_MESSAGES.code };
+  }
+
+  let listCentavos = CLUB_PRICE_CENTAVOS;
+  if (input.product === "day") {
+    const dates = parseTournamentDates(input.dates);
+    const price = dates ? tournamentDatesPriceCentavos(dates) : null;
+    if (price == null) {
+      return { ok: false, message: BILLING_ERROR_MESSAGES.date };
+    }
+    listCentavos = price;
+  }
+
+  const priced = await priceCheckout({
+    product: input.product,
+    listCentavos,
+    today: localDateISO(host.venue.timezone, new Date()),
+    codeRaw: input.code,
+    baseDescription: "",
+  });
+  if (!priced.ok || !priced.summary) {
+    return { ok: false, message: BILLING_ERROR_MESSAGES.code };
+  }
+  return { ok: true, summary: priced.summary };
 }
 
 async function checkoutUrl(input: {
@@ -111,17 +212,28 @@ export async function startTrialAction(): Promise<void> {
   redirect("/dashboard");
 }
 
-export async function startClubCheckoutAction(): Promise<void> {
+export async function startClubCheckoutAction(
+  formData: FormData,
+): Promise<void> {
   const host = await hostFacility();
   if (!host) notice("checkout");
   if (!isPaymongoConfigured()) notice("unconfigured");
 
+  const priced = await priceCheckout({
+    product: "club",
+    listCentavos: CLUB_PRICE_CENTAVOS,
+    today: localDateISO(host.venue.timezone, new Date()),
+    codeRaw: String(formData.get("discount_code") ?? ""),
+    baseDescription: "One month of open play and booking",
+  });
+  if (!priced.ok) notice(priced.notice);
+
   const url = await checkoutUrl({
     facilityId: host.venue.facilityId,
     name: "Picklrz Club",
-    amount: CLUB_PRICE_CENTAVOS,
-    description: "One month of open play and booking",
-    metadata: { kind: "club" },
+    amount: priced.amount,
+    description: priced.description,
+    metadata: { kind: "club", ...priced.extra },
   });
   if (!url) notice("checkout");
   redirect(url);
@@ -149,6 +261,14 @@ export async function startTournamentPassAction(
 
   const amount = tournamentDatesPriceCentavos(dates);
   if (amount == null) notice("date");
+  const priced = await priceCheckout({
+    product: "day",
+    listCentavos: amount,
+    today,
+    codeRaw: String(formData.get("discount_code") ?? ""),
+    baseDescription: `Tournament days ${dates.join(", ")}`,
+  });
+  if (!priced.ok) notice(priced.notice);
   const label =
     dates.length === 1
       ? "Picklrz tournament day"
@@ -157,9 +277,9 @@ export async function startTournamentPassAction(
   const url = await checkoutUrl({
     facilityId: host.venue.facilityId,
     name: label,
-    amount,
-    description: `Tournament days ${dates.join(", ")}`,
-    metadata: { kind: "day", dates: dates.join(",") },
+    amount: priced.amount,
+    description: priced.description,
+    metadata: { kind: "day", dates: dates.join(","), ...priced.extra },
   });
   if (!url) notice("checkout");
   redirect(url);
