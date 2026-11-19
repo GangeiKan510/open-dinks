@@ -10,6 +10,7 @@ export const BILLING_ERROR_MESSAGES = {
   clubRequired: "Choose a tournament day to open tournament mode.",
   date: "Choose the first day of the tournament.",
   past: "Tournament days start today or later.",
+  owned: "Those days are already paid. Pick dates you have not bought.",
   code: DISCOUNT_CODE_MESSAGE,
   openPlay: "Open play is paused until the club plan is active.",
   booking: "This club isn't taking bookings right now.",
@@ -27,6 +28,7 @@ export type BillingNoticeCode =
   | "club"
   | "date"
   | "past"
+  | "owned"
   | "code"
   | "success"
   | "cancel"
@@ -56,9 +58,11 @@ export function paymentReceivedCopy(input: {
   const club = input.kinds.includes("club");
   const pass = input.kinds.includes("day") || input.kinds.includes("weekend");
   if (club && pass) {
-    return "Your club month is active, and tournament mode is open for the days you bought.";
+    return "Your club month is active. Tournament mode is open, and brackets can be built on the days you bought.";
   }
-  if (pass) return "Tournament mode is open for the days you bought.";
+  if (pass) {
+    return "Tournament mode is open. Brackets can be built on the days you bought.";
+  }
   return "Your club month is active.";
 }
 
@@ -76,6 +80,8 @@ export function billingNoticeMessage(code: string | undefined): string | null {
       return BILLING_ERROR_MESSAGES.date;
     case "past":
       return BILLING_ERROR_MESSAGES.past;
+    case "owned":
+      return BILLING_ERROR_MESSAGES.owned;
     case "code":
       return BILLING_ERROR_MESSAGES.code;
     case "success":
