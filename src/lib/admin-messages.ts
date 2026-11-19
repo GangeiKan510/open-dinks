@@ -1,0 +1,30 @@
+/** Stable operator-panel copy. Never return a raw provider message. */
+export const ADMIN_ERROR_MESSAGES = {
+  signIn: "Sign in to the operator panel.",
+  forbidden: "This account cannot open the operator panel.",
+  email: "Enter a valid email.",
+  password: "Password must be at least 8 characters.",
+  name: "Enter a display name.",
+  setupKey: "The setup key does not match.",
+  alreadyClaimed: "An operator account already exists. Sign in instead.",
+  unconfigured:
+    "Add the Supabase service role key on the server before creating an operator account.",
+  missingSchema:
+    "Apply the latest Supabase migrations, then reload the operator panel.",
+  createFailed: "Could not create that operator account. Try again.",
+  salesFailed: "Could not load sales.",
+  rosterFailed: "Could not load accounts.",
+  activityFailed: "Could not load activity.",
+  feedbackFailed: "Could not load feedback.",
+  featureFailed: "Could not update that review.",
+  feedbackName: "Enter a club name.",
+  feedbackNameLong: "Keep the club name under 80 characters.",
+  feedbackShort: "Write at least 8 characters.",
+  feedbackLong: "Keep the note under 2,000 characters.",
+  feedbackRating: "Choose a rating from 1 to 5, or leave it blank.",
+  feedbackLogoType: "Use a PNG, JPEG, or WebP image.",
+  feedbackLogoSize: "Logos must be 2 MB or smaller.",
+  feedbackLogoFailed: "Could not save that logo. Try again.",
+  feedbackWait: "Wait a moment before sending another note.",
+  feedbackFailedSubmit: "Could not send that note. Try again.",
+} as const;

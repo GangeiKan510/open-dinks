@@ -2,6 +2,8 @@
 
 import { cookies } from "next/headers";
 import { type SkillTier } from "@/lib/skill-tier";
+import { safeAuthNextPath } from "@/lib/auth-redirect";
+import { OPERATOR_COOKIE } from "@/lib/operator-access";
 import { THEME_COOKIE } from "@/lib/theme";
 import { parseOpenPlayForm } from "@/lib/open-play";
 import { revalidatePath } from "next/cache";
@@ -14,6 +16,7 @@ import { dbToEngineState } from "@/lib/session-mapper";
 import { loadSessionBundle } from "@/lib/session-bundle";
 import { loadSessionLiveRows } from "@/lib/session-live-rows";
 import { planSessionPersist } from "@/lib/session-persist";
+import { loadFeatureAccess } from "@/lib/billing-server";
 import { normalizeCourtCount } from "@/lib/court-count";
 
 /** Violation of sessions_one_live_per_venue. */
@@ -37,6 +40,23 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   if (alreadyLive) {
     revalidatePath("/dashboard");
     redirect(`/s/${alreadyLive.public_token}/host`);
+  }
+
+  const { data: venueRow } = await supabase
+    .from("venues")
+    .select("facility_id, timezone")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (venueRow?.facility_id) {
+    const access = await loadFeatureAccess(
+      supabase,
+      venueRow.facility_id,
+      venueRow.timezone,
+    );
+    if (access.schemaReady && !access.openPlay) {
+      revalidatePath("/dashboard");
+      redirect("/dashboard?billing=locked");
+    }
   }
 
   const { data: courts, error: courtsError } = await supabase
@@ -99,12 +119,13 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   redirect(`/s/${session.public_token}/host`);
 }
 
-export async function signOutAction() {
+export async function signOutAction(formData: FormData) {
   const supabase = await createClient();
   await supabase.auth.signOut();
   const jar = await cookies();
   jar.delete(THEME_COOKIE);
-  redirect("/");
+  jar.delete(OPERATOR_COOKIE);
+  redirect(safeAuthNextPath(String(formData.get("next") ?? ""), "/"));
 }
 
 async function loadSessionBundleForPersist(token: string) {

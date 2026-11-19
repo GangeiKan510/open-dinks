@@ -104,20 +104,26 @@ export default async function PublicBookingPage({
         </p>
       </header>
 
-      <PublicBookingTabs
-        venueId={venue.id}
-        venueSlug={venue.slug}
-        courts={venue.courts}
-        courtGrid={courtGrid}
-        courtBusy={busy ?? []}
-        coaches={coaches}
-        coachingGrid={coachingGrid}
-        timeZone={venue.timezone}
-        dayCount={PUBLIC_BOOKING_LOOKAHEAD_DAYS}
-        hoursLabel={hoursLabel}
-        timezoneLabel={formatVenueTimezoneLabel(venue.timezone)}
-        booker={booker}
-      />
+      {venue.acceptingBookings ? (
+        <PublicBookingTabs
+          venueId={venue.id}
+          venueSlug={venue.slug}
+          courts={venue.courts}
+          courtGrid={courtGrid}
+          courtBusy={busy ?? []}
+          coaches={coaches}
+          coachingGrid={coachingGrid}
+          timeZone={venue.timezone}
+          dayCount={PUBLIC_BOOKING_LOOKAHEAD_DAYS}
+          hoursLabel={hoursLabel}
+          timezoneLabel={formatVenueTimezoneLabel(venue.timezone)}
+          booker={booker}
+        />
+      ) : (
+        <p className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-6 text-sm text-[var(--muted)]">
+          This club isn&apos;t taking court or coaching requests right now.
+        </p>
+      )}
     </main>
   );
 }

@@ -118,6 +118,7 @@ export type BookingsManagerProps = {
   coachingBookings: CoachingBookingRow[];
   coachingHistory?: CoachingBookingRow[];
   coachingGrid: HourlySlotGrid;
+  bookingLocked?: boolean;
 };
 
 export function BookingsManager({
@@ -134,6 +135,7 @@ export function BookingsManager({
   coachingBookings,
   coachingHistory = [],
   coachingGrid,
+  bookingLocked = false,
 }: BookingsManagerProps) {
   const hydrated = useHydrated();
   const [pending, startTransition] = useTransition();
@@ -274,6 +276,10 @@ export function BookingsManager({
   }
 
   function onCreate(formData: FormData) {
+    if (bookingLocked) {
+      setFormError("This club isn't taking bookings right now.");
+      return;
+    }
     if (!selection) {
       setFormError("Pick at least one open hour on the calendar first.");
       return;
@@ -308,6 +314,14 @@ export function BookingsManager({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="coaching">
+          {bookingLocked ? (
+            <p
+              className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"
+              role="status"
+            >
+              New coaching bookings are paused until the club plan is active.
+            </p>
+          ) : null}
           <div className="space-y-4">
             <section className={CARD}>
               <h2 className="mb-1 font-semibold">Court bookings</h2>
@@ -409,6 +423,15 @@ export function BookingsManager({
       </TabsList>
 
       <TabsContent value="create" className="space-y-4">
+        {bookingLocked ? (
+          <p
+            className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"
+            role="status"
+          >
+            New court and coaching bookings are paused until the club plan is
+            active. You can still review requests that are already here.
+          </p>
+        ) : null}
         <BookingSlotPicker
           grid={grid}
           courts={courts}
@@ -530,6 +553,14 @@ export function BookingsManager({
       </TabsContent>
 
       <TabsContent value="coaching">
+        {bookingLocked ? (
+          <p
+            className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"
+            role="status"
+          >
+            New coaching bookings are paused until the club plan is active.
+          </p>
+        ) : null}
         <CoachingManager
           venueId={venueId}
           coaches={coaches}

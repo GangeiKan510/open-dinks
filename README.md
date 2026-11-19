@@ -71,5 +71,7 @@ yarn build
 
 ## Product scope (v1)
 
-**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests)  
-**Out:** memberships, online payments, DUPR export, native apps
+**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests), club subscription (open play and booking), tournament day passes, operator panel (sales, accounts, activity, anonymous feedback)  
+**Out:** player memberships, DUPR export, native apps
+
+Operator accounts are created at `/admin/login` and can open `/admin` only. Apply the platform-admin migration, and set `SUPABASE_SERVICE_ROLE_KEY`. Production also needs `PLATFORM_ADMIN_SETUP_KEY` for the first account.
