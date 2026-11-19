@@ -2,14 +2,19 @@
  * Club plan and tournament-day rules.
  *
  * Open play and booking run on a 7-day trial, then a ₱699 club month.
- * Tournament mode is separate: one local day for ₱1,500 or four consecutive
- * local days for ₱4,000. Either can be bought on its own. Unused days in a
- * tournament window expire. Players are not billed.
+ * Tournament mode is separate. The host picks the dates, and they do not have
+ * to be in a row. One to three days are ₱1,500 each. Four or more are ₱1,400
+ * each. A day that was not picked stays locked. Players are not billed.
  */
 
 export const TRIAL_DAYS = 7;
 export const CLUB_MONTHLY_PHP = 699;
 export const TOURNAMENT_DAY_PHP = 1500;
+/** Per day once the host picks at least this many dates in one purchase. */
+export const TOURNAMENT_VOLUME_DAY_PHP = 1400;
+export const TOURNAMENT_VOLUME_MIN_DAYS = 4;
+export const TOURNAMENT_MAX_DAYS = 14;
+/** Previous four-day price. Kept so older payments still report ₱4,000. */
 export const TOURNAMENT_WEEKEND_PHP = 4000;
 export const TOURNAMENT_WEEKEND_DAYS = 4;
 
@@ -37,6 +42,8 @@ export type FeatureAccess = {
   clubPaid: boolean;
   phase: ClubPhase;
   trialDaysLeft: number;
+  /** True until the host starts a trial or pays for club or tournament access. */
+  awaitingPlanChoice: boolean;
   clubPeriodEnd: string | null;
   /** First local date of the passes that cover today. */
   tournamentStartsOn: string | null;
@@ -51,6 +58,11 @@ export type BillingSnapshot = {
   clubStatus: ClubStatus;
   clubPeriodEnd: string | null;
   passes: TournamentPassWindow[];
+  /**
+   * False until the host starts the trial or a payment is confirmed.
+   * Omitted means the choice already happened.
+   */
+  choiceMade?: boolean;
 };
 
 const DAY_MS = 86_400_000;
@@ -120,6 +132,35 @@ export function addCalendarDays(isoDate: string, days: number): string | null {
   const utc = new Date(Date.UTC(year!, month! - 1, day!));
   utc.setUTCDate(utc.getUTCDate() + days);
   return utc.toISOString().slice(0, 10);
+}
+
+export function tournamentDayRatePhp(dayCount: number): number {
+  return dayCount >= TOURNAMENT_VOLUME_MIN_DAYS
+    ? TOURNAMENT_VOLUME_DAY_PHP
+    : TOURNAMENT_DAY_PHP;
+}
+
+/**
+ * Sorted unique calendar dates from a checkout list.
+ * Rejects duplicates, empty lists, and more than the purchase cap.
+ */
+export function parseTournamentDates(value: string): string[] | null {
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0 || parts.length > TOURNAMENT_MAX_DAYS) return null;
+  if (!parts.every((part) => isCalendarDate(part))) return null;
+  const unique = [...new Set(parts)].sort();
+  if (unique.length !== parts.length) return null;
+  return unique;
+}
+
+export function tournamentDatesPriceCentavos(
+  dates: readonly string[],
+): number | null {
+  if (dates.length === 0 || dates.length > TOURNAMENT_MAX_DAYS) return null;
+  return tournamentDayRatePhp(dates.length) * dates.length * 100;
 }
 
 export function tournamentPassWindow(
@@ -243,6 +284,11 @@ export function resolveFeatureAccess(snapshot: BillingSnapshot): FeatureAccess {
     clubPaid,
     phase: clubPaid ? "active" : inTrial ? "trial" : "locked",
     trialDaysLeft: trialLeft,
+    awaitingPlanChoice:
+      snapshot.choiceMade === false &&
+      !clubPaid &&
+      !inTrial &&
+      tournamentThrough === null,
     clubPeriodEnd: clubPaid ? snapshot.clubPeriodEnd : null,
     tournamentStartsOn,
     tournamentThrough,

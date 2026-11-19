@@ -10,6 +10,9 @@ import {
   formatPeso,
   formatTournamentDates,
   nextClubPeriodEnd,
+  parseTournamentDates,
+  tournamentDatesPriceCentavos,
+  tournamentDayRatePhp,
   isCalendarDate,
   resolveFeatureAccess,
   passFromCheckoutMetadata,
@@ -37,6 +40,34 @@ describe("tournament pass windows", () => {
       startsOn: "2026-11-21",
       endsOn: "2026-11-21",
     });
+  });
+
+  it("charges 1500 a day through 3 days and 1400 a day from 4", () => {
+    expect(tournamentDayRatePhp(1)).toBe(1500);
+    expect(tournamentDayRatePhp(3)).toBe(1500);
+    expect(
+      tournamentDatesPriceCentavos(["2026-11-20", "2026-11-22", "2026-11-25"]),
+    ).toBe(450000);
+    expect(tournamentDayRatePhp(4)).toBe(1400);
+    expect(
+      tournamentDatesPriceCentavos([
+        "2026-11-20",
+        "2026-11-22",
+        "2026-11-24",
+        "2026-11-27",
+      ]),
+    ).toBe(560000);
+  });
+
+  it("keeps picked dates and rejects gaps that were not chosen", () => {
+    expect(parseTournamentDates("2026-11-27, 2026-11-20,2026-11-22")).toEqual([
+      "2026-11-20",
+      "2026-11-22",
+      "2026-11-27",
+    ]);
+    expect(parseTournamentDates("2026-11-20,2026-11-20")).toBeNull();
+    expect(parseTournamentDates("2026-02-30")).toBeNull();
+    expect(parseTournamentDates("")).toBeNull();
   });
 
   it("covers four consecutive days, including the start date", () => {
@@ -81,6 +112,24 @@ describe("resolveFeatureAccess", () => {
     expect(access.tournament).toBe(false);
     expect(access.clubPaid).toBe(false);
     expect(access.trialDaysLeft).toBe(2);
+  });
+
+  it("asks for a plan until the host starts a trial or pays", () => {
+    const waiting = resolveFeatureAccess(snapshot({ choiceMade: false }));
+    expect(waiting.awaitingPlanChoice).toBe(true);
+    expect(waiting.openPlay).toBe(false);
+    expect(waiting.booking).toBe(false);
+    expect(waiting.tournament).toBe(false);
+
+    const paid = resolveFeatureAccess(
+      snapshot({
+        choiceMade: false,
+        clubStatus: "active",
+        clubPeriodEnd: "2026-12-18T06:00:00.000Z",
+      }),
+    );
+    expect(paid.awaitingPlanChoice).toBe(false);
+    expect(paid.openPlay).toBe(true);
   });
 
   it("locks the club when the trial is over and no plan is paid", () => {

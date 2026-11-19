@@ -360,7 +360,8 @@ export default async function DashboardPage({
       timeZone={venue.timezone}
       today={localDateISO(venue.timezone, new Date())}
       notice={billingNoticeOpensPlans(billingCode) ? billingNotice : null}
-      defaultOpen={openPlans}
+      statusNotice={billingNotice}
+      defaultOpen={openPlans && !access.awaitingPlanChoice}
     >
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -395,7 +396,9 @@ export default async function DashboardPage({
           </p>
         ) : null}
 
-        {access.schemaReady ? <PlanSummary /> : null}
+        {access.schemaReady && !access.awaitingPlanChoice ? (
+          <PlanSummary />
+        ) : null}
 
         <dl className="grid gap-3 sm:grid-cols-3">
           <Stat label="Courts" value={String(courtRows.length)} tone="accent" />

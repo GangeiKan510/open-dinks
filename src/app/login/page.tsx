@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,19 +267,30 @@ export default function LoginPage() {
             onToggle={() => setShowPassword((current) => !current)}
           />
           {mode === "sign-up" ? (
-            <PasswordField
-              id="confirm-password"
-              label="Confirm password"
-              name="confirmPassword"
-              inputRef={confirmPasswordRef}
-              autoComplete="new-password"
-              minLength={8}
-              placeholder="Repeat the password"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              visible={showConfirmPassword}
-              onToggle={() => setShowConfirmPassword((current) => !current)}
-            />
+            <div className="space-y-1">
+              <PasswordField
+                id="confirm-password"
+                label="Confirm password"
+                name="confirmPassword"
+                inputRef={confirmPasswordRef}
+                autoComplete="new-password"
+                minLength={8}
+                placeholder="Repeat the password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                visible={showConfirmPassword}
+                onToggle={() => setShowConfirmPassword((current) => !current)}
+              />
+              {password.length >= 8 && password === confirmPassword ? (
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 text-sm font-medium text-[var(--highlight)]"
+                >
+                  <Check className="h-4 w-4 shrink-0" aria-hidden />
+                  Passwords match
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <Button className="w-full" loading={pending}>
             {pending

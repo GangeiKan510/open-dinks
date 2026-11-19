@@ -4,6 +4,7 @@ export const BILLING_ERROR_MESSAGES = {
   unconfigured:
     "Billing isn't connected yet. Add the PayMongo keys, then try again.",
   checkout: "Could not start checkout. Try again.",
+  trial: "Could not start the trial. Try again.",
   clubRequired: "Choose a tournament day to open tournament mode.",
   date: "Choose the first day of the tournament.",
   past: "Tournament days start today or later.",
@@ -19,6 +20,7 @@ export const BILLING_ERROR_MESSAGES = {
 export type BillingNoticeCode =
   | "unconfigured"
   | "checkout"
+  | "trial"
   | "club"
   | "date"
   | "past"
@@ -62,6 +64,8 @@ export function billingNoticeMessage(code: string | undefined): string | null {
       return BILLING_ERROR_MESSAGES.unconfigured;
     case "checkout":
       return BILLING_ERROR_MESSAGES.checkout;
+    case "trial":
+      return BILLING_ERROR_MESSAGES.trial;
     case "club":
       return BILLING_ERROR_MESSAGES.clubRequired;
     case "date":

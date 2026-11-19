@@ -103,21 +103,24 @@ export type Database = {
       facility_billing: {
         Row: {
           facility_id: string;
-          trial_ends_at: string;
+          trial_ends_at: string | null;
+          choice_made_at: string | null;
           club_status: "none" | "active" | "past_due" | "canceled";
           club_period_end: string | null;
           updated_at: string;
         };
         Insert: {
           facility_id: string;
-          trial_ends_at: string;
+          trial_ends_at?: string | null;
+          choice_made_at?: string | null;
           club_status?: "none" | "active" | "past_due" | "canceled";
           club_period_end?: string | null;
           updated_at?: string;
         };
         Update: {
           facility_id?: string;
-          trial_ends_at?: string;
+          trial_ends_at?: string | null;
+          choice_made_at?: string | null;
           club_status?: "none" | "active" | "past_due" | "canceled";
           club_period_end?: string | null;
           updated_at?: string;

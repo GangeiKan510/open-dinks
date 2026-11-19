@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { catalogCentavos } from "@/lib/admin-sales";
 import {
   nextClubPeriodEnd,
+  parseTournamentDates,
   passFromCheckoutMetadata,
+  tournamentDatesPriceCentavos,
 } from "@/lib/entitlements";
 import {
   listRecentPaidPayments,
@@ -24,8 +26,48 @@ export type ConfirmedPayment = {
   kinds: PaymentKind[];
 };
 
+function paidAmountMatches(
+  kind: PaymentKind,
+  payment: { amount: number; metadata: Record<string, string> },
+): boolean {
+  if (kind === "day" && payment.metadata.dates) {
+    const dates = parseTournamentDates(payment.metadata.dates);
+    const price = dates ? tournamentDatesPriceCentavos(dates) : null;
+    return price != null && payment.amount === price;
+  }
+  return payment.amount === catalogCentavos(kind);
+}
+
 function isPaymentKind(value: string | undefined): value is PaymentKind {
   return value === "club" || value === "day" || value === "weekend";
+}
+
+/** A paid tournament pass is a plan choice, so the first-run gate can close. */
+async function markPlanChosen(
+  supabase: ReturnType<typeof createServiceClient>,
+  facilityId: string,
+) {
+  const now = new Date().toISOString();
+  const { data: billing, error: loadError } = await supabase
+    .from("facility_billing")
+    .select("trial_ends_at, choice_made_at")
+    .eq("facility_id", facilityId)
+    .maybeSingle();
+  if (loadError) {
+    console.error("[billing] choice load failed", loadError.code);
+    throw new Error("choice load failed");
+  }
+  if (billing?.choice_made_at) return;
+  const { error } = await supabase.from("facility_billing").upsert({
+    facility_id: facilityId,
+    trial_ends_at: billing?.trial_ends_at ?? null,
+    choice_made_at: now,
+    updated_at: now,
+  });
+  if (error) {
+    console.error("[billing] choice update failed", error.code);
+    throw new Error("choice update failed");
+  }
 }
 
 /** Claims a paid checkout once, then opens the club month or tournament days. */
@@ -51,11 +93,22 @@ export async function fulfillPaidCheckout(checkout: {
     throw new Error("payment lookup failed");
   }
   if (existing && existing.length > 0) return kind;
+  const pickedDates = checkout.metadata.dates
+    ? parseTournamentDates(checkout.metadata.dates)
+    : null;
+  if (checkout.metadata.dates && !pickedDates) {
+    console.error("[billing] pass dates rejected");
+    return null;
+  }
+  const amountCentavos = pickedDates
+    ? tournamentDatesPriceCentavos(pickedDates)
+    : catalogCentavos(kind);
+  if (amountCentavos == null) return null;
   const { error: claimed } = await supabase.from("paymongo_payments").insert({
     checkout_id: checkout.id,
     facility_id: facilityId,
     kind,
-    amount_centavos: catalogCentavos(kind),
+    amount_centavos: amountCentavos,
   });
   if (claimed?.code === PG_UNIQUE_VIOLATION) return kind;
   if (claimed) {
@@ -67,7 +120,7 @@ export async function fulfillPaidCheckout(checkout: {
     if (kind === "club") {
       const { data: billing, error: loadError } = await supabase
         .from("facility_billing")
-        .select("trial_ends_at, club_period_end")
+        .select("trial_ends_at, club_period_end, choice_made_at")
         .eq("facility_id", facilityId)
         .maybeSingle();
       if (loadError) {
@@ -81,9 +134,8 @@ export async function fulfillPaidCheckout(checkout: {
       );
       const { error } = await supabase.from("facility_billing").upsert({
         facility_id: facilityId,
-        trial_ends_at:
-          billing?.trial_ends_at ??
-          new Date(now.getTime() - 1000).toISOString(),
+        trial_ends_at: billing?.trial_ends_at ?? null,
+        choice_made_at: billing?.choice_made_at ?? now.toISOString(),
         club_status: "active",
         club_period_end: periodEnd.toISOString(),
         updated_at: now.toISOString(),
@@ -95,22 +147,42 @@ export async function fulfillPaidCheckout(checkout: {
       return kind;
     }
 
-    const pass = passFromCheckoutMetadata(checkout.metadata);
-    if (!pass) {
+    const pass = pickedDates
+      ? null
+      : passFromCheckoutMetadata(checkout.metadata);
+    if (!pickedDates && !pass) {
       console.error("[billing] pass metadata rejected");
       return null;
     }
-    const { error } = await supabase.from("tournament_passes").insert({
-      facility_id: facilityId,
-      kind: pass.kind,
-      starts_on: pass.startsOn,
-      ends_on: pass.endsOn,
-      paymongo_checkout_id: checkout.id,
-    });
+    const rows: {
+      facility_id: string;
+      kind: "day" | "weekend";
+      starts_on: string;
+      ends_on: string;
+      paymongo_checkout_id: string | null;
+    }[] = pickedDates
+      ? pickedDates.map((date, index) => ({
+          facility_id: facilityId,
+          kind: "day",
+          starts_on: date,
+          ends_on: date,
+          paymongo_checkout_id: index === 0 ? checkout.id : null,
+        }))
+      : [
+          {
+            facility_id: facilityId,
+            kind: pass!.kind,
+            starts_on: pass!.startsOn,
+            ends_on: pass!.endsOn,
+            paymongo_checkout_id: checkout.id,
+          },
+        ];
+    const { error } = await supabase.from("tournament_passes").insert(rows);
     if (error && error.code !== PG_UNIQUE_VIOLATION) {
       console.error("[billing] pass insert failed", error.code);
       throw new Error("pass insert failed");
     }
+    await markPlanChosen(supabase, facilityId);
     return kind;
   } catch (error) {
     await supabase
@@ -159,7 +231,7 @@ export async function confirmReturnedCheckout(
   }
   for (const payment of payments) {
     const kind = paymentPlanForFacility(payment, facilityId);
-    if (!kind || payment.amount !== catalogCentavos(kind)) continue;
+    if (!kind || !paidAmountMatches(kind, payment)) continue;
     candidates.push({
       id: payment.id,
       metadata: {
