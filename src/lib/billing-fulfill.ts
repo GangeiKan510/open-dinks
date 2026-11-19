@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { catalogCentavos } from "@/lib/admin-sales";
+import { recordDiscountRedemption } from "@/lib/discount-codes";
+import { chargeCentavos } from "@/lib/discounts";
 import {
   nextClubPeriodEnd,
   parseTournamentDates,
@@ -26,16 +28,29 @@ export type ConfirmedPayment = {
   kinds: PaymentKind[];
 };
 
+function listCentavos(
+  kind: PaymentKind,
+  metadata: Record<string, string>,
+): number | null {
+  if (kind === "day" && metadata.dates) {
+    const dates = parseTournamentDates(metadata.dates);
+    return dates ? tournamentDatesPriceCentavos(dates) : null;
+  }
+  return catalogCentavos(kind);
+}
+
 function paidAmountMatches(
   kind: PaymentKind,
   payment: { amount: number; metadata: Record<string, string> },
 ): boolean {
-  if (kind === "day" && payment.metadata.dates) {
-    const dates = parseTournamentDates(payment.metadata.dates);
-    const price = dates ? tournamentDatesPriceCentavos(dates) : null;
-    return price != null && payment.amount === price;
-  }
-  return payment.amount === catalogCentavos(kind);
+  const list = listCentavos(kind, payment.metadata);
+  if (list == null) return false;
+  return (
+    chargeCentavos({
+      listCentavos: list,
+      quotedCentavos: payment.metadata.quoted_centavos,
+    }) === payment.amount
+  );
 }
 
 function isPaymentKind(value: string | undefined): value is PaymentKind {
@@ -100,10 +115,27 @@ export async function fulfillPaidCheckout(checkout: {
     console.error("[billing] pass dates rejected");
     return null;
   }
-  const amountCentavos = pickedDates
-    ? tournamentDatesPriceCentavos(pickedDates)
-    : catalogCentavos(kind);
+  const list = listCentavos(kind, checkout.metadata);
+  const amountCentavos =
+    list == null
+      ? null
+      : chargeCentavos({
+          listCentavos: list,
+          quotedCentavos: checkout.metadata.quoted_centavos,
+        });
   if (amountCentavos == null) return null;
+
+  async function finish(applied: PaymentKind): Promise<PaymentKind> {
+    if (checkout.metadata.discount_code) {
+      await recordDiscountRedemption({
+        code: checkout.metadata.discount_code,
+        facilityId,
+        checkoutId: checkout.id,
+      });
+    }
+    return applied;
+  }
+
   const { error: claimed } = await supabase.from("paymongo_payments").insert({
     checkout_id: checkout.id,
     facility_id: facilityId,
@@ -144,7 +176,7 @@ export async function fulfillPaidCheckout(checkout: {
         console.error("[billing] club update failed", error.code);
         throw new Error("club update failed");
       }
-      return kind;
+      return finish(kind);
     }
 
     const pass = pickedDates
@@ -183,7 +215,7 @@ export async function fulfillPaidCheckout(checkout: {
       throw new Error("pass insert failed");
     }
     await markPlanChosen(supabase, facilityId);
-    return kind;
+    return finish(kind);
   } catch (error) {
     await supabase
       .from("paymongo_payments")

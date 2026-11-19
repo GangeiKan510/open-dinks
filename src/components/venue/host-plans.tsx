@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useTransition,
   type ReactNode,
 } from "react";
 import {
@@ -23,11 +24,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  previewDiscountAction,
   startClubCheckoutAction,
   startTournamentPassAction,
   startTrialAction,
 } from "@/app/actions/billing";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SignOutButton } from "@/components/venue/sign-out-button";
 import {
   Dialog,
@@ -166,10 +169,13 @@ function PlanChip({ label, detail }: { label: string; detail: string }) {
 }
 
 function tournamentDetail(access: FeatureAccess): string {
-  return formatTournamentDates(
+  const dates = formatTournamentDates(
     access.tournamentStartsOn,
     access.tournamentThrough,
   );
+  if (!dates) return "";
+  if (access.tournamentGrace) return `${dates} · until 6:00 AM`;
+  return dates;
 }
 
 export function PlanSummary() {
@@ -335,15 +341,10 @@ function PlanChoiceDialog({
               <li>Court and coaching bookings</li>
               <li>Paying early adds another month</li>
             </ul>
-            <form action={startClubCheckoutAction} className="mt-auto pt-4">
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
-              >
-                Pay for 1 month
-              </Button>
-            </form>
+            <ClubPayForm
+              label="Pay for 1 month"
+              className="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
+            />
           </article>
 
           <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
@@ -421,11 +422,9 @@ function PlansDialog({
               <li>Court and coaching bookings</li>
               <li>Paying early adds another month</li>
             </ul>
-            <form action={startClubCheckoutAction} className="mt-auto pt-4">
-              <Button type="submit" className="w-full">
-                {access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
-              </Button>
-            </form>
+            <ClubPayForm
+              label={access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
+            />
           </article>
 
           <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
@@ -449,13 +448,107 @@ function PlansDialog({
 
             {access.tournament && access.tournamentThrough ? (
               <p className="mt-3 text-sm">
-                Open through {formatWhen(access.tournamentThrough, timeZone)}.
+                {access.tournamentGrace
+                  ? "Open until 6:00 AM."
+                  : `Open through ${formatWhen(access.tournamentThrough, timeZone)}.`}
               </p>
             ) : null}
           </article>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ClubPayForm({
+  label,
+  className,
+}: {
+  label: string;
+  className?: string;
+}) {
+  return (
+    <form action={startClubCheckoutAction} className="mt-auto space-y-3 pt-4">
+      <DiscountCodeFields id="discount-club" product="club" dates="" />
+      <Button type="submit" size="lg" className={cn("w-full", className)}>
+        {label}
+      </Button>
+    </form>
+  );
+}
+
+function DiscountCodeFields({
+  id,
+  product,
+  dates,
+}: {
+  id: string;
+  product: "club" | "day";
+  dates: string;
+}) {
+  const [code, setCode] = useState("");
+  const [quote, setQuote] = useState<{ key: string; summary: string } | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const quoteKey = `${product}:${dates}:${code.trim().toUpperCase()}`;
+  const summary = quote?.key === quoteKey ? quote.summary : null;
+
+  function applyCode() {
+    setError(null);
+    const current = quoteKey;
+    startTransition(async () => {
+      const result = await previewDiscountAction({ product, dates, code });
+      if (!result.ok) {
+        setQuote(null);
+        setError(result.message);
+        return;
+      }
+      setQuote({ key: current, summary: result.summary });
+    });
+  }
+
+  return (
+    <div className="space-y-1">
+      <input type="hidden" name="discount_code" value={code} />
+      <label htmlFor={id} className="text-sm text-[var(--foreground)]">
+        Discount code
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id={id}
+          value={code}
+          autoComplete="off"
+          maxLength={24}
+          placeholder="e.g. EARLY"
+          onChange={(event) => {
+            setCode(event.target.value);
+            setError(null);
+          }}
+          className="bg-black/20"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          disabled={pending || code.trim().length === 0}
+          onClick={applyCode}
+        >
+          Apply
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-sm text-amber-200" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {summary ? (
+        <p className="text-sm" role="status">
+          {summary}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -509,6 +602,11 @@ function TournamentDatesForm({ today }: { today: string }) {
           {TOURNAMENT_MAX_DAYS} days.
         </p>
       )}
+      <DiscountCodeFields
+        id="discount-day"
+        product="day"
+        dates={dates.join(",")}
+      />
       <Button
         type="submit"
         size="lg"

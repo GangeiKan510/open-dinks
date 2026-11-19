@@ -27,6 +27,7 @@ const OPEN_ACCESS: LoadedFeatureAccess = {
   clubPeriodEnd: null,
   tournamentStartsOn: null,
   tournamentThrough: null,
+  tournamentGrace: false,
   schemaReady: false,
 };
 

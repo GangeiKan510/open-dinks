@@ -213,6 +213,86 @@ describe("resolveFeatureAccess", () => {
   });
 });
 
+describe("tournament morning grace", () => {
+  it("keeps a single day open until 6:00 AM the next morning", () => {
+    const passes = [{ startsOn: "2026-11-23", endsOn: "2026-11-23" }];
+    const during = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-23T19:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(during.tournament).toBe(true);
+    expect(during.tournamentGrace).toBe(true);
+    expect(during.tournamentThrough).toBe("2026-11-23");
+
+    const closed = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-23T22:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(closed.tournament).toBe(false);
+    expect(closed.tournamentGrace).toBe(false);
+  });
+
+  it("adds the grace only after the last day of a consecutive run", () => {
+    const passes = [{ startsOn: "2026-11-23", endsOn: "2026-11-24" }];
+    const stillOpen = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-24T21:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(stillOpen.tournament).toBe(true);
+    expect(stillOpen.tournamentGrace).toBe(true);
+    expect(stillOpen.tournamentThrough).toBe("2026-11-24");
+
+    const closed = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-24T22:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(closed.tournament).toBe(false);
+  });
+
+  it("closes the gap between dates that are not in a row", () => {
+    const passes = [
+      { startsOn: "2026-11-23", endsOn: "2026-11-23" },
+      { startsOn: "2026-11-25", endsOn: "2026-11-25" },
+    ];
+    const afterFirst = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-23T23:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(afterFirst.tournament).toBe(false);
+
+    const beforeSecondEnds = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-25T19:00:00.000Z"),
+        passes,
+      }),
+    );
+    expect(beforeSecondEnds.tournament).toBe(true);
+    expect(beforeSecondEnds.tournamentGrace).toBe(true);
+    expect(beforeSecondEnds.tournamentThrough).toBe("2026-11-25");
+  });
+
+  it("keeps the purchased morning itself open before 6:00 AM", () => {
+    const access = resolveFeatureAccess(
+      snapshot({
+        now: new Date("2026-11-22T19:00:00.000Z"),
+        passes: [{ startsOn: "2026-11-23", endsOn: "2026-11-23" }],
+      }),
+    );
+    expect(access.tournament).toBe(true);
+    expect(access.tournamentGrace).toBe(false);
+  });
+});
+
 describe("club month", () => {
   it("clamps a 31st onto the last day of February", () => {
     expect(

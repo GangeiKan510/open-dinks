@@ -1,3 +1,5 @@
+import { DISCOUNT_CODE_MESSAGE } from "@/lib/discounts";
+
 export const BILLING_ERROR_MESSAGES = {
   signIn: "Sign in to manage your plan.",
   notHost: "Only the club host can change the plan.",
@@ -8,6 +10,7 @@ export const BILLING_ERROR_MESSAGES = {
   clubRequired: "Choose a tournament day to open tournament mode.",
   date: "Choose the first day of the tournament.",
   past: "Tournament days start today or later.",
+  code: DISCOUNT_CODE_MESSAGE,
   openPlay: "Open play is paused until the club plan is active.",
   booking: "This club isn't taking bookings right now.",
   tournament:
@@ -24,6 +27,7 @@ export type BillingNoticeCode =
   | "club"
   | "date"
   | "past"
+  | "code"
   | "success"
   | "cancel"
   | "locked";
@@ -72,6 +76,8 @@ export function billingNoticeMessage(code: string | undefined): string | null {
       return BILLING_ERROR_MESSAGES.date;
     case "past":
       return BILLING_ERROR_MESSAGES.past;
+    case "code":
+      return BILLING_ERROR_MESSAGES.code;
     case "success":
       return BILLING_ERROR_MESSAGES.success;
     case "cancel":

@@ -181,6 +181,66 @@ export type Database = {
         };
         Relationships: [];
       };
+      discount_codes: {
+        Row: {
+          id: string;
+          code: string;
+          applies_to: "club" | "day" | "any";
+          percent_off: number | null;
+          amount_off_centavos: number | null;
+          active: boolean;
+          expires_on: string | null;
+          max_redemptions: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          applies_to: "club" | "day" | "any";
+          percent_off?: number | null;
+          amount_off_centavos?: number | null;
+          active?: boolean;
+          expires_on?: string | null;
+          max_redemptions?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          applies_to?: "club" | "day" | "any";
+          percent_off?: number | null;
+          amount_off_centavos?: number | null;
+          active?: boolean;
+          expires_on?: string | null;
+          max_redemptions?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      discount_redemptions: {
+        Row: {
+          id: string;
+          code_id: string;
+          facility_id: string;
+          checkout_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code_id: string;
+          facility_id: string;
+          checkout_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code_id?: string;
+          facility_id?: string;
+          checkout_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       platform_admins: {
         Row: {
           user_id: string;
