@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CalendarRange, Clock, Crown, Lock, Trophy } from "lucide-react";
+import { CalendarRange, Check, Clock, Crown, Lock, Trophy } from "lucide-react";
 import {
   startClubCheckoutAction,
   startTournamentPassAction,
@@ -18,6 +18,7 @@ import {
 import {
   CLUB_MONTHLY_PHP,
   formatPeso,
+  formatTournamentDates,
   TOURNAMENT_DAY_PHP,
   TOURNAMENT_WEEKEND_PHP,
   type FeatureAccess,
@@ -86,18 +87,22 @@ export function PlansProvider({
   );
 }
 
+export function AvailableTournamentLink() {
+  return (
+    <Button asChild>
+      <Link href="/tournament">
+        <Trophy className="h-4 w-4 shrink-0" aria-hidden />
+        Tournament mode
+      </Link>
+    </Button>
+  );
+}
+
 export function TournamentModeButton() {
   const { access, openPlans } = usePlans();
 
   if (access.tournament) {
-    return (
-      <Button variant="outline" asChild>
-        <Link href="/tournament">
-          <Trophy className="h-4 w-4 shrink-0" aria-hidden />
-          Tournament mode
-        </Link>
-      </Button>
-    );
+    return <AvailableTournamentLink />;
   }
 
   return (
@@ -117,10 +122,30 @@ export function TournamentModeButton() {
   );
 }
 
+function PlanChip({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex h-6 items-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-xs font-semibold uppercase tracking-[0.14em]">
+        {label}
+      </span>
+      <span className="text-sm">{detail}</span>
+    </div>
+  );
+}
+
+function tournamentDetail(access: FeatureAccess): string {
+  return formatTournamentDates(
+    access.tournamentStartsOn,
+    access.tournamentThrough,
+  );
+}
+
 export function PlanSummary() {
   const { access, openPlans, timeZone } = usePlans();
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
   const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
+  const tournamentDates = tournamentDetail(access);
+  const clubExpiry = formatWhen(access.clubPeriodEnd, timeZone);
 
   if (access.phase === "trial") {
     return (
@@ -140,6 +165,11 @@ export function PlanSummary() {
               Open play and booking stop when the trial ends. Upgrade for{" "}
               {clubPrice} a month to keep them.
             </p>
+            {tournamentDates ? (
+              <div className="mt-3">
+                <PlanChip label="Tournament" detail={tournamentDates} />
+              </div>
+            ) : null}
           </div>
         </div>
         <Button type="button" onClick={openPlans}>
@@ -149,20 +179,29 @@ export function PlanSummary() {
     );
   }
 
-  const title =
-    access.phase === "active"
-      ? `Club plan · through ${formatWhen(access.clubPeriodEnd, timeZone)}`
-      : "Club plan paused";
+  const subscribed = access.clubPaid || Boolean(tournamentDates);
 
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <div>
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-sm text-[var(--muted)]">
-          {access.tournament
-            ? `Tournament mode is open through ${formatWhen(access.tournamentThrough, timeZone)}.`
-            : `Open play is ${clubPrice} for one month. Tournament days are bought on their own.`}
-        </p>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
+        {subscribed ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--highlight)]">
+            <Check className="h-4 w-4 shrink-0" aria-hidden />
+            Subscribed
+          </span>
+        ) : null}
+        {access.clubPaid ? (
+          <PlanChip
+            label="Club"
+            detail={clubExpiry ? `through ${clubExpiry}` : "Active"}
+          />
+        ) : null}
+        {tournamentDates ? (
+          <PlanChip label="Tournament" detail={tournamentDates} />
+        ) : null}
+        {!access.clubPaid && !access.tournament ? (
+          <p className="text-sm font-medium">Club plan paused</p>
+        ) : null}
       </div>
       <Button type="button" variant="outline" onClick={openPlans}>
         {access.phase === "locked" ? "Upgrade plan" : "Compare plans"}

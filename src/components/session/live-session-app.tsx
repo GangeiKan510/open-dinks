@@ -10,14 +10,9 @@ import {
 } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  endSessionAction,
-  guestCheckInAction,
-  hostDispatchAction,
-} from "@/app/actions/session";
+import { endSessionAction, hostDispatchAction } from "@/app/actions/session";
 import { HostConsole } from "@/components/session/host-console";
 import { PlayerView } from "@/components/session/player-view";
-import { SessionQr } from "@/components/session/session-qr";
 import { Wallboard } from "@/components/session/wallboard";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,11 +129,19 @@ export function LiveSessionApp({
       .single();
     if (!session) return;
 
-    const rows = await loadSessionLiveRows(supabase, session);
+    const { bookingsFresh, ...rows } = await loadSessionLiveRows(
+      supabase,
+      session,
+    );
 
     setBundle((prev) => ({
       session,
       ...rows,
+      // A signed-out refresh cannot see court rows until the public policy
+      // is applied. Keep the names the server already loaded.
+      courts: rows.courts.length > 0 ? rows.courts : prev.courts,
+      // A failed bookings read must not replace the host's names with "Reserved".
+      bookings: bookingsFresh ? rows.bookings : prev.bookings,
       facility: prev.facility,
       venueTimezone: prev.venueTimezone,
     }));
@@ -333,21 +336,6 @@ export function LiveSessionApp({
       });
   }
 
-  async function onGuestCheckIn(action: EngineAction) {
-    if (action.type !== "CHECK_IN") return;
-    const result = await guestCheckInAction(
-      token,
-      action.player.name,
-      action.player.skill,
-      action.player.gender,
-    );
-    if (result && "error" in result && result.error) {
-      toast.error(result.error);
-      return;
-    }
-    await scheduleRefresh();
-  }
-
   if (ended && mode !== "board") {
     const summaryState = state;
     return (
@@ -382,28 +370,25 @@ export function LiveSessionApp({
 
   if (mode === "player") {
     return (
-      <PlayerView state={state} facility={facility} dispatch={onGuestCheckIn} />
+      <PlayerView
+        state={state}
+        facility={facility}
+        title={bundle.session.title}
+        venueTimezone={venueTimezone}
+      />
     );
   }
 
   return (
     <div className="space-y-4 px-4 py-6 md:px-8">
-      <div className="flex flex-wrap items-start gap-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <SessionQr url={playerUrl} />
-        <div className="space-y-2 text-sm">
-          <p className="font-medium">Player join QR</p>
-          <p className="break-all text-[var(--muted)]">{playerUrl}</p>
-          <p className="text-[var(--muted)]">
-            Status: {pending ? "Syncing…" : bundle.session.status}
-          </p>
-        </div>
-      </div>
       <HostConsole
         state={state}
         dispatch={dispatch}
+        playerUrl={playerUrl}
         boardUrl={boardUrl}
         venueTimezone={venueTimezone}
         isPending={pending}
+        sessionStatus={bundle.session.status}
         onEndSession={() => {
           startTransition(async () => {
             await endSessionAction(token);

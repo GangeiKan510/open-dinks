@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Radio } from "lucide-react";
+import { ArrowRight, Radio } from "lucide-react";
 import {
   OpenPlansButton,
   PlanSummary,
   PlansProvider,
+  AvailableTournamentLink,
   TournamentModeButton,
 } from "@/components/venue/host-plans";
 import { PaymentReceivedDialog } from "@/components/venue/payment-received-dialog";
@@ -98,14 +99,9 @@ export default async function DashboardPage({
           project URL and anon key, then run the migration in{" "}
           <code>supabase/migrations</code>.
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link href="/demo">Open local demo</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/tournament">Tournament mode</Link>
-          </Button>
-        </div>
+        <Button variant="outline" asChild>
+          <Link href="/tournament">Tournament mode</Link>
+        </Button>
       </main>
     );
   }
@@ -380,31 +376,11 @@ export default async function DashboardPage({
             {access.schemaReady ? (
               <TournamentModeButton />
             ) : (
-              <Button variant="outline" asChild>
-                <Link href="/tournament">Tournament mode</Link>
-              </Button>
+              <AvailableTournamentLink />
             )}
             <SignOutButton />
           </div>
         </header>
-
-        {liveSession ? (
-          <Link
-            href={`/s/${liveSession.public_token}/host`}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3"
-          >
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <Radio
-                className="h-4 w-4 shrink-0 animate-pulse text-[var(--highlight)]"
-                aria-hidden
-              />
-              Live now · {liveSession.title}
-            </span>
-            <span className="text-sm font-medium text-[var(--highlight)] underline">
-              Open host console
-            </span>
-          </Link>
-        ) : null}
 
         {billingCode === "success" && payment ? (
           <PaymentReceivedDialog message={paymentReceivedCopy(payment)} />
@@ -447,21 +423,30 @@ export default async function DashboardPage({
               }))}
               start={
                 liveSession ? (
-                  <>
-                    <h2 className="mb-1 font-semibold">Session in progress</h2>
-                    <p className="mb-4 text-sm text-[var(--muted)]">
-                      You can run one session at a time. End{" "}
-                      <span className="font-medium text-[var(--foreground)]">
-                        {liveSession.title}
-                      </span>{" "}
-                      from the host console before starting another.
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Radio
+                          className="h-4 w-4 shrink-0 animate-pulse text-[var(--highlight)]"
+                          aria-hidden
+                        />
+                        Live now · {liveSession.title}
+                      </span>
+                      <Button asChild>
+                        <Link href={`/s/${liveSession.public_token}/host`}>
+                          Go to console
+                          <ArrowRight
+                            className="h-4 w-4 shrink-0"
+                            aria-hidden
+                          />
+                        </Link>
+                      </Button>
+                    </div>
+                    <p className="text-sm text-[var(--muted)]">
+                      You can run one session at a time. End it from the host
+                      console before starting another.
                     </p>
-                    <Button asChild>
-                      <Link href={`/s/${liveSession.public_token}/host`}>
-                        Open host console
-                      </Link>
-                    </Button>
-                  </>
+                  </div>
                 ) : access.schemaReady && !access.openPlay ? (
                   <>
                     <h2 className="mb-1 font-semibold">Open play is paused</h2>

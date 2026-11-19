@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TournamentDirector } from "@/components/tournament/tournament-director";
-import { Button } from "@/components/ui/button";
 import { loadAccountVenue } from "@/lib/account-venue";
 import { canonicalLiveSession } from "@/lib/live-session";
 import { createClient } from "@/lib/supabase/server";
@@ -86,9 +84,6 @@ function TournamentUnavailable({
             ? "The tournament could not be loaded. Try again in a moment."
             : "Add your project URL and anon key to .env.local, then apply the migrations in supabase/migrations."}
       </p>
-      <Button asChild>
-        <Link href="/demo">Open local demo</Link>
-      </Button>
     </main>
   );
 }

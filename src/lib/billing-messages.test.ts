@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   billingNoticeOpensPlans,
+  pathWithoutSearchParam,
   paymentReceivedCopy,
 } from "./billing-messages";
 
@@ -14,6 +15,24 @@ describe("billing notices", () => {
     expect(paymentReceivedCopy({ applied: false, kinds: [] })).toMatch(
       /upgrade reminder/,
     );
+  });
+
+  it("drops the billing return code and keeps the rest of the address", () => {
+    expect(
+      pathWithoutSearchParam(
+        "http://localhost:3000/dashboard?billing=success",
+        "billing",
+      ),
+    ).toBe("/dashboard");
+    expect(
+      pathWithoutSearchParam(
+        "/dashboard?plans=open&billing=success",
+        "billing",
+      ),
+    ).toBe("/dashboard?plans=open");
+    expect(
+      pathWithoutSearchParam("/dashboard?billing=cancel#courts", "billing"),
+    ).toBe("/dashboard#courts");
   });
 
   it("opens the plans dialog for a checkout problem", () => {

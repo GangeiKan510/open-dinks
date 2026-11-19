@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { shouldRefreshAuthSession } from "./middleware-paths";
 
 describe("shouldRefreshAuthSession", () => {
-  it("skips the marketing home page and local demos", () => {
+  it("skips the marketing home page and public boards", () => {
     expect(shouldRefreshAuthSession("/")).toBe(false);
-    expect(shouldRefreshAuthSession("/demo")).toBe(false);
-    expect(shouldRefreshAuthSession("/demo/host")).toBe(false);
     expect(shouldRefreshAuthSession("/tournament/board")).toBe(false);
     expect(shouldRefreshAuthSession("/tournament/board/abc")).toBe(false);
     expect(shouldRefreshAuthSession("/tournament/umpire")).toBe(false);
     expect(shouldRefreshAuthSession("/tournament/umpire/abc")).toBe(false);
+    expect(shouldRefreshAuthSession("/s/abc")).toBe(false);
+    expect(shouldRefreshAuthSession("/s/abc/board")).toBe(false);
   });
 
   it("refreshes cookies on signed-in and booking routes", () => {

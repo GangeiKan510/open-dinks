@@ -1,194 +1,184 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { EngineAction, EngineState, PlayerGender } from "@/engine";
-import { occupiedMatches, orderedWaitingPlayers, playerName } from "@/engine";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import type { EngineState } from "@/engine";
+import {
+  activeCourtBooking,
+  occupiedMatches,
+  orderedWaitingPlayers,
+  playerName,
+} from "@/engine";
+import { BookingWindow } from "@/components/session/booking-window";
 import { CourtTimer } from "@/components/session/court-timer";
 import { formatBrandTitle, type FacilityConfig } from "@/lib/facility";
-import { DEFAULT_SKILL_TIER, type SkillTier } from "@/lib/skill-tier";
-import { SkillTierSelect } from "@/components/ui/skill-tier-select";
+import { openPlayModeLabel } from "@/lib/open-play";
+import { PUBLIC_COURT_HOLD_LABEL } from "@/lib/public-session-holds";
+import { formatSkillTier } from "@/lib/skill-tier";
 
 export function PlayerView({
   state,
-  dispatch,
-  allowSelfCheckIn = true,
   facility = null,
+  title,
+  venueTimezone,
 }: {
   state: EngineState;
-  dispatch?: (action: EngineAction) => void | Promise<void>;
-  allowSelfCheckIn?: boolean;
   facility?: FacilityConfig | null;
+  title: string;
+  venueTimezone?: string;
 }) {
-  const [name, setName] = useState("");
-  const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
-  const [gender, setGender] = useState<PlayerGender | "">("");
-  const needsGender = state.mode === "couple_hunt";
-  const [me, setMe] = useState<string | null>(null);
-  const [joining, setJoining] = useState(false);
-  const courts = occupiedMatches(state);
+  const matches = occupiedMatches(state);
   const waiting = orderedWaitingPlayers(state);
-
-  const myPlayer = useMemo(
-    () => state.players.find((p) => p.id === me) ?? null,
-    [state.players, me],
-  );
-
-  const myMatch = useMemo(() => {
-    if (!me) return null;
-    return courts.find((m) => [...m.teamA, ...m.teamB].includes(me)) ?? null;
-  }, [courts, me]);
-
-  const queuePosition = useMemo(() => {
-    if (!me || myPlayer?.status !== "waiting") return null;
-    const idx = waiting.findIndex((p) => p.id === me);
-    return idx >= 0 ? idx + 1 : null;
-  }, [me, myPlayer, waiting]);
-
-  async function selfCheckIn() {
-    if (!dispatch || joining) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (needsGender && !gender) return;
-    const id = `guest_${trimmed.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`;
-    setJoining(true);
-    try {
-      await dispatch({
-        type: "CHECK_IN",
-        player: { id, name: trimmed, skill, gender: gender || null },
-      });
-      setMe(id);
-      setName("");
-    } finally {
-      setJoining(false);
-    }
-  }
+  const resting = state.players.filter((player) => player.status === "resting");
+  const present = state.players.filter((player) => player.status !== "left");
+  const formatLabel =
+    state.format === "singles" || state.mode === "singles"
+      ? "Singles"
+      : "Doubles";
+  const timeLabel =
+    state.maxGameMinutes == null
+      ? "No time limit"
+      : `${state.maxGameMinutes} min games`;
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 px-4 py-8">
-      <header>
+    <div className="mx-auto max-w-3xl space-y-8 px-4 py-8">
+      <header className="space-y-2">
         <p className="text-xs tracking-wide text-[var(--muted)]">
           {formatBrandTitle(facility)}
         </p>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl">
-          Live session
+        <h1 className="font-[family-name:var(--font-display)] text-4xl">
+          {title.trim() || "Open play"}
         </h1>
+        <p className="text-sm text-[var(--muted)]">
+          {openPlayModeLabel(state.mode)} · {formatLabel} · {timeLabel} ·{" "}
+          {present.length} {present.length === 1 ? "player" : "players"}
+        </p>
+        <p className="max-w-xl text-sm text-[var(--muted)]">
+          The host adds players. This page follows the courts and the queue.
+        </p>
       </header>
-
-      {allowSelfCheckIn && dispatch && !me ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
-          <h2 className="font-semibold">Check in</h2>
-          <div className="space-y-1">
-            <Label htmlFor="guest-name">Your name</Label>
-            <Input
-              id="guest-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name"
-            />
-          </div>
-          <SkillTierSelect id="guest-skill" value={skill} onChange={setSkill} />
-          {needsGender ? (
-            <div className="space-y-1">
-              <Label htmlFor="guest-gender">Gender</Label>
-              <select
-                id="guest-gender"
-                value={gender}
-                onChange={(event) =>
-                  setGender(event.target.value as PlayerGender | "")
-                }
-                className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
-              >
-                <option value="">Choose</option>
-                <option value="man">Man</option>
-                <option value="woman">Woman</option>
-              </select>
-            </div>
-          ) : null}
-          <Button
-            className="w-full"
-            loading={joining}
-            disabled={needsGender && !gender}
-            onClick={selfCheckIn}
-          >
-            Join queue
-          </Button>
-        </div>
-      ) : null}
-
-      {myPlayer ? (
-        <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-soft)] p-4">
-          <p className="text-sm text-[var(--accent-fg-soft)]">You</p>
-          <p className="text-xl font-semibold">{myPlayer.name}</p>
-          {myMatch ? (
-            <p className="mt-2 text-sm">
-              On {myMatch.courtName}:{" "}
-              {myMatch.teamA.map((id) => playerName(state, id)).join(" & ")} vs{" "}
-              {myMatch.teamB.map((id) => playerName(state, id)).join(" & ")}
-            </p>
-          ) : queuePosition ? (
-            <p className="mt-2 text-sm">Queue position #{queuePosition}</p>
-          ) : (
-            <p className="mt-2 text-sm capitalize">{myPlayer.status}</p>
-          )}
-        </div>
-      ) : null}
 
       <section className="space-y-3">
         <h2 className="font-semibold">Courts</h2>
-        {courts.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">No games in progress</p>
-        ) : (
-          courts.map((m) => (
-            <article
-              key={m.id}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4"
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-medium">{m.courtName}</h3>
-                <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
-                  {m.status === "ready" ? "Ready" : "Live"}
-                </span>
-              </div>
-              <div className="mb-3">
-                <CourtTimer
-                  match={m}
-                  maxGameMinutes={state.maxGameMinutes}
-                  compact
-                />
-              </div>
-              <p className="text-sm">
-                {m.teamA.map((id) => playerName(state, id)).join(" & ")}
-              </p>
-              <p className="my-1 text-xs uppercase tracking-widest text-[var(--muted)]">
-                vs
-              </p>
-              <p className="text-sm">
-                {m.teamB.map((id) => playerName(state, id)).join(" & ")}
-              </p>
-            </article>
-          ))
-        )}
+        {state.courts.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            Courts are not on this page yet. Refresh in a moment.
+          </p>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {state.courts.map((court) => {
+            const match = matches.find((item) => item.courtId === court.id);
+            const booking = activeCourtBooking(court, state.now);
+            const status = match
+              ? match.status === "active"
+                ? "Live"
+                : "Ready"
+              : booking
+                ? "Booked"
+                : "Open";
+
+            return (
+              <article
+                key={court.id}
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="font-medium">{court.name}</h3>
+                  <span className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                    {status}
+                  </span>
+                </div>
+                {booking && !match ? (
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium">{booking.label}</p>
+                    <BookingWindow
+                      startsAt={booking.startsAt}
+                      endsAt={booking.endsAt}
+                      timeZone={venueTimezone}
+                      className="block text-[var(--muted)]"
+                    />
+                    <p className="text-xs text-[var(--muted)]">
+                      Reserved · not in open play
+                    </p>
+                  </div>
+                ) : match ? (
+                  <div className="space-y-3">
+                    <CourtTimer
+                      match={match}
+                      maxGameMinutes={state.maxGameMinutes}
+                      compact
+                    />
+                    <p className="text-sm">
+                      {match.teamA
+                        .map((id) => playerName(state, id))
+                        .join(" & ")}
+                    </p>
+                    <p className="text-xs uppercase tracking-widest text-[var(--muted)]">
+                      vs
+                    </p>
+                    <p className="text-sm">
+                      {match.teamB
+                        .map((id) => playerName(state, id))
+                        .join(" & ")}
+                    </p>
+                    {booking ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        {booking.label === PUBLIC_COURT_HOLD_LABEL
+                          ? "Reserved next."
+                          : `Reserved next for ${booking.label}.`}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--muted)]">
+                    Waiting for the next group
+                  </p>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-semibold">Up next</h2>
-        <ol className="space-y-2">
-          {waiting.slice(0, 12).map((p, i) => (
-            <li
-              key={p.id}
-              className="flex justify-between rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm"
-            >
-              <span>
-                {i + 1}. {p.name}
-              </span>
-              <span className="text-[var(--muted)]">{p.gamesPlayed}G</span>
-            </li>
-          ))}
-        </ol>
+        <h2 className="font-semibold">Waiting ({waiting.length})</h2>
+        {waiting.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">No one is waiting.</p>
+        ) : (
+          <ol className="space-y-2">
+            {waiting.map((player, index) => (
+              <li
+                key={player.id}
+                className="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm"
+              >
+                <span>
+                  {index + 1}. {player.name}
+                </span>
+                <span className="text-[var(--muted)]">
+                  {formatSkillTier(player.skill)} · {player.gamesPlayed}G
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
+
+      {resting.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="font-semibold">Resting ({resting.length})</h2>
+          <ul className="space-y-2">
+            {resting.map((player) => (
+              <li
+                key={player.id}
+                className="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm"
+              >
+                <span>{player.name}</span>
+                <span className="text-[var(--muted)]">
+                  {player.gamesPlayed}G
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

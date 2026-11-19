@@ -27,7 +27,7 @@ const body = Outfit({
 });
 
 const SITE_DESCRIPTION =
-  "Cloud-first open play for pickleball: fair rotations, live queues, QR check-in, and TV wallboards.";
+  "Cloud-first open play for pickleball: fair rotations, live queues, a public session page, and TV wallboards.";
 
 const OG_IMAGE = {
   url: "/picklrz-og-image.png",
