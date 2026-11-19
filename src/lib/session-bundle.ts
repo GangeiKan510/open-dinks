@@ -1,6 +1,10 @@
-import type { FacilityConfig } from "@/lib/facility";
+import { facilityFromRow, type FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
+import {
+  createServiceClient,
+  isServiceRoleConfigured,
+} from "@/lib/supabase/service";
 import { loadFacilityForSession } from "@/lib/facility-server";
 import { loadSessionLiveRows } from "@/lib/session-live-rows";
 
@@ -46,10 +50,62 @@ export async function loadSessionBundle(
     loadFacilityForSession(session.venue_id),
   ]);
 
+  const needsPublicVenue =
+    !venue?.timezone || !facility || rows.courts.length === 0;
+  const pub = needsPublicVenue
+    ? await loadPublicVenueContext(session.venue_id)
+    : null;
+
   return {
     session,
     ...rows,
+    courts: rows.courts.length > 0 ? rows.courts : (pub?.courts ?? []),
+    facility: facility ?? pub?.facility ?? null,
+    venueTimezone: venue?.timezone ?? pub?.timezone ?? "UTC",
+  };
+}
+
+/**
+ * Court names, the club name, and the venue clock are not readable by a
+ * signed-out player. Load only those fields. Booking contacts stay on the
+ * member query.
+ */
+async function loadPublicVenueContext(venueId: string): Promise<{
+  timezone: string | null;
+  facility: FacilityConfig | null;
+  courts: CourtRow[];
+}> {
+  if (!isServiceRoleConfigured()) {
+    return { timezone: null, facility: null, courts: [] };
+  }
+
+  const service = createServiceClient();
+  const [{ data: venue }, { data: courts }] = await Promise.all([
+    service
+      .from("venues")
+      .select("timezone, facility_id")
+      .eq("id", venueId)
+      .single(),
+    service
+      .from("courts")
+      .select("*")
+      .eq("venue_id", venueId)
+      .order("sort_order"),
+  ]);
+
+  let facility: FacilityConfig | null = null;
+  if (venue?.facility_id) {
+    const { data: row } = await service
+      .from("facilities")
+      .select("id, slug, name, short_name, tagline")
+      .eq("id", venue.facility_id)
+      .single();
+    facility = row ? facilityFromRow(row) : null;
+  }
+
+  return {
+    timezone: venue?.timezone ?? null,
     facility,
-    venueTimezone: venue?.timezone ?? "UTC",
+    courts: courts ?? [],
   };
 }

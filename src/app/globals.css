@@ -193,17 +193,7 @@ body {
 }
 
 .gradient-phrase {
-  background-image: linear-gradient(
-    100deg,
-    var(--highlight) 0%,
-    var(--accent-fg-soft) 46%,
-    var(--accent) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: phrase-shift 8s ease-in-out infinite;
+  color: var(--highlight);
 }
 
 .reveal {
@@ -259,11 +249,9 @@ body {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(16px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -298,16 +286,6 @@ body {
 
 .glow-pulse {
   animation: glow-pulse 6s ease-in-out infinite alternate;
-}
-
-@keyframes phrase-shift {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
 }
 
 @keyframes glow-pulse {
@@ -358,8 +336,7 @@ body {
   .animate-drift,
   .float-slow,
   .float-late,
-  .glow-pulse,
-  .gradient-phrase {
+  .glow-pulse {
     animation: none;
   }
 

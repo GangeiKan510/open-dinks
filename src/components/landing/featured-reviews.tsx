@@ -18,13 +18,13 @@ export async function FeaturedReviews() {
           Featured notes from clubs show here.
         </p>
       ) : (
-        <ul className="mt-8 grid gap-4 md:grid-cols-2">
+        <ul className="mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-2">
           {reviews.map((review) => {
             const stars = ratingStars(review.rating);
             return (
               <li
                 key={review.id}
-                className="rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface)] p-5"
+                className="w-[min(100%,20rem)] shrink-0 snap-start rounded-[1.5rem] border border-[var(--border)] bg-[var(--surface)] p-5"
               >
                 <div className="flex items-center gap-3">
                   {review.logoUrl ? (

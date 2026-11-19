@@ -21,6 +21,7 @@ const OPEN_ACCESS: LoadedFeatureAccess = {
   phase: "active",
   trialDaysLeft: 0,
   clubPeriodEnd: null,
+  tournamentStartsOn: null,
   tournamentThrough: null,
   schemaReady: false,
 };

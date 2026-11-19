@@ -51,7 +51,7 @@ export const OPEN_PLAY_MODES: OpenPlayMode[] = [
     mode: "couple_hunt",
     label: "Mixed Only",
     description:
-      "Every team is one man and one woman, and no pair repeats for the whole session. Doubles only; players pick a gender at check-in.",
+      "Every team is one man and one woman, and no pair repeats for the whole session. Doubles only; the host sets each player's gender.",
   },
 ];
 

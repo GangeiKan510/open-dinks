@@ -8,6 +8,7 @@ import {
   addCalendarDays,
   addUtcMonths,
   formatPeso,
+  formatTournamentDates,
   nextClubPeriodEnd,
   isCalendarDate,
   resolveFeatureAccess,
@@ -118,7 +119,14 @@ describe("resolveFeatureAccess", () => {
     expect(access.clubPaid).toBe(false);
     expect(access.openPlay).toBe(false);
     expect(access.tournament).toBe(true);
+    expect(access.tournamentStartsOn).toBe("2026-11-17");
     expect(access.tournamentThrough).toBe("2026-11-20");
+    expect(
+      formatTournamentDates(
+        access.tournamentStartsOn,
+        access.tournamentThrough,
+      ),
+    ).toBe("Nov 17, 2026 – Nov 20, 2026");
   });
 
   it("opens tournament mode from a pass even during the trial", () => {
@@ -145,7 +153,14 @@ describe("resolveFeatureAccess", () => {
     expect(access.clubPaid).toBe(false);
     expect(access.openPlay).toBe(false);
     expect(access.tournament).toBe(true);
+    expect(access.tournamentStartsOn).toBe("2026-11-18");
     expect(access.tournamentThrough).toBe("2026-11-18");
+    expect(
+      formatTournamentDates(
+        access.tournamentStartsOn,
+        access.tournamentThrough,
+      ),
+    ).toBe("Nov 18, 2026");
   });
 });
 

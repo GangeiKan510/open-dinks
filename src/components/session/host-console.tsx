@@ -44,20 +44,24 @@ import { cn } from "@/lib/utils";
 export function HostConsole({
   state,
   dispatch,
+  playerUrl,
   boardUrl,
   onEndSession,
   readOnly = false,
   isPending,
   venueTimezone,
+  sessionStatus,
 }: {
   state: EngineState;
   dispatch: (action: EngineAction) => void;
+  playerUrl?: string;
   boardUrl?: string;
   onEndSession?: () => void;
   readOnly?: boolean;
   /** When set, action buttons show a spinner until the live sync finishes. */
   isPending?: boolean;
   venueTimezone?: string;
+  sessionStatus?: string;
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
@@ -155,9 +159,17 @@ export function HostConsole({
               {state.playerGameLimit != null
                 ? ` · ${state.playerGameLimit} game limit`
                 : ""}
+              {sessionStatus ? ` · ${sessionStatus}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {playerUrl ? (
+              <Button variant="outline" size="sm" asChild>
+                <a href={playerUrl} target="_blank" rel="noreferrer">
+                  Player view
+                </a>
+              </Button>
+            ) : null}
             {boardUrl ? (
               <Button variant="outline" size="sm" asChild>
                 <a href={boardUrl} target="_blank" rel="noreferrer">

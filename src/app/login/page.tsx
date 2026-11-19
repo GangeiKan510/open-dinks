@@ -127,18 +127,6 @@ export default function LoginPage() {
           {pending ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-
-      <p className="mt-8 text-sm text-[var(--muted)]">
-        No Supabase yet?{" "}
-        <Link href="/demo" className="text-[var(--accent)] underline">
-          Try the local demo
-        </Link>{" "}
-        or{" "}
-        <Link href="/tournament" className="text-[var(--accent)] underline">
-          run a tournament
-        </Link>
-        .
-      </p>
     </main>
   );
 }
