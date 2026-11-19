@@ -10,3 +10,13 @@ export function siteUrl(): string {
     "http://localhost:3000"
   );
 }
+
+export function isLocalSite(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  try {
+    const host = new URL(siteUrl()).hostname;
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}

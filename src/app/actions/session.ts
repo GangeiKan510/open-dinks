@@ -2,6 +2,8 @@
 
 import { cookies } from "next/headers";
 import { type SkillTier } from "@/lib/skill-tier";
+import { safeAuthNextPath } from "@/lib/auth-redirect";
+import { OPERATOR_COOKIE } from "@/lib/operator-access";
 import { THEME_COOKIE } from "@/lib/theme";
 import { parseOpenPlayForm } from "@/lib/open-play";
 import { revalidatePath } from "next/cache";
@@ -117,12 +119,13 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   redirect(`/s/${session.public_token}/host`);
 }
 
-export async function signOutAction() {
+export async function signOutAction(formData: FormData) {
   const supabase = await createClient();
   await supabase.auth.signOut();
   const jar = await cookies();
   jar.delete(THEME_COOKIE);
-  redirect("/");
+  jar.delete(OPERATOR_COOKIE);
+  redirect(safeAuthNextPath(String(formData.get("next") ?? ""), "/"));
 }
 
 async function loadSessionBundleForPersist(token: string) {

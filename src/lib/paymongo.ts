@@ -37,10 +37,15 @@ type PaymongoCheckoutResponse = {
   };
 };
 
+export type CreatedPaymongoCheckout = {
+  id: string;
+  url: string;
+};
+
 export async function createPaymongoCheckout(
   input: PaymongoCheckoutInput,
-): Promise<string> {
-  const secret = process.env.PAYMONGO_SECRET_KEY;
+): Promise<CreatedPaymongoCheckout> {
+  const secret = process.env.PAYMONGO_SECRET_KEY?.trim();
   if (!secret) throw new Error("Missing PAYMONGO_SECRET_KEY");
 
   const response = await fetch(PAYMONGO_API, {
@@ -78,9 +83,10 @@ export async function createPaymongoCheckout(
   }
 
   const body = (await response.json()) as PaymongoCheckoutResponse;
+  const id = body.data?.id;
   const url = body.data?.attributes?.checkout_url;
-  if (!url) throw new Error("PayMongo checkout failed");
-  return url;
+  if (!id || !url) throw new Error("PayMongo checkout failed");
+  return { id, url };
 }
 
 function headerParts(header: string): Record<string, string> {
@@ -122,6 +128,7 @@ export type PaidCheckout = {
   id: string;
   livemode: boolean;
   metadata: Record<string, string>;
+  paymentIds: string[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -135,6 +142,156 @@ function stringMetadata(value: unknown): Record<string, string> {
     if (typeof entry === "string") metadata[key] = entry;
   }
   return metadata;
+}
+
+function hasPaidPayment(attributes: Record<string, unknown>): boolean {
+  if (!Array.isArray(attributes.payments)) return false;
+  return attributes.payments.some((payment) => {
+    if (!isRecord(payment) || !isRecord(payment.attributes)) return false;
+    return payment.attributes.status === "paid";
+  });
+}
+
+function sessionFromResource(
+  row: unknown,
+): { id: string; metadata: Record<string, string> } | null {
+  if (!isRecord(row) || typeof row.id !== "string" || !row.id) return null;
+  if (!isRecord(row.attributes) || !hasPaidPayment(row.attributes)) return null;
+  return {
+    id: row.id,
+    metadata: stringMetadata(row.attributes.metadata),
+  };
+}
+
+/** Paid checkout sessions from a retrieve or list response. Unpaid rows are dropped. */
+export function paidCheckoutsFromApi(
+  body: unknown,
+): { id: string; metadata: Record<string, string> }[] {
+  if (!isRecord(body)) return [];
+  const rows = Array.isArray(body.data) ? body.data : [body.data];
+  const paid = [];
+  for (const row of rows) {
+    const session = sessionFromResource(row);
+    if (session) paid.push(session);
+  }
+  return paid;
+}
+
+const CHECKOUT_ID = /^cs_[A-Za-z0-9]+$/;
+
+function paymongoAuthHeader(): string | null {
+  const secret = process.env.PAYMONGO_SECRET_KEY?.trim();
+  if (!secret) return null;
+  return `Basic ${Buffer.from(`${secret}:`).toString("base64")}`;
+}
+
+export async function retrievePaidCheckout(
+  id: string,
+): Promise<{ id: string; metadata: Record<string, string> } | null> {
+  if (!CHECKOUT_ID.test(id)) return null;
+  const authorization = paymongoAuthHeader();
+  if (!authorization) return null;
+  const response = await fetch(
+    `https://api.paymongo.com/v1/checkout_sessions/${id}`,
+    { headers: { Authorization: authorization } },
+  );
+  if (!response.ok) {
+    console.error("[billing] checkout retrieve failed", response.status);
+    return null;
+  }
+  return paidCheckoutsFromApi(await response.json())[0] ?? null;
+}
+
+function paymentIdsFrom(attributes: Record<string, unknown>): string[] {
+  if (!Array.isArray(attributes.payments)) return [];
+  const ids: string[] = [];
+  for (const payment of attributes.payments) {
+    if (isRecord(payment) && typeof payment.id === "string" && payment.id) {
+      ids.push(payment.id);
+    }
+  }
+  return ids;
+}
+
+export type PaidPayment = {
+  id: string;
+  amount: number;
+  metadata: Record<string, string>;
+  reference: string;
+};
+
+const PAYMENT_KINDS = ["club", "day", "weekend"] as const;
+export type ListedPaymentKind = (typeof PAYMENT_KINDS)[number];
+
+function isListedKind(value: string | undefined): value is ListedPaymentKind {
+  return value === "club" || value === "day" || value === "weekend";
+}
+
+/** Paid Payment resources. Checkout sessions cannot be listed. */
+export function paidPaymentsFromApi(body: unknown): PaidPayment[] {
+  if (!isRecord(body) || !Array.isArray(body.data)) return [];
+  const payments: PaidPayment[] = [];
+  for (const row of body.data) {
+    if (!isRecord(row) || typeof row.id !== "string" || !row.id) continue;
+    if (!isRecord(row.attributes)) continue;
+    if (row.attributes.status !== "paid") continue;
+    const amount = Number(row.attributes.amount);
+    const intent = isRecord(row.attributes.payment_intent)
+      ? row.attributes.payment_intent
+      : null;
+    const intentAttributes =
+      intent && isRecord(intent.attributes) ? intent.attributes : null;
+    const metadata = {
+      ...stringMetadata(intentAttributes?.metadata),
+      ...stringMetadata(row.attributes.metadata),
+    };
+    const reference =
+      (typeof row.attributes.external_reference_number === "string"
+        ? row.attributes.external_reference_number
+        : "") ||
+      (typeof row.attributes.reference_number === "string"
+        ? row.attributes.reference_number
+        : "");
+    payments.push({
+      id: row.id,
+      amount: Number.isFinite(amount) ? amount : 0,
+      metadata,
+      reference,
+    });
+  }
+  return payments;
+}
+
+/** Which plan a paid payment bought for this club, when PayMongo kept our reference. */
+export function paymentPlanForFacility(
+  payment: PaidPayment,
+  facilityId: string,
+): ListedPaymentKind | null {
+  if (!facilityId) return null;
+  if (
+    payment.metadata.facility_id === facilityId &&
+    isListedKind(payment.metadata.kind)
+  ) {
+    return payment.metadata.kind;
+  }
+  for (const kind of PAYMENT_KINDS) {
+    if (payment.reference === `${kind}-${facilityId}`) return kind;
+  }
+  return null;
+}
+
+export async function listRecentPaidPayments(): Promise<PaidPayment[]> {
+  const authorization = paymongoAuthHeader();
+  if (!authorization) return [];
+  const response = await fetch(
+    "https://api.paymongo.com/v1/payments?limit=10",
+    { headers: { Authorization: authorization } },
+  );
+  if (!response.ok) {
+    console.error("[billing] payment list failed", response.status);
+    return [];
+  }
+  return paidPaymentsFromApi(await response.json());
 }
 
 function paymentsIncludePaid(attributes: Record<string, unknown>): boolean {
@@ -191,5 +348,6 @@ export function paidCheckoutFromWebhook(body: unknown): PaidCheckout | null {
     id: session.id,
     livemode,
     metadata: stringMetadata(session.attributes.metadata),
+    paymentIds: paymentIdsFrom(session.attributes),
   };
 }

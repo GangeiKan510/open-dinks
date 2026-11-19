@@ -11,6 +11,7 @@ import {
   tournamentPassWindow,
   type PassKind,
 } from "@/lib/entitlements";
+import { rememberCheckout } from "@/lib/billing-fulfill";
 import { siteUrl } from "@/lib/env";
 import { isPublicBooker } from "@/lib/host-access";
 import { createPaymongoCheckout, isPaymongoConfigured } from "@/lib/paymongo";
@@ -39,7 +40,7 @@ async function checkoutUrl(input: {
   metadata: Record<string, string>;
 }): Promise<string | null> {
   try {
-    return await createPaymongoCheckout({
+    const checkout = await createPaymongoCheckout({
       line: {
         name: input.name,
         amount: input.amount,
@@ -53,6 +54,8 @@ async function checkoutUrl(input: {
       ),
       metadata: { facility_id: input.facilityId, ...input.metadata },
     });
+    await rememberCheckout(checkout.id);
+    return checkout.url;
   } catch (error) {
     console.error(
       "[billing] checkout failed",

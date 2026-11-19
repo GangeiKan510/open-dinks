@@ -2,7 +2,7 @@ export const THEME_IDS = ["court", "blue", "green", "red", "mono"] as const;
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "court";
+export const DEFAULT_THEME: ThemeId = "green";
 
 export const THEME_COOKIE = "picklrz-theme";
 

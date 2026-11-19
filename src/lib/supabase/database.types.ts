@@ -159,18 +159,66 @@ export type Database = {
           checkout_id: string;
           facility_id: string;
           kind: "club" | "day" | "weekend";
+          amount_centavos: number | null;
           created_at: string;
         };
         Insert: {
           checkout_id: string;
           facility_id: string;
           kind: "club" | "day" | "weekend";
+          amount_centavos?: number | null;
           created_at?: string;
         };
         Update: {
           checkout_id?: string;
           facility_id?: string;
           kind?: "club" | "day" | "weekend";
+          amount_centavos?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_admins: {
+        Row: {
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      feedback: {
+        Row: {
+          id: string;
+          body: string;
+          author_name: string | null;
+          rating: number | null;
+          logo_url: string | null;
+          featured: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          body: string;
+          author_name?: string | null;
+          rating?: number | null;
+          logo_url?: string | null;
+          featured?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          body?: string;
+          author_name?: string | null;
+          rating?: number | null;
+          logo_url?: string | null;
+          featured?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -700,6 +748,17 @@ export type Database = {
       tournament_desk_open: {
         Args: { p_token: string };
         Returns: boolean;
+      };
+      featured_feedback: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          body: string;
+          rating: number | null;
+          logo_url: string | null;
+          author_name: string | null;
+          created_at: string;
+        }[];
       };
       director_umpire_token: {
         Args: Record<string, never>;

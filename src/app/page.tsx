@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
+import { FeaturedReviews } from "@/components/landing/featured-reviews";
+import { FeedbackForm } from "@/components/landing/feedback-form";
+import { PricingSection } from "@/components/landing/pricing-section";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Reveal } from "@/components/landing/reveal";
 import { PendingLink } from "@/components/pending-link";
@@ -338,6 +341,23 @@ export default async function HomePage() {
         </Reveal>
       </section>
 
+      <PricingSection ctaHref={ctaHref} ctaLabel={ctaLabel} />
+
+      <FeaturedReviews />
+
+      <section id="feedback" className="mx-auto max-w-xl px-6 pb-24">
+        <h2 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+          Tell us how it went
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
+          Add your club&apos;s name and a note. If we feature it, it shows on
+          this page as a review.
+        </p>
+        <div className="mt-6">
+          <FeedbackForm />
+        </div>
+      </section>
+
       <footer className="border-t border-[var(--border)]">
         <div className="mx-auto grid max-w-6xl gap-10 px-6 py-12 sm:grid-cols-2 md:grid-cols-4">
           <div className="space-y-3 sm:col-span-2">
@@ -370,6 +390,18 @@ export default async function HomePage() {
             >
               {ctaLabel}
             </PendingLink>
+            <a
+              href="#pricing"
+              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Pricing
+            </a>
+            <a
+              href="#reviews"
+              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Reviews
+            </a>
             <PendingLink
               href="/demo"
               className="block text-[var(--muted)] hover:text-[var(--foreground)]"

@@ -46,7 +46,7 @@ export function ThemePicker({ theme }: { theme: ThemeId }) {
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="mb-1 font-semibold">Theme</h2>
       <p className="mb-4 text-sm text-[var(--muted)]">
-        Color theme for this account. Court is the default.
+        Color theme for this account. Green is the default.
       </p>
       <div
         className="flex flex-wrap gap-2"

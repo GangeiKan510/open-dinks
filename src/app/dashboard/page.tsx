@@ -8,6 +8,7 @@ import {
   PlansProvider,
   TournamentModeButton,
 } from "@/components/venue/host-plans";
+import { PaymentReceivedDialog } from "@/components/venue/payment-received-dialog";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
 import { OpenPlayPanel } from "@/components/venue/open-play-panel";
 import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
@@ -15,7 +16,12 @@ import { SignOutButton } from "@/components/venue/sign-out-button";
 import { FacilitySetupForm } from "@/components/venue/facility-setup-form";
 import { Button } from "@/components/ui/button";
 import { loadAccountVenue } from "@/lib/account-venue";
-import { billingNoticeMessage } from "@/lib/billing-messages";
+import {
+  billingNoticeMessage,
+  billingNoticeOpensPlans,
+  paymentReceivedCopy,
+} from "@/lib/billing-messages";
+import { confirmReturnedCheckout } from "@/lib/billing-fulfill";
 import { loadFeatureAccess } from "@/lib/billing-server";
 import { localDateISO } from "@/lib/entitlements";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
@@ -226,8 +232,13 @@ export default async function DashboardPage({
 
   const billingCode = (await searchParams)?.billing;
   const billingNotice = billingNoticeMessage(billingCode);
+  const payment =
+    billingCode === "success"
+      ? await confirmReturnedCheckout(venue.facilityId)
+      : null;
   const openPlans =
-    (await searchParams)?.plans === "open" || Boolean(billingNotice);
+    (await searchParams)?.plans === "open" ||
+    billingNoticeOpensPlans(billingCode);
   const access = await loadFeatureAccess(
     supabase,
     venue.facilityId,
@@ -352,7 +363,7 @@ export default async function DashboardPage({
       access={access}
       timeZone={venue.timezone}
       today={localDateISO(venue.timezone, new Date())}
-      notice={billingNotice}
+      notice={billingNoticeOpensPlans(billingCode) ? billingNotice : null}
       defaultOpen={openPlans}
     >
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
@@ -393,6 +404,19 @@ export default async function DashboardPage({
               Open host console
             </span>
           </Link>
+        ) : null}
+
+        {billingCode === "success" && payment ? (
+          <PaymentReceivedDialog message={paymentReceivedCopy(payment)} />
+        ) : null}
+
+        {billingCode === "cancel" && billingNotice ? (
+          <p
+            role="status"
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]"
+          >
+            {billingNotice}
+          </p>
         ) : null}
 
         {access.schemaReady ? <PlanSummary /> : null}

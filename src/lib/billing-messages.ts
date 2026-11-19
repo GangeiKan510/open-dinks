@@ -26,6 +26,28 @@ export type BillingNoticeCode =
   | "cancel"
   | "locked";
 
+/** PayMongo's return URL should not reopen the plans dialog. */
+export function billingNoticeOpensPlans(code: string | undefined): boolean {
+  if (code === "success" || code === "cancel") return false;
+  return billingNoticeMessage(code) !== null;
+}
+
+export function paymentReceivedCopy(input: {
+  applied: boolean;
+  kinds: Array<"club" | "day" | "weekend">;
+}): string {
+  if (!input.applied) {
+    return "PayMongo is still confirming this payment. The upgrade reminder stays until that confirmation arrives.";
+  }
+  const club = input.kinds.includes("club");
+  const pass = input.kinds.includes("day") || input.kinds.includes("weekend");
+  if (club && pass) {
+    return "Your club month is active, and tournament mode is open for the days you bought.";
+  }
+  if (pass) return "Tournament mode is open for the days you bought.";
+  return "Your club month is active.";
+}
+
 export function billingNoticeMessage(code: string | undefined): string | null {
   switch (code) {
     case "unconfigured":

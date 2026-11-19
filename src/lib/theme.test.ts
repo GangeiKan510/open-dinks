@@ -13,11 +13,12 @@ describe("parseTheme", () => {
     }
   });
 
-  it("falls back to court for missing or unknown values", () => {
+  it("falls back to green for missing or unknown values", () => {
+    expect(DEFAULT_THEME).toBe("green");
     expect(parseTheme(undefined)).toBe(DEFAULT_THEME);
     expect(parseTheme(null)).toBe(DEFAULT_THEME);
     expect(parseTheme("")).toBe(DEFAULT_THEME);
-    expect(parseTheme("purple")).toBe("court");
+    expect(parseTheme("purple")).toBe(DEFAULT_THEME);
   });
 });
 

@@ -39,13 +39,12 @@ export function LandingNav({
       const atPageEnd =
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - 2;
-      const next = activeLandingSection(tops, offset, atPageEnd);
-      if (
-        next === "open-play" ||
-        next === "tournament" ||
-        next === "court-rentals"
-      ) {
-        setActive((current) => (current === next ? current : next));
+      const next = LANDING_SECTIONS.find(
+        (section) =>
+          section.id === activeLandingSection(tops, offset, atPageEnd),
+      );
+      if (next) {
+        setActive((current) => (current === next.id ? current : next.id));
       }
     };
 
@@ -55,11 +54,16 @@ export function LandingNav({
     };
 
     read();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(document.documentElement);
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
+    window.addEventListener("hashchange", schedule);
     return () => {
+      observer.disconnect();
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
+      window.removeEventListener("hashchange", schedule);
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, []);
