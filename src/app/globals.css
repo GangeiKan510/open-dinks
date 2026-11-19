@@ -167,6 +167,20 @@ html {
   background-color: var(--page-bottom);
 }
 
+/*
+ * Chrome paints autofill with a light background. Keep the field on the
+ * theme surface so the text and the show/hide icon stay on the same color.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  box-shadow: 0 0 0 1000px var(--surface) inset;
+  transition: background-color 9999s ease-out;
+}
+
 .page-canvas,
 body {
   background-color: var(--page-bottom);
