@@ -66,18 +66,16 @@ export function SessionRacePanel({ state }: { state: EngineState }) {
 export function SessionHonors({ race }: { race: SessionRace }) {
   const honors = raceHonors(race);
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--highlight)]">
-            <Trophy className="h-3.5 w-3.5" aria-hidden />
-            Session
-          </p>
-          <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl">
-            Race
-          </h2>
-        </div>
-        <p className="text-xs text-[var(--muted)]">{race.summary}</p>
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--highlight)]">
+          <Trophy className="h-3.5 w-3.5" aria-hidden />
+          Session
+        </p>
+        <h2 className="font-[family-name:var(--font-display)] text-2xl">
+          Race
+        </h2>
+        <p className="text-sm text-[var(--muted)]">{race.summary}</p>
       </div>
       {honors.length === 0 ? (
         <p className="text-sm text-[var(--muted)]">
@@ -86,40 +84,55 @@ export function SessionHonors({ race }: { race: SessionRace }) {
         </p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {honors.map((honor) => {
-            const names = honorNameList(honor.body);
-            const Icon = HONOR_ICON[honor.id];
-            return (
-              <article key={honor.id} className={CARD}>
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {honor.title}
-                </p>
-                {names ? (
-                  <ul className="mt-3 space-y-1.5">
-                    {names.map((name, index) => (
-                      <li
-                        key={`${honor.id}-${index}`}
-                        className="text-sm font-medium"
-                      >
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 font-[family-name:var(--font-display)] text-2xl leading-snug">
-                    {honor.body}
-                  </p>
-                )}
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  {honor.detail}
-                </p>
-              </article>
-            );
-          })}
+          {honors.map((honor) => (
+            <HonorCard key={honor.id} honor={honor} />
+          ))}
         </div>
       )}
     </section>
+  );
+}
+
+function HonorCard({
+  honor,
+}: {
+  honor: ReturnType<typeof raceHonors>[number];
+}) {
+  const names = honorNameList(honor.body);
+  const Icon = HONOR_ICON[honor.id];
+  const wide = names != null && names.length > 2;
+
+  return (
+    <article className={cn(CARD, wide && "sm:col-span-2 xl:col-span-3")}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
+          <Icon className="h-3.5 w-3.5" aria-hidden />
+          {honor.title}
+        </p>
+        <p className="text-sm text-[var(--muted)]">{honor.detail}</p>
+      </div>
+      {names ? (
+        <ul
+          className={cn(
+            "mt-3 grid gap-2",
+            wide ? "sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1",
+          )}
+        >
+          {names.map((name, index) => (
+            <li
+              key={`${honor.id}-${index}`}
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm font-medium"
+            >
+              {name}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 font-[family-name:var(--font-display)] text-2xl leading-snug">
+          {honor.body}
+        </p>
+      )}
+    </article>
   );
 }
 

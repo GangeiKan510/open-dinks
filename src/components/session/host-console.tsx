@@ -33,7 +33,6 @@ import { Label } from "@/components/ui/label";
 import { CourtTimer } from "@/components/session/court-timer";
 import {
   RaceName,
-  SessionHonors,
   SessionStandings,
 } from "@/components/session/session-race-panel";
 import { sessionRace } from "@/lib/session-race";
@@ -194,8 +193,6 @@ export function HostConsole({
           ) : null}
         </div>
       </header>
-
-      <SessionHonors race={race} />
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <section className="space-y-4">
