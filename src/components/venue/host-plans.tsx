@@ -4,14 +4,17 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
   type ReactNode,
 } from "react";
+import { useFormStatus } from "react-dom";
 import {
   Calendar,
   Check,
@@ -62,6 +65,68 @@ type PlansContextValue = {
 };
 
 const PlansContext = createContext<PlansContextValue | null>(null);
+
+type FormBusyValue = {
+  active: boolean;
+  mark: (id: string, pending: boolean) => void;
+};
+
+const FormBusyContext = createContext<FormBusyValue | null>(null);
+
+function FormBusyProvider({ children }: { children: ReactNode }) {
+  const [ids, setIds] = useState<ReadonlySet<string>>(() => new Set());
+  const mark = useCallback((id: string, pending: boolean) => {
+    setIds((current) => {
+      if (pending === current.has(id)) return current;
+      const next = new Set(current);
+      if (pending) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const value = useMemo(() => ({ active: ids.size > 0, mark }), [ids, mark]);
+
+  return (
+    <FormBusyContext.Provider value={value}>
+      {children}
+    </FormBusyContext.Provider>
+  );
+}
+
+function PendingSubmit({
+  busyId,
+  children,
+  disabled,
+  className,
+  variant,
+}: {
+  busyId: string;
+  children: ReactNode;
+  disabled?: boolean;
+  className?: string;
+  variant?: "default" | "outline";
+}) {
+  const { pending } = useFormStatus();
+  const busy = useContext(FormBusyContext);
+  const mark = busy?.mark;
+  useEffect(() => {
+    mark?.(busyId, pending);
+    return () => mark?.(busyId, false);
+  }, [mark, busyId, pending]);
+
+  return (
+    <Button
+      type="submit"
+      size="lg"
+      variant={variant}
+      className={cn("w-full", className)}
+      loading={pending}
+      disabled={disabled || (Boolean(busy?.active) && !pending)}
+    >
+      {children}
+    </Button>
+  );
+}
 
 function usePlans() {
   const value = useContext(PlansContext);
@@ -288,82 +353,85 @@ function PlanChoiceDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {notice ? (
-          <p className="text-sm text-amber-300" role="alert">
-            {notice}
-          </p>
-        ) : null}
+        <FormBusyProvider>
+          {notice ? (
+            <p className="text-sm text-amber-300" role="alert">
+              {notice}
+            </p>
+          ) : null}
 
-        <div className="grid gap-3 lg:grid-cols-3">
-          <article className="flex flex-col rounded-xl border border-[var(--accent)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4">
-            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-fg-soft)]">
-              <Clock className="h-3.5 w-3.5" aria-hidden />
-              Free trial
-            </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--accent-fg-soft)]">
-              {TRIAL_DAYS} days
-            </p>
-            <p className="text-sm text-[var(--accent-fg-soft)]">
-              Open play and booking
-            </p>
-            <ul className="mt-4 space-y-1.5 text-sm">
-              <li>Host console and the public session page</li>
-              <li>Court and coaching bookings</li>
-              <li>Tournament mode stays locked</li>
-            </ul>
-            <form action={startTrialAction} className="mt-auto pt-4">
-              <Button
-                type="submit"
-                variant="outline"
-                size="lg"
-                className="w-full border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
-              >
-                <Clock className="h-4 w-4" aria-hidden />
-                Start trial
-              </Button>
-            </form>
-          </article>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <article className="flex flex-col rounded-xl border border-[var(--accent)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-fg-soft)]">
+                <Clock className="h-3.5 w-3.5" aria-hidden />
+                Free trial
+              </p>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--accent-fg-soft)]">
+                {TRIAL_DAYS} days
+              </p>
+              <p className="text-sm text-[var(--accent-fg-soft)]">
+                Open play and booking
+              </p>
+              <ul className="mt-4 space-y-1.5 text-sm">
+                <li>Host console and the public session page</li>
+                <li>Court and coaching bookings</li>
+                <li>Tournament mode stays locked</li>
+              </ul>
+              <form action={startTrialAction} className="mt-auto pt-4">
+                <PendingSubmit
+                  busyId="trial"
+                  variant="outline"
+                  className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+                >
+                  <Clock className="h-4 w-4" aria-hidden />
+                  Start trial
+                </PendingSubmit>
+              </form>
+            </article>
 
-          <article className="flex flex-col rounded-xl border border-[var(--highlight)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4 shadow-[0_0_32px_-18px_var(--highlight)]">
-            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
-              <Check className="h-3.5 w-3.5" aria-hidden />
-              Club
-            </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)]">
-              {clubPrice}
-            </p>
-            <p className="text-sm text-[var(--accent-fg-soft)]">for 1 month</p>
-            <ul className="mt-4 space-y-1.5 text-sm">
-              <li>Open play and the host console</li>
-              <li>Court and coaching bookings</li>
-              <li>Paying early adds another month</li>
-            </ul>
-            <ClubPayForm
-              label="Pay for 1 month"
-              className="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
-            />
-          </article>
+            <article className="flex flex-col rounded-xl border border-[var(--highlight)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4 shadow-[0_0_32px_-18px_var(--highlight)]">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                Club
+              </p>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)]">
+                {clubPrice}
+              </p>
+              <p className="text-sm text-[var(--accent-fg-soft)]">
+                for 1 month
+              </p>
+              <ul className="mt-4 space-y-1.5 text-sm">
+                <li>Open play and the host console</li>
+                <li>Court and coaching bookings</li>
+                <li>Paying early adds another month</li>
+              </ul>
+              <ClubPayForm
+                label="Pay for 1 month"
+                className="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
+              />
+            </article>
 
-          <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
-            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
-              <Crown className="h-3.5 w-3.5" aria-hidden />
-              Tournament
-            </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
-              {formatPeso(TOURNAMENT_DAY_PHP)}
-            </p>
-            <p className="text-sm text-amber-100/80">
-              A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-              {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked until
-              you start a trial or a club month.
-            </p>
-            <TournamentDatesForm today={today} />
-          </article>
-        </div>
+            <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+                <Crown className="h-3.5 w-3.5" aria-hidden />
+                Tournament
+              </p>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
+                {formatPeso(TOURNAMENT_DAY_PHP)}
+              </p>
+              <p className="text-sm text-amber-100/80">
+                A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+                {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked until
+                you start a trial or a club month.
+              </p>
+              <TournamentDatesForm today={today} />
+            </article>
+          </div>
 
-        <div className="flex justify-end">
-          <SignOutButton />
-        </div>
+          <div className="flex justify-end">
+            <SignOutButton />
+          </div>
+        </FormBusyProvider>
       </DialogContent>
     </Dialog>
   );
@@ -397,77 +465,79 @@ function PlansDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {notice ? (
-          <p className="text-sm text-amber-300" role="status">
-            {notice}
-          </p>
-        ) : null}
+        <FormBusyProvider>
+          {notice ? (
+            <p className="text-sm text-amber-300" role="status">
+              {notice}
+            </p>
+          ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <article className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
-              Club
-            </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl">
-              {clubPrice}
-            </p>
-            <p className="text-sm text-[var(--muted)]">for 1 month</p>
-            <ul className="mt-4 space-y-1.5 text-sm">
-              <li>Open play and the host console</li>
-              <li>Court and coaching bookings</li>
-              <li>Paying early adds another month</li>
-            </ul>
-            {access.clubTrialAvailable ? (
-              <form action={startTrialAction} className="mt-auto pt-4">
-                <Button
-                  type="submit"
-                  variant="outline"
-                  size="lg"
-                  className="w-full border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
-                >
-                  <Clock className="h-4 w-4" aria-hidden />
-                  Start {TRIAL_DAYS}-day trial
-                </Button>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  Open play and booking for {TRIAL_DAYS} days. Tournament days
-                  stay separate.
-                </p>
-              </form>
-            ) : null}
-            <ClubPayForm
-              label={access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
-            />
-          </article>
-
-          <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
-            <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
-              <Crown className="h-3.5 w-3.5" aria-hidden />
-              Premium
-            </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
-              Tournament
-            </p>
-            <p className="text-sm text-amber-100/80">
-              For tournament days only. Open play and booking stay on the club
-              month.
-            </p>
-            <p className="mt-3 text-sm text-amber-100/80">
-              {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
-              {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-              {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
-            </p>
-            <TournamentDatesForm today={today} />
-
-            {access.tournamentGrace ? (
-              <p className="mt-3 text-sm">Open until 6:00 AM.</p>
-            ) : access.ownedTournamentDates.length > 0 ? (
-              <p className="mt-3 text-sm">
-                Paid for {formatTournamentDateList(access.ownedTournamentDates)}
-                . Brackets open on those days.
+          <div className="grid gap-3 sm:grid-cols-2">
+            <article className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
+                Club
               </p>
-            ) : null}
-          </article>
-        </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl">
+                {clubPrice}
+              </p>
+              <p className="text-sm text-[var(--muted)]">for 1 month</p>
+              <ul className="mt-4 space-y-1.5 text-sm">
+                <li>Open play and the host console</li>
+                <li>Court and coaching bookings</li>
+                <li>Paying early adds another month</li>
+              </ul>
+              {access.clubTrialAvailable ? (
+                <form action={startTrialAction} className="mt-auto pt-4">
+                  <PendingSubmit
+                    busyId="trial"
+                    variant="outline"
+                    className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+                  >
+                    <Clock className="h-4 w-4" aria-hidden />
+                    Start {TRIAL_DAYS}-day trial
+                  </PendingSubmit>
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Open play and booking for {TRIAL_DAYS} days. Tournament days
+                    stay separate.
+                  </p>
+                </form>
+              ) : null}
+              <ClubPayForm
+                label={access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
+              />
+            </article>
+
+            <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+                <Crown className="h-3.5 w-3.5" aria-hidden />
+                Premium
+              </p>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
+                Tournament
+              </p>
+              <p className="text-sm text-amber-100/80">
+                For tournament days only. Open play and booking stay on the club
+                month.
+              </p>
+              <p className="mt-3 text-sm text-amber-100/80">
+                {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
+                {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+                {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
+              </p>
+              <TournamentDatesForm today={today} />
+
+              {access.tournamentGrace ? (
+                <p className="mt-3 text-sm">Open until 6:00 AM.</p>
+              ) : access.ownedTournamentDates.length > 0 ? (
+                <p className="mt-3 text-sm">
+                  Paid for{" "}
+                  {formatTournamentDateList(access.ownedTournamentDates)}.
+                  Brackets open on those days.
+                </p>
+              ) : null}
+            </article>
+          </div>
+        </FormBusyProvider>
       </DialogContent>
     </Dialog>
   );
@@ -480,12 +550,19 @@ function ClubPayForm({
   label: string;
   className?: string;
 }) {
+  const [quoting, setQuoting] = useState(false);
+
   return (
     <form action={startClubCheckoutAction} className="mt-auto space-y-3 pt-4">
-      <DiscountCodeFields id="discount-club" product="club" dates="" />
-      <Button type="submit" size="lg" className={cn("w-full", className)}>
+      <DiscountCodeFields
+        id="discount-club"
+        product="club"
+        dates=""
+        onPending={setQuoting}
+      />
+      <PendingSubmit busyId="club-pay" disabled={quoting} className={className}>
         {label}
-      </Button>
+      </PendingSubmit>
     </form>
   );
 }
@@ -494,10 +571,12 @@ function DiscountCodeFields({
   id,
   product,
   dates,
+  onPending,
 }: {
   id: string;
   product: "club" | "day";
   dates: string;
+  onPending: (pending: boolean) => void;
 }) {
   const [code, setCode] = useState("");
   const [quote, setQuote] = useState<{ key: string; summary: string } | null>(
@@ -505,8 +584,16 @@ function DiscountCodeFields({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const { pending: submitting } = useFormStatus();
+  const busy = useContext(FormBusyContext);
   const quoteKey = `${product}:${dates}:${code.trim().toUpperCase()}`;
   const summary = quote?.key === quoteKey ? quote.summary : null;
+  const blocked = submitting || Boolean(busy?.active);
+
+  useEffect(() => {
+    onPending(pending);
+    return () => onPending(false);
+  }, [onPending, pending]);
 
   function applyCode() {
     setError(null);
@@ -535,20 +622,22 @@ function DiscountCodeFields({
           autoComplete="off"
           maxLength={24}
           placeholder="e.g. EARLY"
+          disabled={pending || blocked}
           onChange={(event) => {
             setCode(event.target.value);
             setError(null);
           }}
-          className="bg-black/20"
+          className="bg-black/20 disabled:opacity-50"
         />
         <Button
           type="button"
           variant="outline"
           className="shrink-0"
-          disabled={pending || code.trim().length === 0}
+          loading={pending}
+          disabled={blocked || code.trim().length === 0}
           onClick={applyCode}
         >
-          Apply
+          {pending ? "Applying…" : "Apply"}
         </Button>
       </div>
       {error ? (
@@ -569,6 +658,7 @@ function TournamentDatesForm({ today }: { today: string }) {
   const { access } = usePlans();
   const ownedDates = access.ownedTournamentDates;
   const [dates, setDates] = useState<string[]>([]);
+  const [quoting, setQuoting] = useState(false);
   const totalCentavos = tournamentDatesPriceCentavos(dates);
   const total = totalCentavos == null ? null : totalCentavos / 100;
   const rate = dates.length === 0 ? null : tournamentDayRatePhp(dates.length);
@@ -598,21 +688,7 @@ function TournamentDatesForm({ today }: { today: string }) {
         />
       </div>
       {dates.length > 0 ? (
-        <ul className="flex flex-wrap gap-2">
-          {dates.map((date) => (
-            <li key={date}>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-black/20 px-2.5 py-1 text-xs text-amber-50"
-                onClick={() => toggleDate(date)}
-              >
-                {formatTournamentDates(date, date)}
-                <X className="h-3 w-3" aria-hidden />
-                <span className="sr-only">Remove {date}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <SelectedDateChips dates={dates} onToggle={toggleDate} />
       ) : (
         <p className="text-sm text-amber-100/70">
           Tap each day. They do not have to be in a row. Up to{" "}
@@ -623,19 +699,48 @@ function TournamentDatesForm({ today }: { today: string }) {
         id="discount-day"
         product="day"
         dates={dates.join(",")}
+        onPending={setQuoting}
       />
-      <Button
-        type="submit"
-        size="lg"
-        className="w-full bg-amber-300 text-amber-950 hover:bg-amber-200"
-        disabled={dates.length === 0}
+      <PendingSubmit
+        busyId="tournament-pay"
+        disabled={dates.length === 0 || quoting}
+        className="bg-amber-300 text-amber-950 hover:bg-amber-200"
       >
         <Trophy className="h-4 w-4" aria-hidden />
         {total == null || rate == null
           ? "Pay for these days"
           : `Pay ${formatPeso(total)} · ${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(rate)}`}
-      </Button>
+      </PendingSubmit>
     </form>
+  );
+}
+
+function SelectedDateChips({
+  dates,
+  onToggle,
+}: {
+  dates: string[];
+  onToggle: (iso: string) => void;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {dates.map((date) => (
+        <li key={date}>
+          <button
+            type="button"
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-black/20 px-2.5 py-1 text-xs text-amber-50 disabled:opacity-50"
+            onClick={() => onToggle(date)}
+          >
+            {formatTournamentDates(date, date)}
+            <X className="h-3 w-3" aria-hidden />
+            <span className="sr-only">Remove {date}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -692,6 +797,7 @@ function TournamentDateField({
 }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => monthOf(today));
+  const { pending } = useFormStatus();
   const [box, setBox] = useState<{
     top: number;
     left: number;
@@ -700,9 +806,10 @@ function TournamentDateField({
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const atCap = dates.length >= TOURNAMENT_MAX_DAYS;
+  const expanded = open && !pending;
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!expanded) return;
     const anchor = rootRef.current;
     if (!anchor) return;
 
@@ -729,10 +836,10 @@ function TournamentDateField({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, month]);
+  }, [expanded, month]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!expanded) return;
     function onPointerDown(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -749,13 +856,13 @@ function TournamentDateField({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [expanded]);
 
   const blanks = leadingBlanks(month);
   const dayCount = daysInMonth(month);
   const label = fieldLabel(dates);
   const calendar =
-    open && box
+    expanded && box
       ? createPortal(
           <div
             ref={panelRef}
@@ -780,7 +887,7 @@ function TournamentDateField({
                 <button
                   type="button"
                   aria-label="Previous month"
-                  disabled={month <= monthOf(today)}
+                  disabled={pending || month <= monthOf(today)}
                   onClick={() => setMonth((current) => shiftMonth(current, -1))}
                   className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-white/10 disabled:pointer-events-none disabled:opacity-30"
                 >
@@ -789,8 +896,9 @@ function TournamentDateField({
                 <button
                   type="button"
                   aria-label="Next month"
+                  disabled={pending}
                   onClick={() => setMonth((current) => shiftMonth(current, 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-white/10"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-white/10 disabled:pointer-events-none disabled:opacity-30"
                 >
                   <ChevronRight className="h-4 w-4" aria-hidden />
                 </button>
@@ -818,7 +926,7 @@ function TournamentDateField({
                   <button
                     key={iso}
                     type="button"
-                    disabled={disabled}
+                    disabled={disabled || pending}
                     aria-pressed={selected}
                     aria-label={
                       paid
@@ -862,7 +970,8 @@ function TournamentDateField({
         id={id}
         type="button"
         aria-haspopup="dialog"
-        aria-expanded={open}
+        aria-expanded={expanded}
+        disabled={pending}
         onClick={() => {
           setMonth(monthOf(dates[0] ?? today));
           setOpen((current) => !current);
@@ -870,8 +979,9 @@ function TournamentDateField({
         className={cn(
           "flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-black/20 px-3 text-left text-sm",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200",
-          open ? "border-amber-300" : "border-amber-200/30",
+          expanded ? "border-amber-300" : "border-amber-200/30",
           dates.length === 0 ? "text-amber-100/60" : "text-amber-50",
+          "disabled:opacity-50",
         )}
       >
         <span className="truncate">{label}</span>
