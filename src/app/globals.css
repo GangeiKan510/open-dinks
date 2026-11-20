@@ -165,6 +165,8 @@
 html {
   min-height: 100%;
   background-color: var(--page-bottom);
+  /* A wider document lets iOS Safari zoom out and park the page on the left. */
+  overflow-x: clip;
 }
 
 /*
