@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { endSessionAction, hostDispatchAction } from "@/app/actions/session";
 import { HostConsole } from "@/components/session/host-console";
 import { PlayerView } from "@/components/session/player-view";
+import { SessionRacePanel } from "@/components/session/session-race-panel";
 import { Wallboard } from "@/components/session/wallboard";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +37,6 @@ import {
   isLiveSessionRealtimeEvent,
   LIVE_SESSION_REALTIME_TABLES,
 } from "@/lib/session-realtime";
-import { formatSkillTier } from "@/lib/skill-tier";
 import type { FacilityConfig } from "@/lib/facility";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -345,10 +345,10 @@ export function LiveSessionApp({
         </h1>
         <p className="text-sm text-[var(--muted)]">
           {mode === "host"
-            ? "Open play is closed. Review the session summary, then head back to your facility."
+            ? "Open play is closed. Review the session race, then head back to your facility."
             : "Thanks for playing. See you next open play."}
         </p>
-        <SessionSummaryList state={summaryState} />
+        <SessionRacePanel state={summaryState} />
         {mode === "host" ? (
           <Button asChild>
             <Link href="/dashboard">Back to dashboard</Link>
@@ -398,30 +398,6 @@ export function LiveSessionApp({
         }}
       />
     </div>
-  );
-}
-
-function SessionSummaryList({ state }: { state: EngineState }) {
-  const rows = [...state.players]
-    .filter((p) => p.status !== "left" || p.gamesPlayed > 0)
-    .sort((a, b) => b.gamesPlayed - a.gamesPlayed);
-
-  return (
-    <ul className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-      {rows.map((row, i) => (
-        <li
-          key={row.id}
-          className="flex items-center justify-between px-4 py-3 text-sm"
-        >
-          <span>
-            {i + 1}. {row.name}
-          </span>
-          <span className="text-[var(--muted)]">
-            {row.gamesPlayed} games · {formatSkillTier(row.skill)}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }
 

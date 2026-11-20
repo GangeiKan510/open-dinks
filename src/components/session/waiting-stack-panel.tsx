@@ -27,6 +27,8 @@ import {
   speakAnnouncement,
 } from "@/lib/speech-announcer";
 import { Button } from "@/components/ui/button";
+import { RaceName } from "@/components/session/session-race-panel";
+import { sessionRace, type SessionRace } from "@/lib/session-race";
 import { cn } from "@/lib/utils";
 
 type DragState =
@@ -46,6 +48,7 @@ function SortablePlayerRow({
   player,
   stackIndex,
   state,
+  race,
   dispatch,
   draggedId,
   dragOverId,
@@ -61,6 +64,7 @@ function SortablePlayerRow({
   player: EnginePlayer;
   stackIndex: number;
   state: EngineState;
+  race: SessionRace;
   dispatch: (action: EngineAction) => void;
   draggedId: string | null;
   dragOverId: string | null;
@@ -108,7 +112,9 @@ function SortablePlayerRow({
         {stackIndex + 1}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{player.name}</div>
+        <div className="min-w-0 font-medium">
+          <RaceName race={race} playerId={player.id} name={player.name} />
+        </div>
         <div className="text-xs text-[var(--muted)]">
           {formatSkillTier(player.skill)} · {player.gamesPlayed} games · waiting{" "}
           {formatWaitingTime(playerWaitingMs(player, state.now))}
@@ -205,6 +211,7 @@ export function WaitingStackPanel({
 }) {
   const pending = isPending ?? false;
   const stack = orderedWaitingPlayers(state);
+  const race = sessionRace(state);
   const perCourt = playersPerCourt(state);
   const groups = groupWaitingStack(stack, perCourt);
   const separatedTeamLocks = findSeparatedTeamLocks(state);
@@ -496,6 +503,7 @@ export function WaitingStackPanel({
                       player={player}
                       stackIndex={baseIndex + indexInGroup}
                       state={state}
+                      race={race}
                       dispatch={dispatch}
                       draggedId={draggedPlayerId}
                       dragOverId={dragOverPlayerId}
