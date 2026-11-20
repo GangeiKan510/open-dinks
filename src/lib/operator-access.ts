@@ -24,6 +24,7 @@ export function operatorMayPass(pathname: string): boolean {
   if (isOperatorRoute(pathname)) return true;
   if (pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/auth/")) return true;
+  if (pathname === "/robots.txt" || pathname === "/sitemap.xml") return true;
   return false;
 }
 

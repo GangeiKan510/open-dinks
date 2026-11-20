@@ -42,6 +42,33 @@ export type CreatedPaymongoCheckout = {
   url: string;
 };
 
+/**
+ * Checkout body. PayMongo copies `description` onto the payment, which is
+ * the dashboard Description column. The same text is on the line item so
+ * the checkout page shows it too.
+ */
+export function paymongoCheckoutAttributes(input: PaymongoCheckoutInput) {
+  const description = input.line.description?.trim() || undefined;
+  return {
+    line_items: [
+      {
+        name: input.line.name,
+        amount: input.line.amount,
+        currency: "PHP" as const,
+        quantity: 1,
+        ...(description ? { description } : {}),
+      },
+    ],
+    payment_method_types: [...PAYMONGO_PAYMENT_METHODS],
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    reference_number: input.referenceNumber,
+    metadata: input.metadata,
+    send_email_receipt: false,
+    ...(description ? { description, show_description: true } : {}),
+  };
+}
+
 export async function createPaymongoCheckout(
   input: PaymongoCheckoutInput,
 ): Promise<CreatedPaymongoCheckout> {
@@ -55,25 +82,7 @@ export async function createPaymongoCheckout(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      data: {
-        attributes: {
-          line_items: [
-            {
-              name: input.line.name,
-              amount: input.line.amount,
-              currency: "PHP",
-              quantity: 1,
-              description: input.line.description,
-            },
-          ],
-          payment_method_types: [...PAYMONGO_PAYMENT_METHODS],
-          success_url: input.successUrl,
-          cancel_url: input.cancelUrl,
-          reference_number: input.referenceNumber,
-          metadata: input.metadata,
-          send_email_receipt: false,
-        },
-      },
+      data: { attributes: paymongoCheckoutAttributes(input) },
     }),
   });
 

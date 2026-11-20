@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { PRODUCT_NAME } from "@/lib/facility";
@@ -91,11 +92,10 @@ export function LandingNav({
     >
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-6 py-3 md:flex-row md:items-center md:gap-8">
         <div className="flex items-center justify-between gap-4">
-          <div
-            className="brand-mark brand-mark-nav"
-            role="img"
-            aria-label={PRODUCT_NAME}
-          />
+          <Link href="/" className="shrink-0">
+            <span className="brand-mark brand-mark-nav" aria-hidden="true" />
+            <span className="sr-only">{PRODUCT_NAME}</span>
+          </Link>
           <Button asChild className="rounded-full md:hidden">
             <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
           </Button>

@@ -20,6 +20,7 @@ import {
   priceWithDiscount,
   type DiscountProduct,
 } from "@/lib/discounts";
+import { clubCheckoutBase, tournamentCheckoutBase } from "@/lib/checkout-copy";
 import { siteUrl } from "@/lib/env";
 import { isPublicBooker } from "@/lib/host-access";
 import { createPaymongoCheckout, isPaymongoConfigured } from "@/lib/paymongo";
@@ -224,7 +225,7 @@ export async function startClubCheckoutAction(
     listCentavos: CLUB_PRICE_CENTAVOS,
     today: localDateISO(host.venue.timezone, new Date()),
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: "One month of open play and booking",
+    baseDescription: clubCheckoutBase(),
   });
   if (!priced.ok) notice(priced.notice);
 
@@ -269,7 +270,7 @@ export async function startTournamentPassAction(
     listCentavos: amount,
     today,
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: `Tournament days ${dates.join(", ")}`,
+    baseDescription: tournamentCheckoutBase(dates),
   });
   if (!priced.ok) notice(priced.notice);
   const label =

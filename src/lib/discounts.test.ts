@@ -55,6 +55,16 @@ describe("discount codes", () => {
         code: "EARLY",
       }),
     ).toBe("One month of open play and booking. ₱699 less ₱69.90 with EARLY.");
+    expect(
+      checkoutDescription({
+        base: "Picklrz Club month: open play and booking, ₱699.",
+        listCentavos: 69900,
+        dueCentavos: 62910,
+        code: "EARLY",
+      }),
+    ).toBe(
+      "Picklrz Club month: open play and booking, ₱699. ₱699 less ₱69.90 with EARLY.",
+    );
   });
 
   it("takes a fixed peso amount off tournament days", () => {

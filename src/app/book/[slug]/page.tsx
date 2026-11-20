@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { PublicBookingTabs } from "@/components/venue/public-booking-tabs";
 import {
@@ -9,7 +11,36 @@ import { parsePublicBookingVenue } from "@/lib/bookings";
 import { formatBookingHoursRange } from "@/lib/booking-hours";
 import { buildCoachHourlySlotGrid, parsePublicCoaches } from "@/lib/coaching";
 import { formatVenueTimezoneLabel } from "@/lib/timezone";
+import { PRODUCT_NAME } from "@/lib/facility";
+import { PRIVATE_ROBOTS } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
+
+const loadPublicBookingVenue = cache(async (slug: string) => {
+  const supabase = await createClient();
+  // SECURITY DEFINER RPC: anon has no table grants for venues.
+  const { data: venueJson } = await supabase.rpc("get_public_booking_venue", {
+    p_slug: slug,
+  });
+  return { supabase, venue: parsePublicBookingVenue(venueJson) };
+});
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const { venue } = await loadPublicBookingVenue(slug);
+  const name = venue?.name.trim();
+  if (!venue || !name) {
+    return { title: "Book a court", robots: PRIVATE_ROBOTS };
+  }
+  return {
+    title: name,
+    description: `Book a court or a coaching session at ${name} on ${PRODUCT_NAME}.`,
+    alternates: { canonical: `/book/${venue.slug}` },
+  };
+}
 
 export default async function PublicBookingPage({
   params,
@@ -17,19 +48,13 @@ export default async function PublicBookingPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient();
+  const { supabase, venue } = await loadPublicBookingVenue(slug);
+  if (!venue) notFound();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const booker = user ? publicBookerFromUser(user) : null;
-
-  // SECURITY DEFINER RPCs: anon has no table grants for bookings/coaches.
-  const { data: venueJson } = await supabase.rpc("get_public_booking_venue", {
-    p_slug: slug,
-  });
-  const venue = parsePublicBookingVenue(venueJson);
-  if (!venue) notFound();
 
   const from = new Date();
   const to = new Date(

@@ -201,7 +201,10 @@ export function discountSummary(input: {
   return `${formatCheckoutPesos(input.listCentavos)} less ${formatCheckoutPesos(off)} with ${input.code}. You pay ${formatCheckoutPesos(input.dueCentavos)}.`;
 }
 
-/** PayMongo shows this under the line. The amount field is the price they pay. */
+/**
+ * PayMongo copies this onto the payment. The dashboard Description column
+ * reads that session description. The amount field stays the price they pay.
+ */
 export function checkoutDescription(input: {
   base: string;
   listCentavos: number;
@@ -210,7 +213,9 @@ export function checkoutDescription(input: {
 }): string {
   if (!input.code || input.dueCentavos >= input.listCentavos) return input.base;
   const off = input.listCentavos - input.dueCentavos;
-  return `${input.base}. ${formatCheckoutPesos(input.listCentavos)} less ${formatCheckoutPesos(off)} with ${input.code}.`;
+  const base = input.base.trim().replace(/\.$/, "");
+  const discount = `${formatCheckoutPesos(input.listCentavos)} less ${formatCheckoutPesos(off)} with ${input.code}.`;
+  return base ? `${base}. ${discount}` : discount;
 }
 
 export function discountOfferLabel(offer: DiscountOffer): string {

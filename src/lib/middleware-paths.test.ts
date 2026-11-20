@@ -10,6 +10,8 @@ describe("shouldRefreshAuthSession", () => {
     expect(shouldRefreshAuthSession("/tournament/umpire/abc")).toBe(false);
     expect(shouldRefreshAuthSession("/s/abc")).toBe(false);
     expect(shouldRefreshAuthSession("/s/abc/board")).toBe(false);
+    expect(shouldRefreshAuthSession("/robots.txt")).toBe(false);
+    expect(shouldRefreshAuthSession("/sitemap.xml")).toBe(false);
   });
 
   it("refreshes cookies on signed-in and booking routes", () => {

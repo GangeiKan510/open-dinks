@@ -5,6 +5,7 @@ import {
   paidCheckoutsFromApi,
   paidPaymentsFromApi,
   paymentPlanForFacility,
+  paymongoCheckoutAttributes,
   paymongoSignatureMatches,
 } from "@/lib/paymongo";
 
@@ -188,5 +189,27 @@ describe("paid payments", () => {
       ),
     ).toBe("day");
     expect(paymentPlanForFacility(payment!, "other-club")).toBeNull();
+  });
+});
+
+describe("paymongoCheckoutAttributes", () => {
+  it("copies the breakdown onto the session description the dashboard reads", () => {
+    const description =
+      "Picklrz tournament: 3 days × ₱1,500 on 2026-11-20, 2026-11-22, 2026-11-25. ₱4,500 less ₱450 with EARLY.";
+    const attributes = paymongoCheckoutAttributes({
+      line: {
+        name: "Picklrz tournament 3 days",
+        amount: 405000,
+        description,
+      },
+      successUrl: "https://picklrz.example/dashboard?billing=success",
+      cancelUrl: "https://picklrz.example/dashboard?billing=cancel",
+      referenceNumber: "day-fac",
+      metadata: { facility_id: "fac", kind: "day" },
+    });
+    expect(attributes.description).toBe(description);
+    expect(attributes.line_items[0]?.description).toBe(description);
+    expect(attributes.line_items[0]?.amount).toBe(405000);
+    expect(attributes.show_description).toBe(true);
   });
 });
