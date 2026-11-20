@@ -21,9 +21,11 @@ describe("operator routes", () => {
     expect(isOperatorLoginPath("/admin")).toBe(false);
   });
 
-  it("leaves webhooks and auth callbacks alone", () => {
+  it("leaves webhooks, auth callbacks, and crawler files alone", () => {
     expect(operatorMayPass("/api/paymongo/webhook")).toBe(true);
     expect(operatorMayPass("/auth/callback")).toBe(true);
+    expect(operatorMayPass("/robots.txt")).toBe(true);
+    expect(operatorMayPass("/sitemap.xml")).toBe(true);
     expect(operatorMayPass("/dashboard")).toBe(false);
   });
 

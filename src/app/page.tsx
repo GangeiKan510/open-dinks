@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { FeaturedReviews } from "@/components/landing/featured-reviews";
@@ -7,8 +8,14 @@ import { LandingNav } from "@/components/landing/landing-nav";
 import { Reveal } from "@/components/landing/reveal";
 import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
-import { isSupabaseConfigured } from "@/lib/env";
+import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { PRODUCT_NAME } from "@/lib/facility";
+import {
+  jsonLdScript,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  siteJsonLd,
+} from "@/lib/seo";
 import { loadAccountVenue } from "@/lib/account-venue";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +23,21 @@ import { cn } from "@/lib/utils";
 
 const photoFrame =
   "h-auto w-full rounded-[1.25rem] object-cover shadow-[0_30px_70px_-36px_rgba(0,0,0,0.75)]";
+
+export const metadata: Metadata = {
+  title: { absolute: SITE_TITLE },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    url: "/",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+};
 
 export default async function HomePage() {
   let signedIn = false;
@@ -40,6 +62,12 @@ export default async function HomePage() {
 
   return (
     <main className="page-canvas motion-safe:scroll-smooth">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdScript(siteJsonLd(siteUrl())),
+        }}
+      />
       <LandingNav ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
       <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
@@ -47,6 +75,9 @@ export default async function HomePage() {
           <div className="animate-rise space-y-7">
             <Pill>For pickleball clubs</Pill>
             <h1 className="max-w-xl text-5xl font-semibold leading-[1.12] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
+              <span className="mb-4 block text-sm font-semibold tracking-wide text-[var(--highlight)]">
+                {PRODUCT_NAME}
+              </span>
               One board for <span className="gradient-phrase">open play</span>,{" "}
               <span className="gradient-phrase">tournaments</span>, and{" "}
               <span className="gradient-phrase">court hours</span>.
@@ -367,7 +398,8 @@ export default async function HomePage() {
               aria-label={PRODUCT_NAME}
             />
             <p className="max-w-xs text-sm leading-relaxed text-[var(--muted)]">
-              Open play, tournaments, and court hours on one board.
+              {PRODUCT_NAME} runs open play, tournaments, and court hours on one
+              board.
             </p>
           </div>
           <div className="space-y-2 text-sm">
