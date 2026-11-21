@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialState,
   occupiedMatches,
+  orderedWaitingPlayers,
   playCountSpread,
   proposeFillCourts,
   reduce,
@@ -251,6 +252,137 @@ describe("rotation engine", () => {
         .filter((p) => p.status !== "left")
         .every((p) => !p.teamLockGroupId),
     ).toBe(true);
+  });
+
+  it("rests a locked player who finishes while their partner is still playing", () => {
+    let state = createInitialState({
+      now: 1_000,
+      courts: [
+        { id: "c1", name: "Court 1" },
+        { id: "c2", name: "Court 2" },
+      ],
+    });
+    state = checkInMany(state, [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+    ]);
+    state = reduce(state, {
+      type: "FORCE_ASSIGN",
+      courtId: "c1",
+      teamA: ["a", "b"],
+      teamB: ["c", "d"],
+    });
+    state = reduce(state, {
+      type: "FORCE_ASSIGN",
+      courtId: "c2",
+      teamA: ["e", "f"],
+      teamB: ["g", "h"],
+    });
+    state = startAllReady(state);
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "a",
+      partnerId: "e",
+    });
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "e",
+      partnerId: "a",
+    });
+
+    const first = state.matches.find((match) => match.courtId === "c1");
+    state = reduce(state, {
+      type: "COMPLETE_MATCH",
+      matchId: first!.id,
+      winner: "a",
+    });
+
+    expect(state.players.find((player) => player.id === "a")?.status).toBe(
+      "resting",
+    );
+    expect(
+      orderedWaitingPlayers(state).map((player) => player.id),
+    ).not.toContain("a");
+
+    state = reduce(state, {
+      type: "SET_STATUS",
+      playerId: "a",
+      status: "waiting",
+    });
+    expect(state.players.find((player) => player.id === "a")?.status).toBe(
+      "resting",
+    );
+
+    const second = state.matches.find((match) => match.courtId === "c2");
+    state = reduce(state, {
+      type: "COMPLETE_MATCH",
+      matchId: second!.id,
+      winner: "a",
+    });
+
+    const together = orderedWaitingPlayers(state).map((player) => player.id);
+    expect(state.players.find((player) => player.id === "a")?.status).toBe(
+      "waiting",
+    );
+    expect(state.players.find((player) => player.id === "e")?.status).toBe(
+      "waiting",
+    );
+    expect(Math.abs(together.indexOf("a") - together.indexOf("e"))).toBe(1);
+
+    const others = together.filter((id) => id !== "a" && id !== "e");
+    state = reduce(state, {
+      type: "REORDER_WAITING_QUEUE",
+      playerIds: ["a", ...others, "e"],
+    });
+    expect(orderedWaitingPlayers(state).map((player) => player.id)).toEqual(
+      together,
+    );
+  });
+
+  it("stacks a finishing locked player with a partner who is already waiting", () => {
+    let state = createInitialState({
+      now: 1_000,
+      courts: [{ id: "c1", name: "Court 1" }],
+    });
+    state = checkInMany(state, ["A", "B", "C", "D", "E", "F", "G", "H"]);
+    state = reduce(state, {
+      type: "FORCE_ASSIGN",
+      courtId: "c1",
+      teamA: ["a", "b"],
+      teamB: ["c", "d"],
+    });
+    state = startAllReady(state);
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "a",
+      partnerId: "e",
+    });
+    state = reduce(state, {
+      type: "SET_PARTNER_LOCK",
+      playerId: "e",
+      partnerId: "a",
+    });
+
+    const match = occupiedMatches(state)[0];
+    state = reduce(state, {
+      type: "COMPLETE_MATCH",
+      matchId: match.id,
+      winner: "b",
+    });
+
+    const order = orderedWaitingPlayers(state).map((player) => player.id);
+    expect(Math.abs(order.indexOf("a") - order.indexOf("e"))).toBe(1);
+    expect(order.indexOf("e")).toBeLessThan(order.indexOf("a"));
   });
 
   it("summarizeSession ranks by wins then games", () => {

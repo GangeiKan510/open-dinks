@@ -4,6 +4,7 @@ import {
   formatWaitingTime,
   groupWaitingStack,
   moveWaitingStackGroupIds,
+  orderSeparatesLockedPairs,
   orderedWaitingPlayers,
   playerWaitingMs,
   reorderWaitingStackGroupIds,
@@ -153,10 +154,10 @@ describe("waiting stack", () => {
     expect(isBlockedFairJoinMove(["a", "b", "c"], "a", "c")).toBe(false);
   });
 
-  it("reorderWaitingStackIds moves a player down but not up", () => {
+  it("reorderWaitingStackIds swaps the dropped player with the landing player", () => {
     expect(reorderWaitingStackIds(["a", "b", "c", "d"], "a", "c")).toEqual([
-      "b",
       "c",
+      "b",
       "a",
       "d",
     ]);
@@ -165,8 +166,39 @@ describe("waiting stack", () => {
       reorderWaitingStackIds(["a", "b", "c", "d"], "d", "b", {
         allowMoveUp: true,
       }),
-    ).toEqual(["a", "d", "b", "c"]);
+    ).toEqual(["a", "d", "c", "b"]);
     expect(reorderWaitingStackIds(["a", "b"], "a", "a")).toBeNull();
+  });
+
+  it("orderSeparatesLockedPairs keeps a side-by-side lock intact", () => {
+    const players = [
+      { id: "a", partnerLockId: "b" },
+      { id: "b", partnerLockId: "a" },
+      { id: "c", partnerLockId: null },
+      { id: "d", partnerLockId: null },
+    ] as ReturnType<typeof orderedWaitingPlayers>;
+
+    expect(
+      orderSeparatesLockedPairs(
+        players,
+        ["a", "b", "c", "d"],
+        ["a", "c", "d", "b"],
+      ),
+    ).toBe(true);
+    expect(
+      orderSeparatesLockedPairs(
+        players,
+        ["a", "b", "c", "d"],
+        ["c", "d", "a", "b"],
+      ),
+    ).toBe(false);
+    expect(
+      orderSeparatesLockedPairs(
+        players,
+        ["a", "c", "b", "d"],
+        ["c", "a", "d", "b"],
+      ),
+    ).toBe(false);
   });
 
   it("repositionPartnersForFairJoin moves the front partner down to the back", () => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Volume2 } from "lucide-react";
+import { toast } from "sonner";
 import type {
   EngineAction,
   EngineMatch,
@@ -14,6 +15,7 @@ import {
   isMatchOvertime,
   matchElapsedMs,
   matchRemainingMs,
+  mutualLockPartner,
   occupiedMatches,
   playerName,
   playersPerCourt,
@@ -745,15 +747,26 @@ function QueueCard({
                     variant="ghost"
                     loading={busyKey === `return-${p.id}`}
                     disabled={isPending}
-                    onClick={() =>
+                    onClick={() => {
+                      const partner = mutualLockPartner(state.players, p.id);
+                      if (partner?.status === "playing") {
+                        toast.error(
+                          `${p.name} is waiting for ${partner.name}`,
+                          {
+                            description:
+                              "They'll stack together when that game ends.",
+                          },
+                        );
+                        return;
+                      }
                       run(`return-${p.id}`, () =>
                         dispatch({
                           type: "SET_STATUS",
                           playerId: p.id,
                           status: "waiting",
                         }),
-                      )
-                    }
+                      );
+                    }}
                   >
                     Return
                   </Button>
