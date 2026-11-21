@@ -18,7 +18,7 @@ export async function FeaturedReviews() {
           Featured notes from clubs show here.
         </p>
       ) : (
-        <ul className="mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-2">
+        <ul className="mt-8 flex w-full min-w-0 max-w-full snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-2">
           {reviews.map((review) => {
             const stars = ratingStars(review.rating);
             return (

@@ -71,8 +71,8 @@ export default async function HomePage() {
       <LandingNav ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
       <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
-        <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="animate-rise space-y-7">
+        <div className="grid min-w-0 items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="min-w-0 animate-rise space-y-7">
             <Pill>For pickleball clubs</Pill>
             <h1 className="max-w-xl text-5xl font-semibold leading-[1.12] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
               <span className="mb-4 block text-sm font-semibold tracking-wide text-[var(--highlight)]">
@@ -101,7 +101,7 @@ export default async function HomePage() {
               </Button>
             </div>
           </div>
-          <div className="animate-rise-delay">
+          <div className="min-w-0 animate-rise-delay">
             <HeroCollage />
           </div>
         </div>
@@ -533,7 +533,7 @@ function HeroCollage() {
     <div className="relative mx-auto mt-4 w-full max-w-xl pb-10 lg:mt-0 lg:max-w-none">
       <div
         aria-hidden
-        className="glow-pulse pointer-events-none absolute -inset-8 rounded-full bg-[radial-gradient(circle,var(--wash-strong),transparent_68%)] blur-2xl"
+        className="glow-pulse pointer-events-none absolute -inset-y-8 inset-x-0 rounded-full bg-[radial-gradient(circle,var(--wash-strong),transparent_68%)] blur-2xl"
       />
       <div className="relative">
         <Image

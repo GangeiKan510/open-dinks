@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Outfit } from "next/font/google";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
@@ -33,6 +33,13 @@ const OG_IMAGE = {
   height: 630,
   alt: "Picklrz — tournaments, matchmaking, and court hours for pickleball facilities",
 } as const;
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Floor at the layout size so Safari cannot pinch the page into the corner.
+  minimumScale: 1,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
