@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Megaphone } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -520,15 +520,19 @@ export function WaitingStackPanel({
                     ) : null}
                     {isNextUp && isComplete ? (
                       <Button
+                        type="button"
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
+                        className="h-8 w-8 px-0"
+                        aria-label="Announce the next group to get ready"
+                        title="Announce prepare"
                         onClick={() =>
                           speakAnnouncement(
                             formatPrepareAnnouncement(group.map((p) => p.name)),
                           )
                         }
                       >
-                        Announce prepare
+                        <Megaphone className="h-4 w-4" aria-hidden />
                       </Button>
                     ) : !isComplete ? (
                       <span className="text-xs text-[var(--muted)]">
