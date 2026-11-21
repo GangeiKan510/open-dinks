@@ -4,7 +4,9 @@ import { proposeFillCourts } from "./matchmaking";
 import {
   applyWaitingQueueOrder,
   moveWaitingPlayer,
+  mutualLockPartner,
   nextQueueOrder,
+  orderSeparatesLockedPairs,
   orderedWaitingPlayers,
   repositionPartnersForFairJoin,
 } from "./queue";
@@ -40,6 +42,70 @@ export function createInitialState(
     maxGameMinutes: 15,
     ...partial,
   };
+}
+
+/**
+ * Players coming off a court. A locked player whose partner is still playing
+ * rests until that game ends. When the partner is already waiting or resting,
+ * the two end up side by side, with the closer player moving down.
+ */
+function releaseReturningPlayers(
+  state: EngineState,
+  candidateIds: string[],
+): EngineState {
+  const unique = [...new Set(candidateIds)];
+  const restIds: string[] = [];
+  const wakeIds: string[] = [];
+
+  for (const id of unique) {
+    const player = state.players.find((p) => p.id === id);
+    if (!player || player.status !== "waiting") continue;
+    const partner = mutualLockPartner(state.players, id);
+    if (!partner || unique.includes(partner.id)) continue;
+    if (partner.status === "playing") {
+      restIds.push(id);
+    } else if (partner.status === "resting" && !wakeIds.includes(partner.id)) {
+      wakeIds.push(partner.id);
+    }
+  }
+
+  let players = state.players;
+  if (restIds.length > 0 || wakeIds.length > 0) {
+    const resting = new Set(restIds);
+    const waking = new Set(wakeIds);
+    players = players.map((player) => {
+      if (resting.has(player.id)) {
+        return { ...player, status: "resting" as const, consecutiveWins: 0 };
+      }
+      if (waking.has(player.id)) {
+        return { ...player, status: "waiting" as const };
+      }
+      return player;
+    });
+  }
+
+  let next: EngineState = { ...state, players };
+  const queueIds = [
+    ...unique.filter(
+      (id) => players.find((player) => player.id === id)?.status === "waiting",
+    ),
+    ...wakeIds,
+  ];
+  next = appendToWaitingQueue(next, queueIds);
+
+  const joined = new Set<string>();
+  for (const id of queueIds) {
+    if (joined.has(id)) continue;
+    const partner = mutualLockPartner(next.players, id);
+    if (!partner || partner.status !== "waiting") continue;
+    joined.add(id);
+    joined.add(partner.id);
+    const ordered = orderedWaitingPlayers(next).map((player) => player.id);
+    const reordered = repositionPartnersForFairJoin(ordered, id, partner.id);
+    if (reordered) next = applyWaitingQueueOrder(next, reordered);
+  }
+
+  return next;
 }
 
 function appendToWaitingQueue(
@@ -224,7 +290,7 @@ function returnToStack(state: EngineState, matchId: string): EngineState {
   };
 
   const queued = wasActive
-    ? appendToWaitingQueue(next, allIds)
+    ? releaseReturningPlayers(next, allIds)
     : prependToWaitingQueue(next, allIds);
   return wasActive ? applyGameLimit(queued) : queued;
 }
@@ -331,10 +397,10 @@ function completeMatch(
           };
         }
       }
-      return settleQueue(appendToWaitingQueue(next, allIds));
+      return settleQueue(releaseReturningPlayers(next, allIds));
     }
 
-    return settleQueue(appendToWaitingQueue(next, allIds));
+    return settleQueue(releaseReturningPlayers(next, allIds));
   }
 
   const completed: EngineMatch = {
@@ -347,7 +413,7 @@ function completeMatch(
   };
 
   return settleQueue(
-    appendToWaitingQueue(
+    releaseReturningPlayers(
       {
         ...state,
         players,
@@ -511,6 +577,12 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
 
     case "SET_STATUS": {
+      const current = state.players.find((p) => p.id === action.playerId);
+      if (action.status === "waiting" && current?.status === "resting") {
+        const partner = mutualLockPartner(state.players, action.playerId);
+        if (partner?.status === "playing") return state;
+      }
+
       const leaving = action.status === "left";
       const removed = state.players.find((p) => p.id === action.playerId);
       const teamGroupId = leaving ? (removed?.teamLockGroupId ?? null) : null;
@@ -542,7 +614,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
 
       const next = { ...state, players };
       if (action.status === "waiting") {
-        return settleQueue(appendToWaitingQueue(next, [action.playerId]));
+        return settleQueue(releaseReturningPlayers(next, [action.playerId]));
       }
       if (action.status === "resting" || action.status === "left") {
         return applyWaitingQueueOrder(
@@ -612,11 +684,21 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case "PUSH_TO_COURT":
       return fillCourtsFromStack(state, [action.courtId]);
 
-    case "REORDER_WAITING_QUEUE":
+    case "REORDER_WAITING_QUEUE": {
+      const before = orderedWaitingPlayers(state).map((player) => player.id);
+      if (orderSeparatesLockedPairs(state.players, before, action.playerIds)) {
+        return state;
+      }
       return applyWaitingQueueOrder(state, action.playerIds);
+    }
 
-    case "MOVE_WAITING_QUEUE":
-      return moveWaitingPlayer(state, action.playerId, action.direction);
+    case "MOVE_WAITING_QUEUE": {
+      const before = orderedWaitingPlayers(state).map((player) => player.id);
+      const next = moveWaitingPlayer(state, action.playerId, action.direction);
+      const after = orderedWaitingPlayers(next).map((player) => player.id);
+      if (orderSeparatesLockedPairs(state.players, before, after)) return state;
+      return next;
+    }
 
     case "START_MATCH":
       return startMatch(state, action.matchId);

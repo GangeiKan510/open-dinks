@@ -4,6 +4,14 @@ import { useState } from "react";
 import type { DragEvent } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { EngineAction, EnginePlayer, EngineState } from "@/engine";
 import { formatSkillTier } from "@/lib/skill-tier";
 import {
@@ -14,6 +22,7 @@ import {
   formatWaitingTime,
   groupWaitingStack,
   moveWaitingStackGroupIds,
+  orderSeparatesLockedPairs,
   orderedWaitingPlayers,
   playerWaitingMs,
   reorderWaitingStackGroupIds,
@@ -221,6 +230,19 @@ export function WaitingStackPanel({
   );
   const [drag, setDrag] = useState<DragState>(null);
   const [dragOver, setDragOver] = useState<DragState>(null);
+  const [pendingMove, setPendingMove] = useState<{
+    sourceId: string;
+    targetId: string;
+    playerIds: string[];
+  } | null>(null);
+
+  function lockedPairWouldSplit(before: string[], after: string[]) {
+    if (!orderSeparatesLockedPairs(state.players, before, after)) return false;
+    toast.error("Locked partners stay together", {
+      description: "Once they're side by side, a move can't split them.",
+    });
+    return true;
+  }
 
   function run(key: string, action: () => void) {
     if (onBusy) onBusy(key, action);
@@ -264,9 +286,7 @@ export function WaitingStackPanel({
 
     const ids = stack.map((player) => player.id);
     const reordered = reorderWaitingStackIds(ids, raw, targetId);
-    if (reordered) {
-      dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
-    } else {
+    if (!reordered) {
       const blockMessage = formatFairJoinBlockMessage(
         (id) => playerName(state, id),
         ids,
@@ -278,7 +298,27 @@ export function WaitingStackPanel({
           description: blockMessage,
         });
       }
+      clearDrag();
+      return;
     }
+    if (lockedPairWouldSplit(ids, reordered)) {
+      clearDrag();
+      return;
+    }
+
+    const from = ids.indexOf(raw);
+    const to = ids.indexOf(targetId);
+    if (
+      from >= 0 &&
+      to >= 0 &&
+      Math.floor(from / perCourt) !== Math.floor(to / perCourt)
+    ) {
+      setPendingMove({ sourceId: raw, targetId, playerIds: reordered });
+      clearDrag();
+      return;
+    }
+
+    dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     clearDrag();
   }
 
@@ -310,26 +350,28 @@ export function WaitingStackPanel({
       return;
     }
 
+    const ids = stack.map((player) => player.id);
     const reordered = reorderWaitingStackGroupIds(
-      stack.map((player) => player.id),
+      ids,
       sourceIndex,
       targetIndex,
       perCourt,
     );
-    if (reordered) {
+    if (reordered && !lockedPairWouldSplit(ids, reordered)) {
       dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     }
     clearDrag();
   }
 
   function moveGroup(groupIndex: number, direction: "up" | "down") {
+    const ids = stack.map((player) => player.id);
     const reordered = moveWaitingStackGroupIds(
-      stack.map((player) => player.id),
+      ids,
       groupIndex,
       direction,
       perCourt,
     );
-    if (reordered) {
+    if (reordered && !lockedPairWouldSplit(ids, reordered)) {
       dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     }
   }
@@ -525,6 +567,47 @@ export function WaitingStackPanel({
           })}
         </div>
       )}
+
+      <Dialog
+        open={pendingMove != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMove(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Move{" "}
+              {pendingMove
+                ? playerName(state, pendingMove.sourceId)
+                : "this player"}
+              ?
+            </DialogTitle>
+            <DialogDescription>
+              {pendingMove
+                ? `${playerName(state, pendingMove.sourceId)} will trade places with ${playerName(state, pendingMove.targetId)}. They can't move back up the stack.`
+                : "They can't move back up the stack."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingMove(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingMove) return;
+                dispatch({
+                  type: "REORDER_WAITING_QUEUE",
+                  playerIds: pendingMove.playerIds,
+                });
+                setPendingMove(null);
+              }}
+            >
+              Move
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
