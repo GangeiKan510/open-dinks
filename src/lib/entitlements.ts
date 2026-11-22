@@ -1,20 +1,19 @@
 /**
  * Club plan and tournament-day rules.
  *
- * Open play and booking run on a 7-day trial, then a ₱699 club month.
+ * Open play and booking run on a 7-day trial, then a ₱799 club month.
  * Tournament mode is separate. The host picks the dates, and they do not have
- * to be in a row. One to three days are ₱1,500 each. Four or more are ₱1,400
- * each. A day that was not picked stays locked. Setup opens as soon as a paid
+ * to be in a row. Each day is ₱2,000. A day that was not picked stays locked. Setup opens as soon as a paid
  * day is still ahead. Building brackets waits for that day, and stays open
  * until 6:00 AM the next morning. Consecutive days share that extra time
  * after the last day only. Players are not billed.
  */
 
 export const TRIAL_DAYS = 7;
-export const CLUB_MONTHLY_PHP = 699;
-export const TOURNAMENT_DAY_PHP = 1500;
+export const CLUB_MONTHLY_PHP = 799;
+export const TOURNAMENT_DAY_PHP = 2000;
 /** Per day once the host picks at least this many dates in one purchase. */
-export const TOURNAMENT_VOLUME_DAY_PHP = 1400;
+export const TOURNAMENT_VOLUME_DAY_PHP = 2000;
 export const TOURNAMENT_VOLUME_MIN_DAYS = 4;
 export const TOURNAMENT_MAX_DAYS = 14;
 /** Hours after midnight that the last day of a run stays open. */

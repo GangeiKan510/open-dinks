@@ -4,8 +4,6 @@ import {
   CLUB_MONTHLY_PHP,
   formatPeso,
   TOURNAMENT_DAY_PHP,
-  TOURNAMENT_VOLUME_DAY_PHP,
-  TOURNAMENT_VOLUME_MIN_DAYS,
   TRIAL_DAYS,
 } from "@/lib/entitlements";
 
@@ -18,7 +16,6 @@ export function PricingSection({
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
   const dayPrice = formatPeso(TOURNAMENT_DAY_PHP);
-  const volumePrice = formatPeso(TOURNAMENT_VOLUME_DAY_PHP);
 
   return (
     <section id="pricing" className="border-t border-[var(--border)] py-20">
@@ -74,9 +71,7 @@ export function PricingSection({
               {dayPrice}
             </p>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              {dayPrice} a day for up to 3 days. {volumePrice} a day from{" "}
-              {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates. They do not
-              have to be in a row.
+              {dayPrice} a day. Pick the dates. They do not have to be in a row.
             </p>
             <ul className="mt-4 space-y-2 text-sm text-[var(--foreground)]">
               <li>Buy it with or without a club month</li>

@@ -85,7 +85,7 @@ describe("activity feed", () => {
     expect(feed.map((item) => item.title)).toEqual([
       "Court requested",
       "Court booked",
-      "Paid ₱1,500",
+      "Paid ₱2,000",
     ]);
     expect(feed[1]?.detail).toBe("A player · North · confirmed");
     expect(feed[2]?.detail).toBe("Tournament day · North");

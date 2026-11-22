@@ -16,8 +16,9 @@ export function tournamentCheckoutBase(dates: readonly string[]): string {
   const count = dates.length;
   const rate = formatCheckoutPesos(tournamentDayRatePhp(count) * 100);
   const dayWord = count === 1 ? "day" : "days";
+  const shortRate = tournamentDayRatePhp(1);
   const volume =
-    count >= TOURNAMENT_VOLUME_MIN_DAYS
+    tournamentDayRatePhp(count) < shortRate
       ? ` (${formatCheckoutPesos(TOURNAMENT_DAY_PHP * 100)} a day through ${TOURNAMENT_VOLUME_MIN_DAYS - 1})`
       : "";
   return `Picklrz tournament: ${count} ${dayWord} × ${rate}${volume} on ${dates.join(", ")}.`;
