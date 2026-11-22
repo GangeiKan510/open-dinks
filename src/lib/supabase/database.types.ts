@@ -181,6 +181,54 @@ export type Database = {
         };
         Relationships: [];
       };
+      manual_payment_proofs: {
+        Row: {
+          id: string;
+          facility_id: string;
+          submitted_by: string;
+          kind: "club" | "day";
+          amount_centavos: number;
+          discount_code: string | null;
+          dates: string | null;
+          storage_path: string;
+          status: "pending" | "approved" | "rejected";
+          review_note: string | null;
+          reviewed_by: string | null;
+          created_at: string;
+          reviewed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          facility_id: string;
+          submitted_by: string;
+          kind: "club" | "day";
+          amount_centavos: number;
+          discount_code?: string | null;
+          dates?: string | null;
+          storage_path: string;
+          status?: "pending" | "approved" | "rejected";
+          review_note?: string | null;
+          reviewed_by?: string | null;
+          created_at?: string;
+          reviewed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          facility_id?: string;
+          submitted_by?: string;
+          kind?: "club" | "day";
+          amount_centavos?: number;
+          discount_code?: string | null;
+          dates?: string | null;
+          storage_path?: string;
+          status?: "pending" | "approved" | "rejected";
+          review_note?: string | null;
+          reviewed_by?: string | null;
+          created_at?: string;
+          reviewed_at?: string | null;
+        };
+        Relationships: [];
+      };
       discount_codes: {
         Row: {
           id: string;

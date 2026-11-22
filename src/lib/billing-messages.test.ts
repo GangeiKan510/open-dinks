@@ -42,6 +42,11 @@ describe("billing notices", () => {
     expect(billingNoticeOpensPlans("checkout")).toBe(true);
     expect(billingNoticeOpensPlans("code")).toBe(true);
     expect(billingNoticeOpensPlans("locked")).toBe(true);
+    expect(billingNoticeOpensPlans("proof")).toBe(false);
+    expect(billingNoticeOpensPlans("proof-file")).toBe(true);
+    expect(billingNoticeOpensPlans("proof-large")).toBe(true);
+    expect(billingNoticeOpensPlans("proof-pending")).toBe(true);
+    expect(billingNoticeOpensPlans("proof-save")).toBe(true);
     expect(billingNoticeOpensPlans(undefined)).toBe(false);
   });
 });

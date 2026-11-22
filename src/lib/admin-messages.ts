@@ -13,6 +13,8 @@ export const ADMIN_ERROR_MESSAGES = {
     "Apply the latest Supabase migrations, then reload the operator panel.",
   createFailed: "Could not create that operator account. Try again.",
   salesFailed: "Could not load sales.",
+  paymentsFailed: "Could not load payment receipts.",
+  paymentReviewFailed: "Could not update that receipt. Try again.",
   rosterFailed: "Could not load accounts.",
   activityFailed: "Could not load activity.",
   feedbackFailed: "Could not load feedback.",

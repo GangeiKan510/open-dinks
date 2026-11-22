@@ -17,6 +17,7 @@ import {
 import { isLocalSite, isSupabaseConfigured } from "@/lib/env";
 import { type ClubStatus } from "@/lib/entitlements";
 import { feedbackLogoSrc } from "@/lib/feedback";
+import { PAYMENT_PROOF_BUCKET } from "@/lib/payment-proof";
 import { type OperatorBootstrap } from "@/lib/operator-access";
 import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { createClient } from "@/lib/supabase/server";
@@ -544,4 +545,71 @@ export async function loadFeedbackInbox(): Promise<
 
 export function activityItems(source: ActivitySource, limit = 80) {
   return buildActivityFeed(source, limit);
+}
+
+export type PaymentProofReview = {
+  id: string;
+  facilityName: string;
+  kind: "club" | "day";
+  amountCentavos: number;
+  dates: string | null;
+  discountCode: string | null;
+  createdAt: string;
+  receiptUrl: string | null;
+};
+
+export async function loadPaymentProofs(): Promise<
+  PanelResult<PaymentProofReview[]>
+> {
+  const service = serviceOrMessage();
+  if (!asService(service)) return service;
+  const { data, error } = await service
+    .from("manual_payment_proofs")
+    .select(
+      "id, facility_id, kind, amount_centavos, discount_code, dates, storage_path, created_at",
+    )
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      return { ok: false, message: ADMIN_ERROR_MESSAGES.missingSchema };
+    }
+    console.error("[admin] receipts failed", error.code);
+    return { ok: false, message: ADMIN_ERROR_MESSAGES.paymentsFailed };
+  }
+  const rows = data ?? [];
+  const facilityIds = [...new Set(rows.map((row) => row.facility_id))];
+  const names = new Map<string, string>();
+  if (facilityIds.length > 0) {
+    const facilities = await service
+      .from("facilities")
+      .select("id, name")
+      .in("id", facilityIds);
+    if (facilities.error) {
+      console.error("[admin] receipt clubs failed", facilities.error.code);
+      return { ok: false, message: ADMIN_ERROR_MESSAGES.paymentsFailed };
+    }
+    for (const facility of facilities.data ?? []) {
+      names.set(facility.id, facility.name);
+    }
+  }
+
+  const reviews: PaymentProofReview[] = [];
+  for (const row of rows) {
+    if (row.kind !== "club" && row.kind !== "day") continue;
+    const signed = await service.storage
+      .from(PAYMENT_PROOF_BUCKET)
+      .createSignedUrl(row.storage_path, 60 * 15);
+    reviews.push({
+      id: row.id,
+      facilityName: names.get(row.facility_id) ?? "Club",
+      kind: row.kind,
+      amountCentavos: row.amount_centavos,
+      dates: row.dates,
+      discountCode: row.discount_code,
+      createdAt: row.created_at,
+      receiptUrl: signed.data?.signedUrl ?? null,
+    });
+  }
+  return { ok: true, data: reviews };
 }

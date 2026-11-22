@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ADMIN_ERROR_MESSAGES } from "@/lib/admin-messages";
 import { DISCOUNT_ADMIN_MESSAGES, parseDiscountDraft } from "@/lib/discounts";
+import { fulfillPaidCheckout } from "@/lib/billing-fulfill";
 import { countOperators, requireOperator } from "@/lib/admin-server";
 import { mapAuthError } from "@/lib/auth-errors";
 import { isLocalSite } from "@/lib/env";
@@ -234,4 +235,105 @@ export async function toggleDiscountCodeAction(
   if (error) console.error("[admin] discount toggle failed", error.code);
   revalidatePath("/admin/codes");
   redirect("/admin/codes");
+}
+
+const PROOF_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function pendingProof(id: string) {
+  const gate = await requireOperator();
+  if (!gate.ok) {
+    redirect(gate.reason === "signed-out" ? "/admin/login" : "/dashboard");
+  }
+  if (!PROOF_ID.test(id) || !isServiceRoleConfigured()) return null;
+  const service = createServiceClient();
+  const { data, error } = await service
+    .from("manual_payment_proofs")
+    .select(
+      "id, facility_id, kind, amount_centavos, discount_code, dates, status",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data || data.status !== "pending") {
+    if (error) console.error("[admin] receipt load failed", error.code);
+    return null;
+  }
+  return { gate, service, proof: data };
+}
+
+export async function approveManualPaymentAction(
+  formData: FormData,
+): Promise<void> {
+  const loaded = await pendingProof(String(formData.get("id") ?? ""));
+  if (!loaded) redirect("/admin/payments?review=failed");
+  const { gate, service, proof } = loaded;
+  if (proof.kind !== "club" && proof.kind !== "day") {
+    redirect("/admin/payments?review=failed");
+  }
+
+  try {
+    const applied = await fulfillPaidCheckout({
+      id: `manual_${proof.id}`,
+      metadata: {
+        facility_id: proof.facility_id,
+        kind: proof.kind,
+        ...(proof.dates ? { dates: proof.dates } : {}),
+        ...(proof.discount_code
+          ? {
+              discount_code: proof.discount_code,
+              quoted_centavos: String(proof.amount_centavos),
+            }
+          : {}),
+      },
+    });
+    if (!applied) redirect("/admin/payments?review=failed");
+  } catch (error) {
+    console.error(
+      "[admin] receipt approve failed",
+      error instanceof Error ? error.name : "error",
+    );
+    redirect("/admin/payments?review=failed");
+  }
+
+  const { error } = await service
+    .from("manual_payment_proofs")
+    .update({
+      status: "approved",
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: gate.userId,
+    })
+    .eq("id", proof.id)
+    .eq("status", "pending");
+  if (error) console.error("[admin] receipt status failed", error.code);
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/sales");
+  revalidatePath("/dashboard");
+  redirect("/admin/payments?review=approved");
+}
+
+export async function rejectManualPaymentAction(
+  formData: FormData,
+): Promise<void> {
+  const loaded = await pendingProof(String(formData.get("id") ?? ""));
+  if (!loaded) redirect("/admin/payments?review=failed");
+  const note = String(formData.get("note") ?? "")
+    .trim()
+    .slice(0, 240);
+  const { error } = await loaded.service
+    .from("manual_payment_proofs")
+    .update({
+      status: "rejected",
+      review_note: note || null,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: loaded.gate.userId,
+    })
+    .eq("id", loaded.proof.id)
+    .eq("status", "pending");
+  if (error) {
+    console.error("[admin] receipt reject failed", error.code);
+    redirect("/admin/payments?review=failed");
+  }
+  revalidatePath("/admin/payments");
+  revalidatePath("/dashboard");
+  redirect("/admin/payments?review=rejected");
 }
