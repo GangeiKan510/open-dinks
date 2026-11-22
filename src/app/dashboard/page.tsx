@@ -52,7 +52,12 @@ import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { canManageOpenPlay, defaultOpenPlayTitle } from "@/lib/open-play";
-import { gcashPayee, proofWaiting, type HostProof } from "@/lib/payment-proof";
+import {
+  gcashPayee,
+  pendingReceiptStamp,
+  proofWaiting,
+  type HostProof,
+} from "@/lib/payment-proof";
 import {
   buildPaymentHistory,
   resolvePaymentListCentavos,
@@ -291,7 +296,7 @@ export default async function DashboardPage({
   const [proofRows, historyProofs, gatewayPayments] = await Promise.all([
     supabase
       .from("manual_payment_proofs")
-      .select("kind, dates, status, review_note")
+      .select("id, kind, dates, status, review_note")
       .eq("facility_id", venue.facilityId)
       .in("status", ["pending", "rejected"])
       .order("created_at", { ascending: false })
@@ -526,6 +531,11 @@ export default async function DashboardPage({
       <BillingLive
         facilityId={venue.facilityId}
         recheck={proofs.some((proof) => proof.status === "pending")}
+        pendingStamp={pendingReceiptStamp(
+          (proofRows.error ? [] : (proofRows.data ?? []))
+            .filter((row) => row.status === "pending")
+            .map((row) => row.id),
+        )}
       />
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="flex flex-wrap items-center justify-between gap-3">

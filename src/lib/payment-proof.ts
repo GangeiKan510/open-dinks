@@ -85,6 +85,13 @@ export function proofWaiting(
   );
 }
 
+/** Stable id list for pending receipts. Order does not matter. */
+export function pendingReceiptStamp(ids: string[]): string {
+  return [...new Set(ids.filter((id) => id.trim().length > 0))]
+    .sort()
+    .join(",");
+}
+
 export function proofRejection(
   proofs: HostProof[],
   kind: "club" | "day",
