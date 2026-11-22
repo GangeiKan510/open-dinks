@@ -17,6 +17,7 @@ import {
   siteJsonLd,
 } from "@/lib/seo";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { loadFeaturedReviews } from "@/lib/feedback-server";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ export default async function HomePage() {
   const ctaHref = signedIn ? "/dashboard" : "/login";
   const ctaLabel = signedIn ? "Open dashboard" : "Host login";
   const tournamentHref = signedIn ? "/tournament" : "/login?next=/tournament";
+  const reviews = await loadFeaturedReviews();
 
   return (
     <main className="page-canvas motion-safe:scroll-smooth">
@@ -68,7 +70,11 @@ export default async function HomePage() {
           __html: jsonLdScript(siteJsonLd(siteUrl())),
         }}
       />
-      <LandingNav ctaHref={ctaHref} ctaLabel={ctaLabel} />
+      <LandingNav
+        ctaHref={ctaHref}
+        ctaLabel={ctaLabel}
+        showReviews={reviews.length > 0}
+      />
 
       <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
         <div className="grid min-w-0 items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
@@ -374,7 +380,7 @@ export default async function HomePage() {
 
       <PricingSection ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
-      <FeaturedReviews />
+      <FeaturedReviews reviews={reviews} />
 
       <section id="feedback" className="mx-auto max-w-xl px-6 pb-24">
         <h2 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
@@ -428,12 +434,14 @@ export default async function HomePage() {
             >
               Pricing
             </a>
-            <a
-              href="#reviews"
-              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              Reviews
-            </a>
+            {reviews.length > 0 ? (
+              <a
+                href="#reviews"
+                className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                Reviews
+              </a>
+            ) : null}
           </div>
         </div>
       </footer>
