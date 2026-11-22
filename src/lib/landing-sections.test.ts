@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { activeLandingSection, LANDING_SECTIONS } from "./landing-sections";
+import {
+  activeLandingSection,
+  LANDING_SECTIONS,
+  visibleLandingSections,
+} from "./landing-sections";
 
 const sections = [
   { id: "open-play", top: 400 },
@@ -65,6 +69,16 @@ describe("activeLandingSection", () => {
       "Pricing",
       "Reviews",
     ]);
+  });
+
+  it("hides reviews until a featured note exists", () => {
+    expect(visibleLandingSections(false).map((section) => section.id)).toEqual([
+      "open-play",
+      "tournament",
+      "court-rentals",
+      "pricing",
+    ]);
+    expect(visibleLandingSections(true)).toBe(LANDING_SECTIONS);
   });
 
   it("returns an empty string when there are no sections", () => {
