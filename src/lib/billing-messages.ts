@@ -58,6 +58,12 @@ export function billingNoticeOpensPlans(code: string | undefined): boolean {
   return billingNoticeMessage(code) !== null;
 }
 
+export function receiptSentCopy(kind: "club" | "day"): string {
+  const opens =
+    kind === "club" ? "open the club month" : "open those tournament days";
+  return `You have successfully sent your payment. An admin will check the receipt and ${opens}.`;
+}
+
 export function paymentReceivedCopy(input: {
   applied: boolean;
   kinds: Array<"club" | "day" | "weekend">;

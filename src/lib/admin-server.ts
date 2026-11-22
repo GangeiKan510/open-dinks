@@ -17,6 +17,8 @@ import {
 import { isLocalSite, isSupabaseConfigured } from "@/lib/env";
 import { type ClubStatus } from "@/lib/entitlements";
 import { feedbackLogoSrc } from "@/lib/feedback";
+import { loadDiscountRates } from "@/lib/discount-codes";
+import { resolvePaymentListCentavos } from "@/lib/payment-history";
 import { PAYMENT_PROOF_BUCKET } from "@/lib/payment-proof";
 import { type OperatorBootstrap } from "@/lib/operator-access";
 import { isMissingSchemaError } from "@/lib/supabase/errors";
@@ -552,6 +554,7 @@ export type PaymentProofReview = {
   facilityName: string;
   kind: "club" | "day";
   amountCentavos: number;
+  listCentavos: number | null;
   dates: string | null;
   discountCode: string | null;
   createdAt: string;
@@ -563,13 +566,32 @@ export async function loadPaymentProofs(): Promise<
 > {
   const service = serviceOrMessage();
   if (!asService(service)) return service;
-  const { data, error } = await service
+  const withList = await service
     .from("manual_payment_proofs")
     .select(
-      "id, facility_id, kind, amount_centavos, discount_code, dates, storage_path, created_at",
+      "id, facility_id, kind, amount_centavos, list_centavos, discount_code, dates, storage_path, created_at",
     )
     .eq("status", "pending")
     .order("created_at", { ascending: true });
+  const missingList =
+    withList.error?.message?.toLowerCase().includes("list_centavos") ?? false;
+  const loaded = missingList
+    ? await service
+        .from("manual_payment_proofs")
+        .select(
+          "id, facility_id, kind, amount_centavos, discount_code, dates, storage_path, created_at",
+        )
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+    : withList;
+  const data = (loaded.data ?? []).map((row) => {
+    const stored =
+      "list_centavos" in row && typeof row.list_centavos === "number"
+        ? row.list_centavos
+        : null;
+    return { ...row, list_centavos: stored };
+  });
+  const error = loaded.error;
   if (error) {
     if (isMissingSchemaError(error)) {
       return { ok: false, message: ADMIN_ERROR_MESSAGES.missingSchema };
@@ -577,7 +599,7 @@ export async function loadPaymentProofs(): Promise<
     console.error("[admin] receipts failed", error.code);
     return { ok: false, message: ADMIN_ERROR_MESSAGES.paymentsFailed };
   }
-  const rows = data ?? [];
+  const rows = data;
   const facilityIds = [...new Set(rows.map((row) => row.facility_id))];
   const names = new Map<string, string>();
   if (facilityIds.length > 0) {
@@ -594,6 +616,11 @@ export async function loadPaymentProofs(): Promise<
     }
   }
 
+  const rates = await loadDiscountRates(
+    rows.flatMap((row) =>
+      row.list_centavos == null && row.discount_code ? [row.discount_code] : [],
+    ),
+  );
   const reviews: PaymentProofReview[] = [];
   for (const row of rows) {
     if (row.kind !== "club" && row.kind !== "day") continue;
@@ -605,6 +632,17 @@ export async function loadPaymentProofs(): Promise<
       facilityName: names.get(row.facility_id) ?? "Club",
       kind: row.kind,
       amountCentavos: row.amount_centavos,
+      listCentavos: resolvePaymentListCentavos({
+        stored: row.list_centavos,
+        dueCentavos: row.amount_centavos,
+        code: row.discount_code,
+        percentOff: row.discount_code
+          ? (rates.get(row.discount_code)?.percentOff ?? null)
+          : null,
+        amountOffCentavos: row.discount_code
+          ? (rates.get(row.discount_code)?.amountOffCentavos ?? null)
+          : null,
+      }),
       dates: row.dates,
       discountCode: row.discount_code,
       createdAt: row.created_at,

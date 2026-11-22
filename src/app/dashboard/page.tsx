@@ -11,7 +11,10 @@ import {
 } from "@/components/venue/host-plans";
 import { BillingLive } from "@/components/venue/billing-live";
 import { PaymentHistory } from "@/components/venue/payment-history";
-import { PaymentReceivedDialog } from "@/components/venue/payment-received-dialog";
+import {
+  PaymentReceivedDialog,
+  ReceiptSentDialog,
+} from "@/components/venue/payment-received-dialog";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
 import { OpenPlayPanel } from "@/components/venue/open-play-panel";
 import { OpenPlaySetupForm } from "@/components/venue/open-play-setup-form";
@@ -22,10 +25,12 @@ import { loadAccountVenue } from "@/lib/account-venue";
 import {
   billingNoticeMessage,
   billingNoticeOpensPlans,
+  receiptSentCopy,
   paymentReceivedCopy,
 } from "@/lib/billing-messages";
 import { confirmReturnedCheckout } from "@/lib/billing-fulfill";
 import { loadFeatureAccess } from "@/lib/billing-server";
+import { loadDiscountRates } from "@/lib/discount-codes";
 import { localDateISO } from "@/lib/entitlements";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import {
@@ -47,6 +52,7 @@ import { defaultOpenPlayTitle } from "@/lib/open-play";
 import { gcashPayee, type HostProof } from "@/lib/payment-proof";
 import {
   buildPaymentHistory,
+  resolvePaymentListCentavos,
   type GatewayPaymentRow,
   type ProofHistoryRow,
 } from "@/lib/payment-history";
@@ -256,14 +262,35 @@ export default async function DashboardPage({
       .in("status", ["pending", "rejected"])
       .order("created_at", { ascending: false })
       .limit(20),
-    supabase
-      .from("manual_payment_proofs")
-      .select(
-        "id, kind, amount_centavos, discount_code, dates, status, review_note, created_at",
-      )
-      .eq("facility_id", venue.facilityId)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    (async () => {
+      const withList = await supabase
+        .from("manual_payment_proofs")
+        .select(
+          "id, kind, amount_centavos, list_centavos, discount_code, dates, status, review_note, created_at",
+        )
+        .eq("facility_id", venue.facilityId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const missingList =
+        withList.error?.message?.toLowerCase().includes("list_centavos") ??
+        false;
+      if (!missingList) return withList;
+      const withoutList = await supabase
+        .from("manual_payment_proofs")
+        .select(
+          "id, kind, amount_centavos, discount_code, dates, status, review_note, created_at",
+        )
+        .eq("facility_id", venue.facilityId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      return {
+        data: (withoutList.data ?? []).map((row) => ({
+          ...row,
+          list_centavos: null,
+        })),
+        error: withoutList.error,
+      };
+    })(),
     supabase
       .from("paymongo_payments")
       .select("checkout_id, kind, amount_centavos, created_at")
@@ -291,9 +318,39 @@ export default async function DashboardPage({
       }
     }
   }
-  const historyProofRows: ProofHistoryRow[] = historyProofs.error
-    ? []
-    : (historyProofs.data ?? []);
+  const rawHistoryRows = historyProofs.error ? [] : (historyProofs.data ?? []);
+  const discountRates = await loadDiscountRates(
+    rawHistoryRows.flatMap((row) =>
+      row.list_centavos == null && row.discount_code ? [row.discount_code] : [],
+    ),
+  );
+  const historyProofRows: ProofHistoryRow[] = rawHistoryRows.flatMap((row) => {
+    if (row.kind !== "club" && row.kind !== "day" && row.kind !== "weekend") {
+      return [];
+    }
+    const rate = row.discount_code
+      ? discountRates.get(row.discount_code)
+      : undefined;
+    return [
+      {
+        id: row.id,
+        kind: row.kind,
+        amount_centavos: row.amount_centavos,
+        list_centavos: resolvePaymentListCentavos({
+          stored: row.list_centavos,
+          dueCentavos: row.amount_centavos,
+          code: row.discount_code,
+          percentOff: rate?.percentOff ?? null,
+          amountOffCentavos: rate?.amountOffCentavos ?? null,
+        }),
+        discount_code: row.discount_code,
+        dates: row.dates,
+        status: row.status,
+        review_note: row.review_note,
+        created_at: row.created_at,
+      },
+    ];
+  });
   const gatewayRows: GatewayPaymentRow[] = gatewayPayments.error
     ? []
     : (gatewayPayments.data ?? []);
@@ -460,8 +517,17 @@ export default async function DashboardPage({
           <PaymentReceivedDialog message={paymentReceivedCopy(payment)} />
         ) : null}
 
-        {(billingCode === "cancel" || billingCode === "proof") &&
-        billingNotice ? (
+        {billingCode === "proof" && !access.awaitingPlanChoice ? (
+          <ReceiptSentDialog
+            message={receiptSentCopy(
+              proofs.find((proof) => proof.status === "pending")?.kind === "day"
+                ? "day"
+                : "club",
+            )}
+          />
+        ) : null}
+
+        {billingCode === "cancel" && billingNotice ? (
           <p
             role="status"
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]"
