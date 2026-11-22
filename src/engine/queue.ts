@@ -87,6 +87,54 @@ export function groupWaitingStack(
   return groups;
 }
 
+/** Mutual partner lock, or null when the lock is one-sided or missing. */
+export function mutualLockPartner(
+  players: EnginePlayer[],
+  playerId: string,
+): EnginePlayer | null {
+  const player = players.find((p) => p.id === playerId);
+  if (!player?.partnerLockId) return null;
+  const partner = players.find((p) => p.id === player.partnerLockId);
+  if (!partner || partner.partnerLockId !== playerId) return null;
+  return partner;
+}
+
+/**
+ * Pairs that are already side by side. A later order must keep each of these
+ * pairs adjacent.
+ */
+export function orderSeparatesLockedPairs(
+  players: EnginePlayer[],
+  beforeIds: string[],
+  afterIds: string[],
+): boolean {
+  const seen = new Set<string>();
+  for (let index = 0; index < beforeIds.length - 1; index += 1) {
+    const leftId = beforeIds[index];
+    const rightId = beforeIds[index + 1];
+    const left = players.find((player) => player.id === leftId);
+    const right = players.find((player) => player.id === rightId);
+    if (!left || !right) continue;
+    if (left.partnerLockId !== right.id || right.partnerLockId !== left.id) {
+      continue;
+    }
+    const key = [leftId, rightId].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const leftAfter = afterIds.indexOf(leftId);
+    const rightAfter = afterIds.indexOf(rightId);
+    if (
+      leftAfter < 0 ||
+      rightAfter < 0 ||
+      Math.abs(leftAfter - rightAfter) !== 1
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Trade the dragged player with the player they land on. Everyone else stays put. */
 export function reorderWaitingStackIds(
   ids: string[],
   sourceId: string,
@@ -98,8 +146,8 @@ export function reorderWaitingStackIds(
   if (from < 0 || to < 0 || from === to) return null;
   if (!options?.allowMoveUp && from > to) return null;
   const next = [...ids];
-  next.splice(from, 1);
-  next.splice(to, 0, sourceId);
+  next[from] = targetId;
+  next[to] = sourceId;
   return next;
 }
 

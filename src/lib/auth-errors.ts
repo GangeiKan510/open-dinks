@@ -3,6 +3,7 @@ export const AUTH_ERROR_MESSAGES = {
   EMAIL_REQUIRED: "Email is required.",
   PASSWORD_REQUIRED: "Password is required.",
   PASSWORD_TOO_SHORT: "Password must be at least 8 characters.",
+  PASSWORD_MISMATCH: "Passwords do not match.",
   INVALID_CREDENTIALS: "Invalid email or password.",
   EMAIL_TAKEN: "An account with this email already exists. Sign in instead.",
   WEAK_PASSWORD: "Password is too weak. Use at least 8 characters.",
@@ -10,6 +11,8 @@ export const AUTH_ERROR_MESSAGES = {
   RATE_LIMITED:
     "Email rate limit hit. Wait a few minutes, or disable Confirm email in Supabase Auth for local testing.",
   CONFIRM_EMAIL: "Check your email to confirm your account, then sign in here.",
+  AUTH_LINK_FAILED:
+    "That link is invalid or expired. Sign in, or create the account again.",
   SIGN_IN_FAILED: "Could not sign in. Try again.",
   SIGN_UP_FAILED: "Could not create account. Try again.",
   DATABASE_ERROR:

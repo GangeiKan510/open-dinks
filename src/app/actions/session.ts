@@ -1,19 +1,21 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { type SkillTier } from "@/lib/skill-tier";
+import { safeAuthNextPath } from "@/lib/auth-redirect";
+import { OPERATOR_COOKIE } from "@/lib/operator-access";
 import { THEME_COOKIE } from "@/lib/theme";
 import { parseOpenPlayForm } from "@/lib/open-play";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { reduce, type PlayerGender } from "@/engine";
+import { reduce } from "@/engine";
 import { type HostDispatch, renameNewMatches } from "@/lib/host-dispatch";
+import { loadAccountVenue } from "@/lib/account-venue";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { dbToEngineState } from "@/lib/session-mapper";
-import { loadSessionBundle } from "@/lib/session-bundle";
 import { loadSessionLiveRows } from "@/lib/session-live-rows";
 import { planSessionPersist } from "@/lib/session-persist";
+import { loadFeatureAccess } from "@/lib/billing-server";
 import { normalizeCourtCount } from "@/lib/court-count";
 
 /** Violation of sessions_one_live_per_venue. */
@@ -37,6 +39,23 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   if (alreadyLive) {
     revalidatePath("/dashboard");
     redirect(`/s/${alreadyLive.public_token}/host`);
+  }
+
+  const { data: venueRow } = await supabase
+    .from("venues")
+    .select("facility_id, timezone")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (venueRow?.facility_id) {
+    const access = await loadFeatureAccess(
+      supabase,
+      venueRow.facility_id,
+      venueRow.timezone,
+    );
+    if (access.schemaReady && !access.openPlay) {
+      revalidatePath("/dashboard");
+      redirect("/dashboard?billing=locked");
+    }
   }
 
   const { data: courts, error: courtsError } = await supabase
@@ -99,12 +118,28 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   redirect(`/s/${session.public_token}/host`);
 }
 
-export async function signOutAction() {
+export async function signOutAction(formData: FormData) {
   const supabase = await createClient();
   await supabase.auth.signOut();
   const jar = await cookies();
   jar.delete(THEME_COOKIE);
-  redirect("/");
+  jar.delete(OPERATOR_COOKIE);
+  redirect(safeAuthNextPath(String(formData.get("next") ?? ""), "/"));
+}
+
+const HOST_ONLY = "Only the host can change this session.";
+
+async function assertSessionHost(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  venueId: string,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: HOST_ONLY };
+  const venue = await loadAccountVenue(user.id, supabase);
+  if (!venue || venue.id !== venueId) return { error: HOST_ONLY };
+  return null;
 }
 
 async function loadSessionBundleForPersist(token: string) {
@@ -116,7 +151,9 @@ async function loadSessionBundleForPersist(token: string) {
     .single();
   if (!session) return null;
 
-  const rows = await loadSessionLiveRows(supabase, session);
+  const rows = await loadSessionLiveRows(supabase, session, {
+    blockCourtsOnBookingError: true,
+  });
   return { supabase, session, ...rows };
 }
 
@@ -130,6 +167,8 @@ async function persistEngineDiff(
   if (!bundle) return { error: "Session not found" };
 
   const { supabase } = bundle;
+  const denied = await assertSessionHost(supabase, bundle.session.venue_id);
+  if (denied) return denied;
   const before = dbToEngineState(bundle);
   const after = mutate(before);
   const plan = planSessionPersist({
@@ -305,50 +344,26 @@ export async function hostDispatchAction(
   });
 }
 
-export async function guestCheckInAction(
-  token: string,
-  name: string,
-  skill: SkillTier,
-  gender?: PlayerGender | null,
-) {
-  const bundle = await loadSessionBundle(token);
-  if (!bundle || bundle.session.status !== "live") {
-    return { error: "Session not available" };
-  }
-  const supabase = await createClient();
-  const { error } = await supabase.from("session_players").insert({
-    session_id: bundle.session.id,
-    display_name: name.trim(),
-    skill,
-    status: "waiting",
-    gender: gender ?? null,
-  });
-  if (error) return { error: error.message };
-  if (bundle.session.matching === "auto") {
-    await persistEngineDiff(token, (state) =>
-      reduce(state, { type: "FILL_COURTS" }),
-    );
-  }
-  revalidatePath(`/s/${token}`);
-  return { ok: true as const };
-}
-
 export async function endSessionAction(token: string) {
   const supabase = await createClient();
   const { data: session } = await supabase
     .from("sessions")
-    .select("id, public_token")
+    .select("id, public_token, venue_id")
     .eq("public_token", token)
     .single();
   if (!session) return { error: "Not found" };
 
-  await supabase
+  const denied = await assertSessionHost(supabase, session.venue_id);
+  if (denied) return denied;
+
+  const { error } = await supabase
     .from("sessions")
     .update({
       status: "completed",
       ended_at: new Date().toISOString(),
     })
     .eq("id", session.id);
+  if (error) return { error: "Could not end the session." };
 
   revalidatePath(`/s/${token}`);
   revalidatePath(`/s/${token}/host`);

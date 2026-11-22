@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TournamentDirector } from "@/components/tournament/tournament-director";
-import { Button } from "@/components/ui/button";
-import { loadAccountVenue } from "@/lib/account-venue";
-import { canonicalLiveSession } from "@/lib/live-session";
-import { createClient } from "@/lib/supabase/server";
 import { loadDirectorTournament } from "@/lib/tournament-server";
 
 export const metadata: Metadata = {
@@ -28,6 +23,9 @@ export default async function TournamentPage() {
   if (tournament.status === "missing-schema") {
     return <TournamentUnavailable missingSchema />;
   }
+  if (tournament.status === "locked") {
+    redirect("/dashboard?plans=open");
+  }
   if (tournament.status === "error") {
     return <TournamentUnavailable failed />;
   }
@@ -39,29 +37,10 @@ export default async function TournamentPage() {
       umpireToken={tournament.umpireToken}
       initialEvent={tournament.event}
       initialUpdatedAt={tournament.updatedAt}
-      openPlayHref={await liveOpenPlayHref()}
+      bracketsOpen={tournament.bracketsOpen}
+      bracketDates={tournament.bracketDates}
     />
   );
-}
-
-/** Host console for the venue's live session, or the dashboard when none is live. */
-async function liveOpenPlayHref(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return "/dashboard";
-
-  const venue = await loadAccountVenue(user.id, supabase);
-  if (!venue) return "/dashboard";
-
-  const { data } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("venue_id", venue.id)
-    .eq("status", "live");
-  const live = canonicalLiveSession(data ?? []);
-  return live ? `/s/${live.public_token}/host` : "/dashboard";
 }
 
 function TournamentUnavailable({
@@ -83,9 +62,6 @@ function TournamentUnavailable({
             ? "The tournament could not be loaded. Try again in a moment."
             : "Add your project URL and anon key to .env.local, then apply the migrations in supabase/migrations."}
       </p>
-      <Button asChild>
-        <Link href="/demo">Open local demo</Link>
-      </Button>
     </main>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Volume2 } from "lucide-react";
+import { toast } from "sonner";
 import type {
   EngineAction,
   EngineMatch,
@@ -14,10 +15,10 @@ import {
   isMatchOvertime,
   matchElapsedMs,
   matchRemainingMs,
+  mutualLockPartner,
   occupiedMatches,
   playerName,
   playersPerCourt,
-  summarizeSession,
 } from "@/engine";
 import { openPlayModeLabel } from "@/lib/open-play";
 import { BookingWindow } from "@/components/session/booking-window";
@@ -32,6 +33,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CourtTimer } from "@/components/session/court-timer";
+import {
+  RaceName,
+  SessionStandings,
+} from "@/components/session/session-race-panel";
+import { sessionRace } from "@/lib/session-race";
 import { tryStackPush } from "@/lib/stack-push";
 import {
   formatRemainingTimeAnnouncement,
@@ -44,20 +50,24 @@ import { cn } from "@/lib/utils";
 export function HostConsole({
   state,
   dispatch,
+  playerUrl,
   boardUrl,
   onEndSession,
   readOnly = false,
   isPending,
   venueTimezone,
+  sessionStatus,
 }: {
   state: EngineState;
   dispatch: (action: EngineAction) => void;
+  playerUrl?: string;
   boardUrl?: string;
   onEndSession?: () => void;
   readOnly?: boolean;
   /** When set, action buttons show a spinner until the live sync finishes. */
   isPending?: boolean;
   venueTimezone?: string;
+  sessionStatus?: string;
 }) {
   const [name, setName] = useState("");
   const [skill, setSkill] = useState<SkillTier>(DEFAULT_SKILL_TIER);
@@ -81,7 +91,7 @@ export function HostConsole({
   const waiting = state.players.filter((p) => p.status === "waiting");
   const resting = state.players.filter((p) => p.status === "resting");
   const rosterPlayers = state.players.filter((p) => p.status !== "left");
-  const summary = useMemo(() => summarizeSession(state), [state]);
+  const race = sessionRace(state);
 
   function runBusy(key: string, action: () => void) {
     if (tracksPending) setBusyKey(key);
@@ -136,500 +146,503 @@ export function HostConsole({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-      <section className="space-y-4">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-              Host console
-            </p>
-            <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--foreground)]">
-              Live open play
-            </h1>
-            <p className="text-sm text-[var(--muted)]">
-              {openPlayModeLabel(state.mode)} ·{" "}
-              {state.format === "singles" || state.mode === "singles"
-                ? "Singles"
-                : "Doubles"}{" "}
-              · {state.matching === "auto" ? "Auto" : "Manual"} matching
-              {state.playerGameLimit != null
-                ? ` · ${state.playerGameLimit} game limit`
-                : ""}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {boardUrl ? (
-              <Button variant="outline" size="sm" asChild>
-                <a href={boardUrl} target="_blank" rel="noreferrer">
-                  Open wallboard
-                </a>
-              </Button>
-            ) : null}
-            {onEndSession ? (
-              <Button
-                variant="danger"
-                size="sm"
-                loading={activeBusyKey === "end-session"}
-                disabled={pending}
-                onClick={() => runBusy("end-session", onEndSession)}
-              >
-                End session
-              </Button>
-            ) : null}
-          </div>
-        </header>
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+            Host console
+          </p>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--foreground)]">
+            Live open play
+          </h1>
+          <p className="text-sm text-[var(--muted)]">
+            {openPlayModeLabel(state.mode)} ·{" "}
+            {state.format === "singles" || state.mode === "singles"
+              ? "Singles"
+              : "Doubles"}{" "}
+            · {state.matching === "auto" ? "Auto" : "Manual"} matching
+            {state.playerGameLimit != null
+              ? ` · ${state.playerGameLimit} game limit`
+              : ""}
+            {sessionStatus ? ` · ${sessionStatus}` : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {playerUrl ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={playerUrl} target="_blank" rel="noreferrer">
+                Player view
+              </a>
+            </Button>
+          ) : null}
+          {boardUrl ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={boardUrl} target="_blank" rel="noreferrer">
+                Open wallboard
+              </a>
+            </Button>
+          ) : null}
+          {onEndSession ? (
+            <Button
+              variant="danger"
+              size="sm"
+              loading={activeBusyKey === "end-session"}
+              disabled={pending}
+              onClick={() => runBusy("end-session", onEndSession)}
+            >
+              End session
+            </Button>
+          ) : null}
+        </div>
+      </header>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {state.courts.map((court) => {
-            const match = courts.find((m) => m.courtId === court.id);
-            const booking = activeCourtBooking(court, state.now);
-            // Keep showing a match that is already on court; the reservation
-            // only owns the tile once the court is clear.
-            const reservedAndClear = Boolean(booking) && !match;
-            const statusLabel = match
-              ? match.status === "ready"
-                ? "Ready"
-                : "Playing"
-              : booking
-                ? "Booked"
-                : "Open";
-            return (
-              <article
-                key={court.id}
-                className={cn(
-                  "rounded-xl border bg-[var(--surface)] p-4 shadow-[0_1px_0_rgba(0,0,0,0.04)]",
-                  reservedAndClear && "border-amber-500/60 bg-amber-50/60",
-                  match?.status === "active" && "border-[var(--accent)]/40",
-                  match?.status === "ready" && "border-amber-400/50",
-                  !reservedAndClear && !match && "border-[var(--border)]",
-                )}
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <h2 className="font-semibold">{court.name}</h2>
-                    {match?.status === "active" && !readOnly ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0 px-0"
-                        aria-label={`Announce remaining time for ${court.name}`}
-                        onClick={() =>
-                          announceCourtRemainingTime(
-                            match,
-                            court.name,
-                            Date.now(),
-                          )
-                        }
-                      >
-                        <Volume2 className="h-4 w-4" aria-hidden />
-                      </Button>
-                    ) : null}
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-xs",
-                      reservedAndClear
-                        ? "bg-amber-200 text-amber-950"
-                        : match?.status === "active"
-                          ? "bg-[var(--accent-soft)] text-[var(--accent-fg-soft)]"
-                          : match?.status === "ready"
-                            ? "bg-amber-100 text-amber-900"
-                            : "bg-[var(--surface-2)] text-[var(--muted)]",
-                    )}
-                  >
-                    {statusLabel}
-                  </span>
-                </div>
-                {reservedAndClear && booking ? (
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">{booking.label}</p>
-                    <BookingWindow
-                      startsAt={booking.startsAt}
-                      endsAt={booking.endsAt}
-                      timeZone={venueTimezone}
-                      className="block text-sm text-[var(--muted)]"
-                    />
-                    <p className="text-xs text-[var(--muted)]">
-                      Reserved — unavailable for open play.
-                    </p>
-                  </div>
-                ) : match ? (
-                  <div className="space-y-3">
-                    <CourtTimer
-                      match={match}
-                      maxGameMinutes={state.maxGameMinutes}
-                    />
-                    <TeamBlock label="Team A" ids={match.teamA} state={state} />
-                    <div className="text-center text-xs uppercase tracking-widest text-[var(--muted)]">
-                      vs
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <section className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {state.courts.map((court) => {
+              const match = courts.find((m) => m.courtId === court.id);
+              const booking = activeCourtBooking(court, state.now);
+              // Keep showing a match that is already on court; the reservation
+              // only owns the tile once the court is clear.
+              const reservedAndClear = Boolean(booking) && !match;
+              const statusLabel = match
+                ? match.status === "ready"
+                  ? "Ready"
+                  : "Playing"
+                : booking
+                  ? "Booked"
+                  : "Open";
+              return (
+                <article
+                  key={court.id}
+                  className={cn(
+                    "rounded-xl border bg-[var(--surface)] p-4 shadow-[0_1px_0_rgba(0,0,0,0.04)]",
+                    reservedAndClear && "border-amber-500/60 bg-amber-50/60",
+                    match?.status === "active" && "border-[var(--accent)]/40",
+                    match?.status === "ready" && "border-amber-400/50",
+                    !reservedAndClear && !match && "border-[var(--border)]",
+                  )}
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <h2 className="font-semibold">{court.name}</h2>
+                      {match?.status === "active" && !readOnly ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 px-0"
+                          aria-label={`Announce remaining time for ${court.name}`}
+                          onClick={() =>
+                            announceCourtRemainingTime(
+                              match,
+                              court.name,
+                              Date.now(),
+                            )
+                          }
+                        >
+                          <Volume2 className="h-4 w-4" aria-hidden />
+                        </Button>
+                      ) : null}
                     </div>
-                    <TeamBlock label="Team B" ids={match.teamB} state={state} />
-                    {booking ? (
-                      <p className="rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-950">
-                        Reserved for {booking.label} — this court leaves open
-                        play when the game ends.
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-xs",
+                        reservedAndClear
+                          ? "bg-amber-200 text-amber-950"
+                          : match?.status === "active"
+                            ? "bg-[var(--accent-soft)] text-[var(--accent-fg-soft)]"
+                            : match?.status === "ready"
+                              ? "bg-amber-100 text-amber-900"
+                              : "bg-[var(--surface-2)] text-[var(--muted)]",
+                      )}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+                  {reservedAndClear && booking ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{booking.label}</p>
+                      <BookingWindow
+                        startsAt={booking.startsAt}
+                        endsAt={booking.endsAt}
+                        timeZone={venueTimezone}
+                        className="block text-sm text-[var(--muted)]"
+                      />
+                      <p className="text-xs text-[var(--muted)]">
+                        Reserved — unavailable for open play.
                       </p>
-                    ) : null}
-                    {!readOnly ? (
-                      <div className="flex flex-col gap-2 pt-1">
-                        {match.status === "ready" ? (
+                    </div>
+                  ) : match ? (
+                    <div className="space-y-3">
+                      <CourtTimer
+                        match={match}
+                        maxGameMinutes={state.maxGameMinutes}
+                      />
+                      <TeamBlock
+                        label="Team A"
+                        ids={match.teamA}
+                        state={state}
+                        race={race}
+                      />
+                      <div className="text-center text-xs uppercase tracking-widest text-[var(--muted)]">
+                        vs
+                      </div>
+                      <TeamBlock
+                        label="Team B"
+                        ids={match.teamB}
+                        state={state}
+                        race={race}
+                      />
+                      {booking ? (
+                        <p className="rounded-md bg-amber-100 px-2 py-1.5 text-xs text-amber-950">
+                          Reserved for {booking.label} — this court leaves open
+                          play when the game ends.
+                        </p>
+                      ) : null}
+                      {!readOnly ? (
+                        <div className="flex flex-col gap-2 pt-1">
+                          {match.status === "ready" ? (
+                            <Button
+                              size="sm"
+                              className="w-full"
+                              loading={activeBusyKey === `start-${match.id}`}
+                              disabled={pending}
+                              onClick={() =>
+                                runBusy(`start-${match.id}`, () =>
+                                  startMatch(match, court.name),
+                                )
+                              }
+                            >
+                              Start session
+                            </Button>
+                          ) : (
+                            <MatchResult
+                              matchId={match.id}
+                              scoreTracking={state.scoreTracking}
+                              pending={pending}
+                              busy={activeBusyKey === `result-${match.id}`}
+                              onComplete={(result) =>
+                                runBusy(`result-${match.id}`, () =>
+                                  dispatch({
+                                    type: "COMPLETE_MATCH",
+                                    matchId: match.id,
+                                    ...result,
+                                  }),
+                                )
+                              }
+                            />
+                          )}
                           <Button
                             size="sm"
                             className="w-full"
-                            loading={activeBusyKey === `start-${match.id}`}
+                            variant={
+                              match.status === "active" ? "default" : "outline"
+                            }
+                            loading={activeBusyKey === `return-${match.id}`}
                             disabled={pending}
                             onClick={() =>
-                              runBusy(`start-${match.id}`, () =>
-                                startMatch(match, court.name),
-                              )
-                            }
-                          >
-                            Start session
-                          </Button>
-                        ) : (
-                          <MatchResult
-                            matchId={match.id}
-                            scoreTracking={state.scoreTracking}
-                            pending={pending}
-                            busy={activeBusyKey === `result-${match.id}`}
-                            onComplete={(result) =>
-                              runBusy(`result-${match.id}`, () =>
+                              runBusy(`return-${match.id}`, () =>
                                 dispatch({
-                                  type: "COMPLETE_MATCH",
+                                  type: "RETURN_TO_STACK",
                                   matchId: match.id,
-                                  ...result,
                                 }),
                               )
                             }
-                          />
-                        )}
+                          >
+                            Return to stack
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[var(--muted)]">
+                        Waiting for assignment
+                      </p>
+                      {!readOnly ? (
                         <Button
                           size="sm"
+                          variant="secondary"
                           className="w-full"
-                          variant={
-                            match.status === "active" ? "default" : "outline"
-                          }
-                          loading={activeBusyKey === `return-${match.id}`}
-                          disabled={pending}
+                          loading={activeBusyKey === `push-${court.id}`}
+                          disabled={pending || waiting.length < perCourt}
                           onClick={() =>
-                            runBusy(`return-${match.id}`, () =>
-                              dispatch({
-                                type: "RETURN_TO_STACK",
-                                matchId: match.id,
+                            runBusy(`push-${court.id}`, () =>
+                              tryStackPush(state, dispatch, {
+                                type: "PUSH_TO_COURT",
+                                courtId: court.id,
                               }),
                             )
                           }
                         >
-                          Return to stack
+                          Push stack here
                         </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-[var(--muted)]">
-                      Waiting for assignment
-                    </p>
-                    {!readOnly ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="w-full"
-                        loading={activeBusyKey === `push-${court.id}`}
-                        disabled={pending || waiting.length < perCourt}
-                        onClick={() =>
-                          runBusy(`push-${court.id}`, () =>
-                            tryStackPush(state, dispatch, {
-                              type: "PUSH_TO_COURT",
-                              courtId: court.id,
-                            }),
-                          )
-                        }
-                      >
-                        Push stack here
-                      </Button>
-                    ) : null}
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-
-        {!readOnly ? (
-          <WaitingStackPanel
-            state={state}
-            dispatch={dispatch}
-            openCourtCount={openCourtCount}
-            isPending={isPending}
-            busyKey={activeBusyKey}
-            onBusy={runBusy}
-          />
-        ) : null}
-      </section>
-
-      <aside className="space-y-4">
-        {!readOnly ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="mb-3 font-semibold">Session settings</h2>
-            <div className="space-y-2">
-              <Label id="match-duration-label">Match duration</Label>
-              <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-2)] p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={state.maxGameMinutes == null ? "default" : "ghost"}
-                  aria-pressed={state.maxGameMinutes == null}
-                  onClick={() =>
-                    dispatch({ type: "SET_MAX_GAME_MINUTES", minutes: null })
-                  }
-                >
-                  No limit
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={state.maxGameMinutes != null ? "default" : "ghost"}
-                  aria-pressed={state.maxGameMinutes != null}
-                  onClick={() =>
-                    dispatch({
-                      type: "SET_MAX_GAME_MINUTES",
-                      minutes: state.maxGameMinutes ?? 15,
-                    })
-                  }
-                >
-                  Set limit
-                </Button>
-              </div>
-              {state.maxGameMinutes != null ? (
-                <Input
-                  id="max-game-minutes"
-                  aria-labelledby="match-duration-label"
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={state.maxGameMinutes}
-                  onChange={(e) =>
-                    dispatch({
-                      type: "SET_MAX_GAME_MINUTES",
-                      minutes: Number(e.target.value) || 15,
-                    })
-                  }
-                />
-              ) : (
-                <p className="text-xs text-[var(--muted)]">
-                  Courts are not called on a clock.
-                </p>
-              )}
-            </div>
+                      ) : null}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
-        ) : null}
 
-        {!readOnly ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="mb-3 font-semibold">Check in</h2>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label htmlFor="player-name">Name</Label>
-                <Input
-                  id="player-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && checkIn()}
-                  placeholder="Player name"
-                />
-              </div>
-              <SkillTierSelect id="skill" value={skill} onChange={setSkill} />
-              {needsGender ? (
-                <div className="space-y-1">
-                  <Label htmlFor="player-gender">Gender</Label>
-                  <select
-                    id="player-gender"
-                    value={gender}
-                    onChange={(event) =>
-                      setGender(event.target.value as PlayerGender | "")
+          {!readOnly ? (
+            <WaitingStackPanel
+              state={state}
+              dispatch={dispatch}
+              openCourtCount={openCourtCount}
+              isPending={isPending}
+              busyKey={activeBusyKey}
+              onBusy={runBusy}
+            />
+          ) : null}
+        </section>
+
+        <aside className="space-y-4">
+          {!readOnly ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <h2 className="mb-3 font-semibold">Session settings</h2>
+              <div className="space-y-2">
+                <Label id="match-duration-label">Match duration</Label>
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-2)] p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={state.maxGameMinutes == null ? "default" : "ghost"}
+                    aria-pressed={state.maxGameMinutes == null}
+                    onClick={() =>
+                      dispatch({ type: "SET_MAX_GAME_MINUTES", minutes: null })
                     }
-                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
                   >
-                    <option value="">Choose</option>
-                    <option value="man">Man</option>
-                    <option value="woman">Woman</option>
-                  </select>
+                    No limit
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={state.maxGameMinutes != null ? "default" : "ghost"}
+                    aria-pressed={state.maxGameMinutes != null}
+                    onClick={() =>
+                      dispatch({
+                        type: "SET_MAX_GAME_MINUTES",
+                        minutes: state.maxGameMinutes ?? 15,
+                      })
+                    }
+                  >
+                    Set limit
+                  </Button>
                 </div>
-              ) : null}
-              <Button
-                className="w-full"
-                loading={activeBusyKey === "check-in"}
-                disabled={pending || (needsGender && !gender)}
-                onClick={checkIn}
-              >
-                Add player
-              </Button>
+                {state.maxGameMinutes != null ? (
+                  <Input
+                    id="max-game-minutes"
+                    aria-labelledby="match-duration-label"
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={state.maxGameMinutes}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_MAX_GAME_MINUTES",
+                        minutes: Number(e.target.value) || 15,
+                      })
+                    }
+                  />
+                ) : (
+                  <p className="text-xs text-[var(--muted)]">
+                    Courts are not called on a clock.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {!readOnly ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="mb-3 font-semibold">Partner lock</h2>
-            <p className="mb-3 text-xs text-[var(--muted)]">
-              Lock two players as partners. The player closer to the front moves
-              down to join the other — they cannot cut ahead.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
-                value={lockA}
-                onChange={(e) => setLockA(e.target.value)}
-              >
-                <option value="">Player A</option>
-                {rosterPlayers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
-                value={lockB}
-                onChange={(e) => setLockB(e.target.value)}
-              >
-                <option value="">Player B</option>
-                {rosterPlayers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button
-              className="mt-3 w-full"
-              variant="secondary"
-              loading={activeBusyKey === "partner-lock"}
-              disabled={pending || !lockA || !lockB || lockA === lockB}
-              onClick={() =>
-                runBusy("partner-lock", () => {
-                  dispatch({
-                    type: "SET_PARTNER_LOCK",
-                    playerId: lockA,
-                    partnerId: lockB,
-                  });
-                  dispatch({
-                    type: "SET_PARTNER_LOCK",
-                    playerId: lockB,
-                    partnerId: lockA,
-                  });
-                })
-              }
-            >
-              Lock partners
-            </Button>
-          </div>
-        ) : null}
-
-        {!readOnly && perCourt === 4 ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="mb-1 font-semibold">Team lock</h2>
-            <p className="mb-3 text-xs text-[var(--muted)]">
-              Lock four players to always play together on the same court.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {teamLockIds.map((value, index) => (
-                <select
-                  key={index}
-                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
-                  value={value}
-                  onChange={(e) =>
-                    setTeamLockIds((prev) =>
-                      prev.map((current, i) =>
-                        i === index ? e.target.value : current,
-                      ),
-                    )
-                  }
+          {!readOnly ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <h2 className="mb-3 font-semibold">Check in</h2>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="player-name">Name</Label>
+                  <Input
+                    id="player-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && checkIn()}
+                    placeholder="Player name"
+                  />
+                </div>
+                <SkillTierSelect id="skill" value={skill} onChange={setSkill} />
+                {needsGender ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="player-gender">Gender</Label>
+                    <select
+                      id="player-gender"
+                      value={gender}
+                      onChange={(event) =>
+                        setGender(event.target.value as PlayerGender | "")
+                      }
+                      className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                    >
+                      <option value="">Choose</option>
+                      <option value="man">Man</option>
+                      <option value="woman">Woman</option>
+                    </select>
+                  </div>
+                ) : null}
+                <Button
+                  className="w-full"
+                  loading={activeBusyKey === "check-in"}
+                  disabled={pending || (needsGender && !gender)}
+                  onClick={checkIn}
                 >
-                  <option value="">Player {index + 1}</option>
-                  {waiting.map((p) => (
+                  Add player
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {!readOnly ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <h2 className="mb-3 font-semibold">Partner lock</h2>
+              <p className="mb-3 text-xs text-[var(--muted)]">
+                Lock two players as partners. The player closer to the front
+                moves down to join the other — they cannot cut ahead.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                  value={lockA}
+                  onChange={(e) => setLockA(e.target.value)}
+                >
+                  <option value="">Player A</option>
+                  {rosterPlayers.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
                   ))}
                 </select>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
+                <select
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                  value={lockB}
+                  onChange={(e) => setLockB(e.target.value)}
+                >
+                  <option value="">Player B</option>
+                  {rosterPlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Button
-                className="flex-1"
+                className="mt-3 w-full"
                 variant="secondary"
-                loading={activeBusyKey === "team-lock"}
-                disabled={
-                  pending ||
-                  teamLockIds.some((id) => !id) ||
-                  new Set(teamLockIds).size !== 4
-                }
+                loading={activeBusyKey === "partner-lock"}
+                disabled={pending || !lockA || !lockB || lockA === lockB}
                 onClick={() =>
-                  runBusy("team-lock", () => {
-                    dispatch({ type: "SET_TEAM_LOCK", playerIds: teamLockIds });
-                    setTeamLockIds(Array.from({ length: 4 }, () => ""));
+                  runBusy("partner-lock", () => {
+                    dispatch({
+                      type: "SET_PARTNER_LOCK",
+                      playerId: lockA,
+                      partnerId: lockB,
+                    });
+                    dispatch({
+                      type: "SET_PARTNER_LOCK",
+                      playerId: lockB,
+                      partnerId: lockA,
+                    });
                   })
                 }
               >
-                Lock team
-              </Button>
-              <Button
-                className="flex-1"
-                variant="outline"
-                loading={activeBusyKey === "team-clear"}
-                disabled={pending || !teamLockIds.some(Boolean)}
-                onClick={() =>
-                  runBusy("team-clear", () => {
-                    const first = teamLockIds.find(Boolean);
-                    if (first) {
-                      dispatch({ type: "CLEAR_TEAM_LOCK", playerId: first });
-                    }
-                    setTeamLockIds(Array.from({ length: 4 }, () => ""));
-                  })
-                }
-              >
-                Clear
+                Lock partners
               </Button>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <QueueCard
-          title="Resting"
-          players={resting}
-          state={state}
-          dispatch={readOnly ? undefined : dispatch}
-          isPending={pending}
-          busyKey={activeBusyKey}
-          onBusy={runBusy}
-        />
+          {!readOnly && perCourt === 4 ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <h2 className="mb-1 font-semibold">Team lock</h2>
+              <p className="mb-3 text-xs text-[var(--muted)]">
+                Lock four players to always play together on the same court.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {teamLockIds.map((value, index) => (
+                  <select
+                    key={index}
+                    className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                    value={value}
+                    onChange={(e) =>
+                      setTeamLockIds((prev) =>
+                        prev.map((current, i) =>
+                          i === index ? e.target.value : current,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="">Player {index + 1}</option>
+                    {waiting.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  className="flex-1"
+                  variant="secondary"
+                  loading={activeBusyKey === "team-lock"}
+                  disabled={
+                    pending ||
+                    teamLockIds.some((id) => !id) ||
+                    new Set(teamLockIds).size !== 4
+                  }
+                  onClick={() =>
+                    runBusy("team-lock", () => {
+                      dispatch({
+                        type: "SET_TEAM_LOCK",
+                        playerIds: teamLockIds,
+                      });
+                      setTeamLockIds(Array.from({ length: 4 }, () => ""));
+                    })
+                  }
+                >
+                  Lock team
+                </Button>
+                <Button
+                  className="flex-1"
+                  variant="outline"
+                  loading={activeBusyKey === "team-clear"}
+                  disabled={pending || !teamLockIds.some(Boolean)}
+                  onClick={() =>
+                    runBusy("team-clear", () => {
+                      const first = teamLockIds.find(Boolean);
+                      if (first) {
+                        dispatch({ type: "CLEAR_TEAM_LOCK", playerId: first });
+                      }
+                      setTeamLockIds(Array.from({ length: 4 }, () => ""));
+                    })
+                  }
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <h2 className="mb-3 font-semibold">Leaderboard</h2>
-          <ul className="space-y-2">
-            {summary.slice(0, 8).map((row, i) => (
-              <li
-                key={row.playerId}
-                className="flex items-center justify-between text-sm"
-              >
-                <span>
-                  <span className="mr-2 text-[var(--muted)]">{i + 1}.</span>
-                  {row.name}
-                </span>
-                <span className="tabular-nums text-[var(--muted)]">
-                  {row.wins}W / {row.gamesPlayed}G
-                </span>
-              </li>
-            ))}
-            {summary.length === 0 ? (
-              <li className="text-sm text-[var(--muted)]">No games yet</li>
-            ) : null}
-          </ul>
-        </div>
-      </aside>
+          <QueueCard
+            title="Resting"
+            players={resting}
+            state={state}
+            race={race}
+            dispatch={readOnly ? undefined : dispatch}
+            isPending={pending}
+            busyKey={activeBusyKey}
+            onBusy={runBusy}
+          />
+
+          <SessionStandings race={race} />
+        </aside>
+      </div>
     </div>
   );
 }
@@ -638,10 +651,12 @@ function TeamBlock({
   label,
   ids,
   state,
+  race,
 }: {
   label: string;
   ids: string[];
   state: EngineState;
+  race: ReturnType<typeof sessionRace>;
 }) {
   return (
     <div>
@@ -651,7 +666,7 @@ function TeamBlock({
       <ul className="space-y-1">
         {ids.map((id) => (
           <li key={id} className="text-sm font-medium">
-            {playerName(state, id)}
+            <RaceName race={race} playerId={id} name={playerName(state, id)} />
           </li>
         ))}
       </ul>
@@ -663,6 +678,7 @@ function QueueCard({
   title,
   players,
   state,
+  race,
   dispatch,
   isPending = false,
   busyKey = null,
@@ -671,6 +687,7 @@ function QueueCard({
   title: string;
   players: EngineState["players"];
   state: EngineState;
+  race: ReturnType<typeof sessionRace>;
   dispatch?: (action: EngineAction) => void;
   isPending?: boolean;
   busyKey?: string | null;
@@ -693,7 +710,9 @@ function QueueCard({
             className="flex items-center justify-between gap-2 text-sm"
           >
             <div>
-              <div className="font-medium">{p.name}</div>
+              <div className="font-medium">
+                <RaceName race={race} playerId={p.id} name={p.name} />
+              </div>
               <div className="text-xs text-[var(--muted)]">
                 Skill {formatSkillTier(p.skill)} · {p.gamesPlayed} games
                 {p.partnerLockId
@@ -728,15 +747,26 @@ function QueueCard({
                     variant="ghost"
                     loading={busyKey === `return-${p.id}`}
                     disabled={isPending}
-                    onClick={() =>
+                    onClick={() => {
+                      const partner = mutualLockPartner(state.players, p.id);
+                      if (partner?.status === "playing") {
+                        toast.error(
+                          `${p.name} is waiting for ${partner.name}`,
+                          {
+                            description:
+                              "They'll stack together when that game ends.",
+                          },
+                        );
+                        return;
+                      }
                       run(`return-${p.id}`, () =>
                         dispatch({
                           type: "SET_STATUS",
                           playerId: p.id,
                           status: "waiting",
                         }),
-                      )
-                    }
+                      );
+                    }}
                   >
                     Return
                   </Button>

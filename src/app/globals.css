@@ -1,6 +1,30 @@
 @import "tailwindcss";
 
 :root,
+[data-theme="green"] {
+  --background: #070910;
+  --foreground: #f4f6fb;
+  --muted: #a3adc2;
+  --surface: #121624;
+  --surface-2: #1a2032;
+  --surface-3: #1d3328;
+  --border: rgba(255, 255, 255, 0.12);
+  --accent: #2f9e5b;
+  --accent-hover: #3bb56c;
+  --accent-fg: #f4fff8;
+  --accent-soft: rgba(47, 158, 91, 0.22);
+  --accent-fg-soft: #d8ffe4;
+  --ink: #070910;
+  --paper: #f5f7fb;
+  --highlight: #b7f255;
+  --hero-glow: rgba(60, 160, 90, 0.28);
+  --wash: rgba(40, 120, 70, 0.22);
+  --wash-strong: rgba(160, 220, 90, 0.24);
+  --board-glow: rgba(80, 180, 100, 0.42);
+  --page-top: #070910;
+  --page-bottom: #05070d;
+}
+
 [data-theme="court"] {
   --background: #070910;
   --foreground: #f4f6fb;
@@ -45,30 +69,6 @@
   --wash: rgba(40, 80, 180, 0.26);
   --wash-strong: rgba(120, 160, 255, 0.3);
   --board-glow: rgba(80, 130, 230, 0.48);
-  --page-top: #070910;
-  --page-bottom: #05070d;
-}
-
-[data-theme="green"] {
-  --background: #070910;
-  --foreground: #f4f6fb;
-  --muted: #a3adc2;
-  --surface: #121624;
-  --surface-2: #1a2032;
-  --surface-3: #1d3328;
-  --border: rgba(255, 255, 255, 0.12);
-  --accent: #2f9e5b;
-  --accent-hover: #3bb56c;
-  --accent-fg: #f4fff8;
-  --accent-soft: rgba(47, 158, 91, 0.22);
-  --accent-fg-soft: #d8ffe4;
-  --ink: #070910;
-  --paper: #f5f7fb;
-  --highlight: #b7f255;
-  --hero-glow: rgba(60, 160, 90, 0.28);
-  --wash: rgba(40, 120, 70, 0.22);
-  --wash-strong: rgba(160, 220, 90, 0.24);
-  --board-glow: rgba(80, 180, 100, 0.42);
   --page-top: #070910;
   --page-bottom: #05070d;
 }
@@ -165,6 +165,22 @@
 html {
   min-height: 100%;
   background-color: var(--page-bottom);
+  /* A wider document lets iOS Safari zoom out and park the page on the left. */
+  overflow-x: clip;
+}
+
+/*
+ * Chrome paints autofill with a light background. Keep the field on the
+ * theme surface so the text and the show/hide icon stay on the same color.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  box-shadow: 0 0 0 1000px var(--surface) inset;
+  transition: background-color 9999s ease-out;
 }
 
 .page-canvas,
@@ -193,17 +209,7 @@ body {
 }
 
 .gradient-phrase {
-  background-image: linear-gradient(
-    100deg,
-    #c4b5fd 0%,
-    #f0abfc 46%,
-    #93c5fd 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: phrase-shift 8s ease-in-out infinite;
+  color: var(--highlight);
 }
 
 .reveal {
@@ -259,11 +265,9 @@ body {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(16px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -298,16 +302,6 @@ body {
 
 .glow-pulse {
   animation: glow-pulse 6s ease-in-out infinite alternate;
-}
-
-@keyframes phrase-shift {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
 }
 
 @keyframes glow-pulse {
@@ -358,8 +352,7 @@ body {
   .animate-drift,
   .float-slow,
   .float-late,
-  .glow-pulse,
-  .gradient-phrase {
+  .glow-pulse {
     animation: none;
   }
 

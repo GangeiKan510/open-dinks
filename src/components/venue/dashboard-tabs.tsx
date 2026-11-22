@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
-import { CalendarClock, Play, Settings } from "lucide-react";
+import { CalendarClock, Play, Receipt, Settings } from "lucide-react";
 import {
   Tabs,
   TabsBadge,
@@ -41,6 +41,8 @@ export type DashboardTabsProps = {
   pendingRequestCount: number;
   openPlay: ReactNode;
   bookings: BookingsManagerProps;
+  payments: ReactNode;
+  pendingPaymentCount: number;
   settings: FacilitySettingsProps | null;
   settingsFallback?: ReactNode;
 };
@@ -54,6 +56,8 @@ export function DashboardTabs({
   pendingRequestCount,
   openPlay,
   bookings,
+  payments,
+  pendingPaymentCount,
   settings,
   settingsFallback,
 }: DashboardTabsProps) {
@@ -71,6 +75,11 @@ export function DashboardTabs({
           Bookings
           <TabsBadge count={pendingRequestCount} tone="attention" />
         </TabsTrigger>
+        <TabsTrigger value="payments">
+          <Receipt className="h-4 w-4 shrink-0" aria-hidden />
+          Payment History
+          <TabsBadge count={pendingPaymentCount} tone="attention" />
+        </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 shrink-0" aria-hidden />
           Settings
@@ -83,6 +92,7 @@ export function DashboardTabs({
       <TabsContent value="bookings" className="space-y-6">
         {tab === "bookings" ? <BookingsManager {...bookings} /> : null}
       </TabsContent>
+      <TabsContent value="payments">{payments}</TabsContent>
       <TabsContent value="settings" className="space-y-6">
         {tab === "settings" ? (
           settings ? (

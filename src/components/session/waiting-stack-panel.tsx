@@ -2,8 +2,16 @@
 
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Megaphone } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { EngineAction, EnginePlayer, EngineState } from "@/engine";
 import { formatSkillTier } from "@/lib/skill-tier";
 import {
@@ -14,6 +22,7 @@ import {
   formatWaitingTime,
   groupWaitingStack,
   moveWaitingStackGroupIds,
+  orderSeparatesLockedPairs,
   orderedWaitingPlayers,
   playerWaitingMs,
   reorderWaitingStackGroupIds,
@@ -27,6 +36,8 @@ import {
   speakAnnouncement,
 } from "@/lib/speech-announcer";
 import { Button } from "@/components/ui/button";
+import { RaceName } from "@/components/session/session-race-panel";
+import { sessionRace, type SessionRace } from "@/lib/session-race";
 import { cn } from "@/lib/utils";
 
 type DragState =
@@ -46,6 +57,7 @@ function SortablePlayerRow({
   player,
   stackIndex,
   state,
+  race,
   dispatch,
   draggedId,
   dragOverId,
@@ -61,6 +73,7 @@ function SortablePlayerRow({
   player: EnginePlayer;
   stackIndex: number;
   state: EngineState;
+  race: SessionRace;
   dispatch: (action: EngineAction) => void;
   draggedId: string | null;
   dragOverId: string | null;
@@ -108,7 +121,9 @@ function SortablePlayerRow({
         {stackIndex + 1}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{player.name}</div>
+        <div className="min-w-0 font-medium">
+          <RaceName race={race} playerId={player.id} name={player.name} />
+        </div>
         <div className="text-xs text-[var(--muted)]">
           {formatSkillTier(player.skill)} · {player.gamesPlayed} games · waiting{" "}
           {formatWaitingTime(playerWaitingMs(player, state.now))}
@@ -205,6 +220,7 @@ export function WaitingStackPanel({
 }) {
   const pending = isPending ?? false;
   const stack = orderedWaitingPlayers(state);
+  const race = sessionRace(state);
   const perCourt = playersPerCourt(state);
   const groups = groupWaitingStack(stack, perCourt);
   const separatedTeamLocks = findSeparatedTeamLocks(state);
@@ -214,6 +230,19 @@ export function WaitingStackPanel({
   );
   const [drag, setDrag] = useState<DragState>(null);
   const [dragOver, setDragOver] = useState<DragState>(null);
+  const [pendingMove, setPendingMove] = useState<{
+    sourceId: string;
+    targetId: string;
+    playerIds: string[];
+  } | null>(null);
+
+  function lockedPairWouldSplit(before: string[], after: string[]) {
+    if (!orderSeparatesLockedPairs(state.players, before, after)) return false;
+    toast.error("Locked partners stay together", {
+      description: "Once they're side by side, a move can't split them.",
+    });
+    return true;
+  }
 
   function run(key: string, action: () => void) {
     if (onBusy) onBusy(key, action);
@@ -257,9 +286,7 @@ export function WaitingStackPanel({
 
     const ids = stack.map((player) => player.id);
     const reordered = reorderWaitingStackIds(ids, raw, targetId);
-    if (reordered) {
-      dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
-    } else {
+    if (!reordered) {
       const blockMessage = formatFairJoinBlockMessage(
         (id) => playerName(state, id),
         ids,
@@ -271,7 +298,27 @@ export function WaitingStackPanel({
           description: blockMessage,
         });
       }
+      clearDrag();
+      return;
     }
+    if (lockedPairWouldSplit(ids, reordered)) {
+      clearDrag();
+      return;
+    }
+
+    const from = ids.indexOf(raw);
+    const to = ids.indexOf(targetId);
+    if (
+      from >= 0 &&
+      to >= 0 &&
+      Math.floor(from / perCourt) !== Math.floor(to / perCourt)
+    ) {
+      setPendingMove({ sourceId: raw, targetId, playerIds: reordered });
+      clearDrag();
+      return;
+    }
+
+    dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     clearDrag();
   }
 
@@ -303,26 +350,28 @@ export function WaitingStackPanel({
       return;
     }
 
+    const ids = stack.map((player) => player.id);
     const reordered = reorderWaitingStackGroupIds(
-      stack.map((player) => player.id),
+      ids,
       sourceIndex,
       targetIndex,
       perCourt,
     );
-    if (reordered) {
+    if (reordered && !lockedPairWouldSplit(ids, reordered)) {
       dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     }
     clearDrag();
   }
 
   function moveGroup(groupIndex: number, direction: "up" | "down") {
+    const ids = stack.map((player) => player.id);
     const reordered = moveWaitingStackGroupIds(
-      stack.map((player) => player.id),
+      ids,
       groupIndex,
       direction,
       perCourt,
     );
-    if (reordered) {
+    if (reordered && !lockedPairWouldSplit(ids, reordered)) {
       dispatch({ type: "REORDER_WAITING_QUEUE", playerIds: reordered });
     }
   }
@@ -471,15 +520,19 @@ export function WaitingStackPanel({
                     ) : null}
                     {isNextUp && isComplete ? (
                       <Button
+                        type="button"
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
+                        className="h-8 w-8 px-0"
+                        aria-label="Announce the next group to get ready"
+                        title="Announce prepare"
                         onClick={() =>
                           speakAnnouncement(
                             formatPrepareAnnouncement(group.map((p) => p.name)),
                           )
                         }
                       >
-                        Announce prepare
+                        <Megaphone className="h-4 w-4" aria-hidden />
                       </Button>
                     ) : !isComplete ? (
                       <span className="text-xs text-[var(--muted)]">
@@ -496,6 +549,7 @@ export function WaitingStackPanel({
                       player={player}
                       stackIndex={baseIndex + indexInGroup}
                       state={state}
+                      race={race}
                       dispatch={dispatch}
                       draggedId={draggedPlayerId}
                       dragOverId={dragOverPlayerId}
@@ -517,6 +571,47 @@ export function WaitingStackPanel({
           })}
         </div>
       )}
+
+      <Dialog
+        open={pendingMove != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMove(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Move{" "}
+              {pendingMove
+                ? playerName(state, pendingMove.sourceId)
+                : "this player"}
+              ?
+            </DialogTitle>
+            <DialogDescription>
+              {pendingMove
+                ? `${playerName(state, pendingMove.sourceId)} will trade places with ${playerName(state, pendingMove.targetId)}. They can't move back up the stack.`
+                : "They can't move back up the stack."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingMove(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingMove) return;
+                dispatch({
+                  type: "REORDER_WAITING_QUEUE",
+                  playerIds: pendingMove.playerIds,
+                });
+                setPendingMove(null);
+              }}
+            >
+              Move
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -6,8 +6,13 @@ import { activeCourtBooking, occupiedMatches, playerName } from "@/engine";
 import { BookingWindow } from "@/components/session/booking-window";
 import { CourtAnnouncer } from "@/components/session/court-announcer";
 import { CourtTimer } from "@/components/session/court-timer";
+import {
+  RaceName,
+  SessionHonors,
+} from "@/components/session/session-race-panel";
 import { formatBrandTitle, type FacilityConfig } from "@/lib/facility";
 import { openPlayModeLabel } from "@/lib/open-play";
+import { sessionRace } from "@/lib/session-race";
 import { primeSpeechAnnouncer } from "@/lib/speech-announcer";
 
 export function Wallboard({
@@ -21,6 +26,7 @@ export function Wallboard({
 }) {
   const courts = occupiedMatches(state);
   const waiting = state.players.filter((p) => p.status === "waiting");
+  const race = sessionRace(state);
 
   useEffect(() => {
     primeSpeechAnnouncer();
@@ -51,6 +57,8 @@ export function Wallboard({
             </div>
           </div>
         </header>
+
+        <SessionHonors race={race} />
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,22rem)]">
           <div className="grid auto-rows-min items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -113,7 +121,13 @@ export function Wallboard({
                       />
                       <div>
                         {match.teamA.map((id) => (
-                          <div key={id}>{playerName(state, id)}</div>
+                          <div key={id}>
+                            <RaceName
+                              race={race}
+                              playerId={id}
+                              name={playerName(state, id)}
+                            />
+                          </div>
                         ))}
                       </div>
                       <div className="text-xs uppercase tracking-[0.3em] text-white/40">
@@ -121,7 +135,13 @@ export function Wallboard({
                       </div>
                       <div>
                         {match.teamB.map((id) => (
-                          <div key={id}>{playerName(state, id)}</div>
+                          <div key={id}>
+                            <RaceName
+                              race={race}
+                              playerId={id}
+                              name={playerName(state, id)}
+                            />
+                          </div>
                         ))}
                       </div>
                       {booking ? (
@@ -155,7 +175,7 @@ export function Wallboard({
                     <span className="mr-3 text-[var(--highlight)]">
                       {i + 1}
                     </span>
-                    {p.name}
+                    <RaceName race={race} playerId={p.id} name={p.name} />
                   </span>
                   <span className="text-sm text-white/40">
                     {p.gamesPlayed}G

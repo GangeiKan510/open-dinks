@@ -3,6 +3,11 @@ import {
   type TournamentEvent,
 } from "@/engine/tournament";
 import { loadAccountVenue } from "@/lib/account-venue";
+import { loadFeatureAccess } from "@/lib/billing-server";
+import {
+  formatTournamentDateList,
+  formatTournamentDates,
+} from "@/lib/entitlements";
 import { isPublicBooker } from "@/lib/host-access";
 import { normalizeCourtCount } from "@/lib/court-count";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -22,11 +27,16 @@ export type DirectorTournament =
       umpireToken: string;
       event: TournamentEvent;
       updatedAt: string;
+      /** False until a paid day, including the morning grace. Setup stays open. */
+      bracketsOpen: boolean;
+      /** Paid dates still ahead, or the grace day when that is all that remains. */
+      bracketDates: string;
     }
   | { status: "signed-out" }
   | { status: "not-host" }
   | { status: "unconfigured" }
   | { status: "missing-schema" }
+  | { status: "locked"; reason: "club" | "pass" }
   | { status: "error" };
 
 type TournamentRow = {
@@ -39,6 +49,8 @@ type TournamentRow = {
 function readyFromRow(
   row: TournamentRow,
   umpireToken = "",
+  bracketsOpen = true,
+  bracketDates = "",
 ): DirectorTournament {
   const event = tournamentEventFromDocument(row.document);
   if (!event || !row.updated_at) return { status: "error" };
@@ -49,6 +61,8 @@ function readyFromRow(
     umpireToken,
     event,
     updatedAt: row.updated_at,
+    bracketsOpen,
+    bracketDates,
   };
 }
 
@@ -133,6 +147,28 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
     if (!venue) return { status: "not-host" };
   }
 
+  const venue = await loadAccountVenue(user.id, supabase);
+  let bracketsOpen = true;
+  let bracketDates = "";
+  if (venue) {
+    const access = await loadFeatureAccess(
+      supabase,
+      venue.facilityId,
+      venue.timezone,
+    );
+    if (access.schemaReady && !access.tournamentSetup) {
+      return { status: "locked", reason: "pass" };
+    }
+    bracketsOpen = !access.schemaReady || access.tournament;
+    bracketDates = formatTournamentDateList(access.ownedTournamentDates);
+    if (!bracketDates && access.tournamentThrough) {
+      bracketDates = formatTournamentDates(
+        access.tournamentThrough,
+        access.tournamentThrough,
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("tournaments")
     .select("id, public_token, document, updated_at")
@@ -147,7 +183,7 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
     return { status: "error" };
   }
   if (data) {
-    const ready = readyFromRow(data);
+    const ready = readyFromRow(data, "", bracketsOpen, bracketDates);
     if (ready.status !== "ready" || !data.updated_at) {
       return ready.status === "ready" ? { status: "error" } : ready;
     }
@@ -186,7 +222,7 @@ export async function loadDirectorTournament(): Promise<DirectorTournament> {
     if (isMissingSchemaError(insertError)) return { status: "missing-schema" };
     return { status: "error" };
   }
-  const ready = readyFromRow(created);
+  const ready = readyFromRow(created, "", bracketsOpen, bracketDates);
   if (ready.status !== "ready") return ready;
   const umpireToken = await loadUmpireToken(supabase);
   if (umpireToken === "error") return { status: "error" };

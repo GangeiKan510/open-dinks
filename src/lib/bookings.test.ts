@@ -175,10 +175,18 @@ describe("parsePublicBookingVenue", () => {
       { id: "court-1", name: "Court 1" },
       { id: "court-2", name: "Court 2" },
     ],
+    acceptingBookings: true,
   };
 
   it("parses the RPC payload", () => {
     expect(parsePublicBookingVenue(venue)).toEqual(venue);
+  });
+
+  it("closes public booking when the club plan is paused", () => {
+    expect(
+      parsePublicBookingVenue({ ...venue, acceptingBookings: false })
+        ?.acceptingBookings,
+    ).toBe(false);
   });
 
   it("defaults booking hours when the RPC omits them", () => {

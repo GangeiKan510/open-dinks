@@ -8,7 +8,14 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { Check, Monitor, QrCode, Trophy } from "lucide-react";
+import {
+  Check,
+  LayoutDashboard,
+  Monitor,
+  QrCode,
+  TriangleAlert,
+  Trophy,
+} from "lucide-react";
 import {
   activeCategory,
   addCategory,
@@ -79,6 +86,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { bracketBuildNotice } from "@/lib/entitlements";
 import { PRODUCT_NAME } from "@/lib/facility";
 import { deleteSponsorLogo, uploadSponsorLogo } from "@/lib/sponsor-logo";
 import { saveTournamentDocument } from "@/lib/tournament-client";
@@ -115,14 +123,16 @@ export function TournamentDirector({
   umpireToken,
   initialEvent,
   initialUpdatedAt,
-  openPlayHref,
+  bracketsOpen,
+  bracketDates,
 }: {
   tournamentId: string;
   publicToken: string;
   umpireToken: string;
   initialEvent: TournamentEvent;
   initialUpdatedAt: string;
-  openPlayHref: string;
+  bracketsOpen: boolean;
+  bracketDates: string;
 }) {
   const [event, setEvent] = useState(initialEvent);
   const savedRef = useRef(initialEvent);
@@ -321,6 +331,7 @@ export function TournamentDirector({
   }
 
   const champion = bracketChampion(state);
+  const bracketNotice = bracketBuildNotice(bracketDates);
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-8 md:py-10">
@@ -351,6 +362,11 @@ export function TournamentDirector({
             Scores save to your account. The scoreboard link is view-only. Give
             each umpire the QR code.
           </p>
+          {bracketDates ? (
+            <p className="text-sm font-medium text-amber-100">
+              Tournament days {bracketDates}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
@@ -384,7 +400,10 @@ export function TournamentDirector({
             </p>
           )}
           <Button variant="outline" asChild>
-            <Link href={openPlayHref}>Open play</Link>
+            <Link href="/dashboard">
+              <LayoutDashboard className="h-4 w-4" aria-hidden />
+              Dashboard
+            </Link>
           </Button>
         </div>
       </header>
@@ -459,6 +478,8 @@ export function TournamentDirector({
       ) : (
         <TournamentPanels
           event={event}
+          bracketsOpen={bracketsOpen}
+          bracketNotice={bracketNotice}
           state={state}
           view={view}
           filter={filter}
@@ -481,6 +502,8 @@ export function TournamentDirector({
 
 function TournamentPanels({
   event,
+  bracketsOpen,
+  bracketNotice,
   state,
   view,
   filter,
@@ -497,6 +520,8 @@ function TournamentPanels({
   setUndoOpen,
 }: {
   event: TournamentEvent;
+  bracketsOpen: boolean;
+  bracketNotice: string;
   state: TournamentState;
   view: LiveView;
   filter: MatchFilter;
@@ -582,6 +607,8 @@ function TournamentPanels({
       {state.phase === "setup" ? (
         <SetupForm
           state={state}
+          bracketsOpen={bracketsOpen}
+          bracketNotice={bracketNotice}
           clubs={event.clubs}
           run={run}
           onAddClub={(name) => runEvent(() => addClub(event, name))}
@@ -663,7 +690,9 @@ function TournamentPanels({
                 />
                 <StandingsColumn
                   state={state}
+                  lockedReason={bracketsOpen ? null : bracketNotice}
                   onBuild={() => {
+                    if (!bracketsOpen) return;
                     if (run(() => generateBracket(state))) setPicked(null);
                   }}
                 />
@@ -1588,12 +1617,16 @@ function CategoryCourts({
 
 function SetupForm({
   state,
+  bracketsOpen,
+  bracketNotice,
   clubs,
   run,
   onAddClub,
   onRemoveClub,
 }: {
   state: TournamentState;
+  bracketsOpen: boolean;
+  bracketNotice: string;
   clubs: string[];
   run: (action: () => TournamentState) => boolean;
   onAddClub: (name: string) => boolean;
@@ -1627,10 +1660,12 @@ function SetupForm({
   );
   const assignmentIssue = bracketAssignmentIssue(state);
   const canBuild =
+    bracketsOpen &&
     state.teams.length >= 2 &&
     (usingAssignments ? assignmentIssue == null : planReady);
-  const buildMessage =
-    state.teams.length < 2
+  const buildMessage = !bracketsOpen
+    ? bracketNotice
+    : state.teams.length < 2
       ? `Add at least 2 ${entryNoun} to build brackets.`
       : usingAssignments
         ? (assignmentIssue ?? "Using the brackets you assigned.")
@@ -1997,6 +2032,15 @@ function SetupForm({
             }).join(" · ")}
           </p>
         ) : null}
+        {!bracketsOpen ? (
+          <p
+            className="flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
+            role="status"
+          >
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            {bracketNotice}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           <Button
             disabled={!canBuild}
@@ -2012,14 +2056,20 @@ function SetupForm({
             Auto-fill brackets
           </Button>
         </div>
-        <p className="text-sm text-[var(--muted)]">
-          {buildMessage}
-          {state.teams.length > 0
-            ? singles
-              ? " Pick a bracket for each player, or auto-fill, then build."
-              : " Pick a bracket for each team, or auto-fill, then build."
-            : ""}
-        </p>
+        {bracketsOpen || state.teams.length > 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            {[
+              bracketsOpen ? buildMessage : "",
+              state.teams.length > 0
+                ? singles
+                  ? "Pick a bracket for each player, or auto-fill, then build."
+                  : "Pick a bracket for each team, or auto-fill, then build."
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          </p>
+        ) : null}
       </section>
     </div>
   );
@@ -2153,12 +2203,14 @@ function MatchColumn({
 
 function StandingsColumn({
   state,
+  lockedReason,
   onBuild,
 }: {
   state: TournamentState;
+  lockedReason: string | null;
   onBuild: () => void;
 }) {
-  const reason = bracketBlockReason(state);
+  const reason = lockedReason ?? bracketBlockReason(state);
   const wildcards = wildcardTeamIds(state);
 
   return (
@@ -2186,7 +2238,20 @@ function StandingsColumn({
             Build final bracket
           </Button>
           {reason ? (
-            <p className="text-sm text-[var(--muted)]">{reason}</p>
+            lockedReason ? (
+              <p
+                className="flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
+                role="status"
+              >
+                <TriangleAlert
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  aria-hidden
+                />
+                {reason}
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--muted)]">{reason}</p>
+            )
           ) : null}
         </div>
       ) : null}

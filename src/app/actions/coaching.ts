@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { BILLING_ERROR_MESSAGES } from "@/lib/billing-messages";
 import { createClient } from "@/lib/supabase/server";
 import {
   BOOKING_SLOT_DURATION_MS,
@@ -38,6 +39,9 @@ function coachingWriteError(
   if (isMissingSchemaError(error)) {
     console.error(`[coaching] ${context}: schema missing`, error);
     return { error: COACHING_ERROR_MESSAGES.migrations };
+  }
+  if (error.code === "P0403") {
+    return { error: BILLING_ERROR_MESSAGES.booking };
   }
   if (error.code === "42501") {
     return { error: COACHING_ERROR_MESSAGES.signInGoogle };

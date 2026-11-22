@@ -1,11 +1,21 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Image from "next/image";
+import { FeaturedReviews } from "@/components/landing/featured-reviews";
+import { FeedbackForm } from "@/components/landing/feedback-form";
+import { PricingSection } from "@/components/landing/pricing-section";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Reveal } from "@/components/landing/reveal";
 import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
-import { isSupabaseConfigured } from "@/lib/env";
+import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { PRODUCT_NAME } from "@/lib/facility";
+import {
+  jsonLdScript,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  siteJsonLd,
+} from "@/lib/seo";
 import { loadAccountVenue } from "@/lib/account-venue";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import { createClient } from "@/lib/supabase/server";
@@ -13,6 +23,21 @@ import { cn } from "@/lib/utils";
 
 const photoFrame =
   "h-auto w-full rounded-[1.25rem] object-cover shadow-[0_30px_70px_-36px_rgba(0,0,0,0.75)]";
+
+export const metadata: Metadata = {
+  title: { absolute: SITE_TITLE },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    url: "/",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+};
 
 export default async function HomePage() {
   let signedIn = false;
@@ -37,13 +62,22 @@ export default async function HomePage() {
 
   return (
     <main className="page-canvas motion-safe:scroll-smooth">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdScript(siteJsonLd(siteUrl())),
+        }}
+      />
       <LandingNav ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
       <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
-        <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="animate-rise space-y-7">
+        <div className="grid min-w-0 items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="min-w-0 animate-rise space-y-7">
             <Pill>For pickleball clubs</Pill>
-            <h1 className="max-w-xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
+            <h1 className="max-w-xl text-5xl font-semibold leading-[1.12] tracking-tight text-[var(--foreground)] md:text-6xl lg:text-7xl">
+              <span className="mb-4 block text-sm font-semibold tracking-wide text-[var(--highlight)]">
+                {PRODUCT_NAME}
+              </span>
               One board for <span className="gradient-phrase">open play</span>,{" "}
               <span className="gradient-phrase">tournaments</span>, and{" "}
               <span className="gradient-phrase">court hours</span>.
@@ -67,7 +101,7 @@ export default async function HomePage() {
               </Button>
             </div>
           </div>
-          <div className="animate-rise-delay">
+          <div className="min-w-0 animate-rise-delay">
             <HeroCollage />
           </div>
         </div>
@@ -135,9 +169,9 @@ export default async function HomePage() {
               Saturday open play, without the whiteboard.
             </h2>
             <p className="text-lg text-[var(--muted)]">
-              A player scans the session QR, gives a name and a skill, and sees
-              their place in the queue. You send the next group. The same list
-              is on every phone and on the gym TV.
+              You add each player from the host console. They open the public
+              session page and see the courts and their place in the queue. The
+              same list is on every phone and on the gym TV.
             </p>
           </Reveal>
 
@@ -319,8 +353,8 @@ export default async function HomePage() {
             first game.
           </h2>
           <p className="mx-auto max-w-xl text-lg text-[var(--muted)]">
-            Hosts sign in. Players join a session from a QR, or request a court
-            from your public link.
+            Hosts sign in and add players by name. Players follow the session
+            from the public page, or request a court from your public link.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" className="rounded-full" asChild>
@@ -338,6 +372,23 @@ export default async function HomePage() {
         </Reveal>
       </section>
 
+      <PricingSection ctaHref={ctaHref} ctaLabel={ctaLabel} />
+
+      <FeaturedReviews />
+
+      <section id="feedback" className="mx-auto max-w-xl px-6 pb-24">
+        <h2 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+          Tell us how it went
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
+          Add your club&apos;s name and a note. If we feature it, it shows on
+          this page as a review.
+        </p>
+        <div className="mt-6">
+          <FeedbackForm />
+        </div>
+      </section>
+
       <footer className="border-t border-[var(--border)]">
         <div className="mx-auto grid max-w-6xl gap-10 px-6 py-12 sm:grid-cols-2 md:grid-cols-4">
           <div className="space-y-3 sm:col-span-2">
@@ -347,7 +398,8 @@ export default async function HomePage() {
               aria-label={PRODUCT_NAME}
             />
             <p className="max-w-xs text-sm leading-relaxed text-[var(--muted)]">
-              Open play, tournaments, and court hours on one board.
+              {PRODUCT_NAME} runs open play, tournaments, and court hours on one
+              board.
             </p>
           </div>
           <div className="space-y-2 text-sm">
@@ -370,12 +422,18 @@ export default async function HomePage() {
             >
               {ctaLabel}
             </PendingLink>
-            <PendingLink
-              href="/demo"
+            <a
+              href="#pricing"
               className="block text-[var(--muted)] hover:text-[var(--foreground)]"
             >
-              Local demo
-            </PendingLink>
+              Pricing
+            </a>
+            <a
+              href="#reviews"
+              className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Reviews
+            </a>
           </div>
         </div>
       </footer>
@@ -388,7 +446,7 @@ const products = [
     href: "#open-play",
     kicker: "Open Play OS",
     title: "A fair queue, on the TV",
-    body: "Check-in, the next group, and every court stay in sync from the QR to the wallboard.",
+    body: "Check-in, the next group, and every court stay in sync from the public page to the wallboard.",
   },
   {
     href: "#tournament",
@@ -475,7 +533,7 @@ function HeroCollage() {
     <div className="relative mx-auto mt-4 w-full max-w-xl pb-10 lg:mt-0 lg:max-w-none">
       <div
         aria-hidden
-        className="glow-pulse pointer-events-none absolute -inset-8 rounded-full bg-[radial-gradient(circle,var(--wash-strong),transparent_68%)] blur-2xl"
+        className="glow-pulse pointer-events-none absolute -inset-y-8 inset-x-0 rounded-full bg-[radial-gradient(circle,var(--wash-strong),transparent_68%)] blur-2xl"
       />
       <div className="relative">
         <Image
@@ -507,15 +565,15 @@ function HeroCollage() {
 
 const openPlaySteps = [
   {
-    title: "Players check themselves in",
-    body: "The QR opens the session. A name and a skill are enough. They see their spot in the queue, and whether they are on a court. Mixed Only also asks for a gender, because every team is mixed and no pair repeats.",
+    title: "Players follow the session",
+    body: "The public page shows every court, who is on it, and the waiting list. The host adds each name and skill, so the queue cannot be filled by someone who is not there. Mixed Only also needs a gender, because every team is mixed and no pair repeats.",
     media: (
       <Shot
         src="/assets/01-player-checkin.jpeg"
-        alt="A player holding a phone at the court gate, checking in as Sofia with skill Intermediate, while the session QR hangs on the fence."
+        alt="A player holding a phone at the court gate, looking at the live session."
         width={2400}
         height={1792}
-        brief="Check-in on a phone at the gate: name, skill, and the queue, with the session QR on the fence."
+        brief="The public session page on a phone at the gate: courts and the waiting list."
       />
     ),
   },

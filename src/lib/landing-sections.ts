@@ -2,13 +2,16 @@ export const LANDING_SECTIONS = [
   { id: "open-play", label: "Open Play OS" },
   { id: "tournament", label: "Tournament Mode" },
   { id: "court-rentals", label: "Court Rentals and Coaching" },
+  { id: "pricing", label: "Pricing" },
+  { id: "reviews", label: "Reviews" },
 ] as const;
 
 export type LandingSectionId = (typeof LANDING_SECTIONS)[number]["id"];
 
 /**
- * The section whose top has crossed the sticky bar. At the bottom of the page
- * the last section may never reach that line, so it wins once scrolling stops.
+ * The section whose top has reached the sticky bar. A few pixels of slack
+ * cover subpixel alignment when a hash link stops just under that bar. At the
+ * bottom of the page the last section wins once scrolling stops.
  */
 export function activeLandingSection(
   sections: ReadonlyArray<{ id: string; top: number }>,
@@ -19,9 +22,10 @@ export function activeLandingSection(
   if (!first) return "";
   if (atPageEnd) return sections[sections.length - 1]?.id ?? first.id;
 
+  const line = offset + 8;
   let current = first.id;
   for (const section of sections) {
-    if (section.top <= offset) current = section.id;
+    if (section.top <= line) current = section.id;
   }
   return current;
 }

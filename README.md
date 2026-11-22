@@ -1,6 +1,6 @@
 # Picklrz
 
-Cloud-first pickleball **open play OS** — fair court rotations, live queues, QR player views, and TV wallboards.
+Cloud-first pickleball **open play OS** — fair court rotations, live queues, a public session page, and TV wallboards.
 
 ## Stack
 
@@ -8,18 +8,14 @@ Cloud-first pickleball **open play OS** — fair court rotations, live queues, Q
 - Supabase (Auth, Postgres, RLS, Realtime)
 - Pure TypeScript rotation engine in `src/engine/` (fully unit tested)
 
-## Quick start (local demo, no Supabase)
+## Quick start
 
 ```bash
 yarn install
 yarn dev
 ```
 
-Open [http://localhost:3000/demo](http://localhost:3000/demo):
-
-1. **Seed 12 players**
-2. **Fill open courts**
-3. Open `/demo/player` and `/demo/board` in other tabs (same browser — localStorage sync)
+Open [http://localhost:3000](http://localhost:3000) and sign in as a host. A new club starts a 7-day trial of open play and booking. Tournament days are bought separately.
 
 ## Supabase setup
 
@@ -71,5 +67,7 @@ yarn build
 
 ## Product scope (v1)
 
-**In:** venues, live sessions, check-in, fair rotation modes, host console, player QR view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests)  
-**Out:** memberships, online payments, DUPR export, native apps
+**In:** venues, live sessions, host check-in, fair rotation modes, host console, public player view, wallboard, partner locks, session summary, court/coaching bookings (Google sign-in for public requests), club subscription (open play and booking), tournament day passes, operator panel (sales, accounts, activity, anonymous feedback)  
+**Out:** player memberships, DUPR export, native apps
+
+Operator accounts are created at `/admin/login` and can open `/admin` only. Apply the platform-admin migration, and set `SUPABASE_SERVICE_ROLE_KEY`. Production also needs `PLATFORM_ADMIN_SETUP_KEY` for the first account.
