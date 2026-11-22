@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   BILLING_ERROR_MESSAGES,
+  clubPlanStatusCopy,
   receiptSentCopy,
 } from "@/lib/billing-messages";
 import { formatCheckoutPesos } from "@/lib/discounts";
@@ -265,14 +266,49 @@ export function TournamentModeButton() {
   );
 }
 
-function PlanChip({ label, detail }: { label: string; detail: string }) {
+function PlanTile({
+  icon,
+  label,
+  title,
+  detail,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  detail: string;
+  tone: "active" | "waiting" | "idle";
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="inline-flex h-6 items-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-xs font-semibold uppercase tracking-[0.14em]">
-        {label}
+    <article
+      className={cn(
+        "flex min-w-0 gap-3 rounded-xl border p-4",
+        tone === "active" &&
+          "border-[var(--highlight)]/45 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))]",
+        tone === "waiting" && "border-amber-400/45 bg-amber-400/10",
+        tone === "idle" && "border-[var(--border)] bg-[var(--surface-2)]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          tone === "active" && "bg-[var(--highlight)] text-[var(--ink)]",
+          tone === "waiting" && "bg-amber-300 text-amber-950",
+          tone === "idle" && "bg-[var(--surface)] text-[var(--muted)]",
+        )}
+      >
+        {icon}
       </span>
-      <span className="text-sm">{detail}</span>
-    </div>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+          {label}
+        </p>
+        <p className="mt-1 text-base font-semibold leading-snug">{title}</p>
+        <p className="mt-1 text-sm leading-snug text-[var(--muted)]">
+          {detail}
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -283,72 +319,125 @@ function tournamentDetail(access: FeatureAccess): string {
   return formatTournamentDateList(access.ownedTournamentDates);
 }
 
-export function PlanSummary() {
-  const { access, openPlans, timeZone } = usePlans();
+export function TrialBanner() {
+  const { access, openPlans } = usePlans();
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
+
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300/70 bg-[linear-gradient(105deg,rgba(251,191,36,0.22),rgba(251,191,36,0.06))] px-4 py-4 shadow-[0_0_32px_-16px_rgba(251,191,36,0.9)]">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-300 text-amber-950">
+          <Clock className="h-5 w-5" aria-hidden />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+            Free trial
+          </p>
+          <p className="text-lg font-semibold text-amber-50">
+            {access.trialDaysLeft} {daysLabel} left
+          </p>
+          <p className="mt-0.5 max-w-xl text-sm text-amber-100/85">
+            Open play and booking stop when the trial ends. Upgrade for{" "}
+            {clubPrice} a month to keep them.
+          </p>
+        </div>
+      </div>
+      <Button type="button" onClick={openPlans}>
+        Upgrade plan
+      </Button>
+    </section>
+  );
+}
+
+export function PlanSummary() {
+  const { access, openPlans, proofs, timeZone } = usePlans();
   const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
   const tournamentDates = tournamentDetail(access);
   const clubExpiry = formatWhen(access.clubPeriodEnd, timeZone);
-
-  if (access.phase === "trial") {
-    return (
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300/70 bg-[linear-gradient(105deg,rgba(251,191,36,0.22),rgba(251,191,36,0.06))] px-4 py-4 shadow-[0_0_32px_-16px_rgba(251,191,36,0.9)]">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-300 text-amber-950">
-            <Clock className="h-5 w-5" aria-hidden />
-          </span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
-              Free trial
-            </p>
-            <p className="text-lg font-semibold text-amber-50">
-              {access.trialDaysLeft} {daysLabel} left
-            </p>
-            <p className="mt-0.5 max-w-xl text-sm text-amber-100/85">
-              Open play and booking stop when the trial ends. Upgrade for{" "}
-              {clubPrice} a month to keep them.
-            </p>
-            {tournamentDates ? (
-              <div className="mt-3">
-                <PlanChip label="Tournament" detail={tournamentDates} />
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <Button type="button" onClick={openPlans}>
-          Upgrade plan
-        </Button>
-      </section>
-    );
-  }
-
+  const clubReceiptPending = proofWaiting(proofs, "club", null) != null;
+  const onTrial = access.phase === "trial";
   const subscribed = access.clubPaid || Boolean(tournamentDates);
+  const clubTile = onTrial
+    ? {
+        icon: <Clock className="h-4 w-4" aria-hidden />,
+        title: `${access.trialDaysLeft} ${daysLabel} left`,
+        detail: "Open play and bookings stay open until the trial ends.",
+        tone: "waiting" as const,
+      }
+    : access.clubPaid
+      ? {
+          icon: <Check className="h-4 w-4" aria-hidden />,
+          title: clubExpiry ? `Through ${clubExpiry}` : "Active",
+          detail: "Open play and bookings are open.",
+          tone: "active" as const,
+        }
+      : clubReceiptPending
+        ? {
+            icon: <Clock className="h-4 w-4" aria-hidden />,
+            title: "Waiting on approval",
+            detail: clubPlanStatusCopy(true),
+            tone: "waiting" as const,
+          }
+        : {
+            icon: <Lock className="h-4 w-4" aria-hidden />,
+            title: "Paused",
+            detail: access.clubTrialAvailable
+              ? "The free trial is still available, or pay for a club month."
+              : "Pay for a club month to open play and bookings.",
+            tone: "idle" as const,
+          };
+  const tournamentTitle =
+    access.tournamentGrace && access.tournamentThrough
+      ? formatTournamentDates(
+          access.tournamentThrough,
+          access.tournamentThrough,
+        )
+      : tournamentDates;
+  const tournamentTile = tournamentTitle
+    ? {
+        icon: <Trophy className="h-4 w-4" aria-hidden />,
+        title: tournamentTitle,
+        detail: access.tournamentGrace
+          ? "Open until 6:00 AM."
+          : access.tournament
+            ? "Open today."
+            : "Not open yet. Tournament mode starts on these days.",
+        tone: access.tournament ? ("active" as const) : ("waiting" as const),
+      }
+    : {
+        icon: <Trophy className="h-4 w-4" aria-hidden />,
+        title: "No days yet",
+        detail: "Buy days when you want tournament mode.",
+        tone: "idle" as const,
+      };
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
-        {subscribed ? (
+    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+        {onTrial ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-100">
+            <Clock className="h-4 w-4 shrink-0" aria-hidden />
+            Free trial
+          </span>
+        ) : subscribed ? (
           <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--highlight)]">
             <Check className="h-4 w-4 shrink-0" aria-hidden />
             Subscribed
           </span>
-        ) : null}
-        {access.clubPaid ? (
-          <PlanChip
-            label="Club"
-            detail={clubExpiry ? `through ${clubExpiry}` : "Active"}
-          />
-        ) : null}
-        {tournamentDates ? (
-          <PlanChip label="Tournament" detail={tournamentDates} />
-        ) : null}
-        {!access.clubPaid && !access.tournament ? (
-          <p className="text-sm font-medium">Club plan paused</p>
-        ) : null}
+        ) : (
+          <span className="text-sm font-medium">No active plan</span>
+        )}
+        <Button type="button" onClick={openPlans}>
+          {onTrial || access.phase === "locked"
+            ? "Upgrade plan"
+            : "Compare plans"}
+        </Button>
       </div>
-      <Button type="button" variant="outline" onClick={openPlans}>
-        {access.phase === "locked" ? "Upgrade plan" : "Compare plans"}
-      </Button>
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
+        <PlanTile label="Club" {...clubTile} />
+        <PlanTile label="Tournament" {...tournamentTile} />
+      </div>
     </section>
   );
 }

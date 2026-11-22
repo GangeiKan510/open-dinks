@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { safeAuthNextPath } from "@/lib/auth-redirect";
 import { OPERATOR_COOKIE } from "@/lib/operator-access";
 import { THEME_COOKIE } from "@/lib/theme";
-import { parseOpenPlayForm } from "@/lib/open-play";
+import { BILLING_ERROR_MESSAGES } from "@/lib/billing-messages";
+import { canManageOpenPlay, parseOpenPlayForm } from "@/lib/open-play";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -36,26 +37,13 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   if (!user) return;
 
   const alreadyLive = await ensureSingleLiveSession(supabase, venueId);
+  if (await openPlayLocked(supabase, venueId)) {
+    revalidatePath("/dashboard");
+    redirect("/dashboard?billing=locked");
+  }
   if (alreadyLive) {
     revalidatePath("/dashboard");
     redirect(`/s/${alreadyLive.public_token}/host`);
-  }
-
-  const { data: venueRow } = await supabase
-    .from("venues")
-    .select("facility_id, timezone")
-    .eq("id", venueId)
-    .maybeSingle();
-  if (venueRow?.facility_id) {
-    const access = await loadFeatureAccess(
-      supabase,
-      venueRow.facility_id,
-      venueRow.timezone,
-    );
-    if (access.schemaReady && !access.openPlay) {
-      revalidatePath("/dashboard");
-      redirect("/dashboard?billing=locked");
-    }
   }
 
   const { data: courts, error: courtsError } = await supabase
@@ -327,6 +315,19 @@ export async function hostDispatchAction(
   action: HostDispatch,
   matchIds: string[] = [],
 ) {
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("venue_id, status")
+    .eq("public_token", token)
+    .maybeSingle();
+  if (
+    session?.status === "live" &&
+    (await openPlayLocked(supabase, session.venue_id))
+  ) {
+    return { error: BILLING_ERROR_MESSAGES.openPlay };
+  }
+
   return persistEngineDiff(token, (state) => {
     const after =
       action.type === "CHECK_IN"
@@ -342,6 +343,32 @@ export async function hostDispatchAction(
         : reduce(state, action);
     return renameNewMatches(state, after, matchIds);
   });
+}
+
+export async function endLiveSessionFormAction(
+  formData: FormData,
+): Promise<void> {
+  const result = await endSessionAction(String(formData.get("token") ?? ""));
+  if ("error" in result) return;
+  redirect("/dashboard");
+}
+
+async function openPlayLocked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  venueId: string,
+): Promise<boolean> {
+  const { data: venueRow } = await supabase
+    .from("venues")
+    .select("facility_id, timezone")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (!venueRow?.facility_id) return false;
+  const access = await loadFeatureAccess(
+    supabase,
+    venueRow.facility_id,
+    venueRow.timezone,
+  );
+  return !canManageOpenPlay(access);
 }
 
 export async function endSessionAction(token: string) {

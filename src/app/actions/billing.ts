@@ -26,6 +26,7 @@ import { isPublicBooker } from "@/lib/host-access";
 import {
   MAX_PAYMENT_PROOF_BYTES,
   PAYMENT_PROOF_BUCKET,
+  pendingReceiptStamp,
   proofContentType,
   proofImageKind,
   proofTypeMatches,
@@ -455,4 +456,21 @@ export async function submitTournamentProofAction(
   if (saved === "pending") notice("proof-pending");
   if (saved !== "ok") notice("proof-save");
   notice("proof");
+}
+
+/**
+ * Ids of receipts still waiting on this host's club. The dashboard polls this
+ * instead of reloading bookings, courts, and payment history every few seconds.
+ * Null means the check failed and the caller should keep the page as it is.
+ */
+export async function pendingReceiptStampAction(): Promise<string | null> {
+  const host = await hostFacility();
+  if (!host) return null;
+  const { data, error } = await host.supabase
+    .from("manual_payment_proofs")
+    .select("id")
+    .eq("facility_id", host.venue.facilityId)
+    .eq("status", "pending");
+  if (error) return null;
+  return pendingReceiptStamp((data ?? []).map((row) => row.id));
 }

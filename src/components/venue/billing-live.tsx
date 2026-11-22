@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { pendingReceiptStampAction } from "@/app/actions/billing";
 import { createCoalescedAsync } from "@/lib/coalesce-async";
 import {
   BILLING_REALTIME_TABLES,
@@ -23,11 +24,16 @@ const PLAN_RECHECK_MS = 3000;
 export function BillingLive({
   facilityId,
   recheck,
+  pendingStamp,
 }: {
   facilityId: string;
   recheck: boolean;
+  /** Pending receipt ids already rendered. A poll reloads only when this changes. */
+  pendingStamp: string;
 }) {
   const router = useRouter();
+  const pendingStampRef = useRef(pendingStamp);
+  const reloading = useRef(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !FACILITY_ID.test(facilityId)) return;
@@ -69,11 +75,36 @@ export function BillingLive({
   }, [facilityId, router]);
 
   useEffect(() => {
+    pendingStampRef.current = pendingStamp;
+    reloading.current = false;
+  }, [pendingStamp]);
+
+  useEffect(() => {
     if (!recheck) return;
-    const timer = setInterval(() => {
-      router.refresh();
-    }, PLAN_RECHECK_MS);
-    return () => clearInterval(timer);
+    let cancelled = false;
+
+    const check = () => {
+      if (cancelled || reloading.current) return;
+      if (document.visibilityState === "hidden") return;
+      void pendingReceiptStampAction().then((next) => {
+        if (cancelled || next == null || next === pendingStampRef.current) {
+          return;
+        }
+        reloading.current = true;
+        router.refresh();
+      });
+    };
+
+    const timer = setInterval(check, PLAN_RECHECK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [recheck, router]);
 
   return null;

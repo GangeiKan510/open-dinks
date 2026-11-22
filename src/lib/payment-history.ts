@@ -1,4 +1,8 @@
-import { paymentAmountCentavos, type SaleKind } from "@/lib/admin-sales";
+import {
+  paymentAmountCentavos,
+  saleKindLabel,
+  type SaleKind,
+} from "@/lib/admin-sales";
 import { listCentavosForDiscount } from "@/lib/discounts";
 
 export type PaymentHistoryStatus = "pending" | "approved" | "rejected" | "paid";
@@ -176,4 +180,38 @@ export function paymentHistoryStatusLabel(
   if (status === "approved") return "Approved";
   if (status === "rejected") return "Declined";
   return "Paid";
+}
+
+export type PaymentHistoryKindFilter = "all" | "club" | "tournament";
+export type PaymentHistoryStatusFilter = "all" | PaymentHistoryStatus;
+
+/** Kind, status, and a reference or name search over the loaded history. */
+export function filterPaymentHistory(
+  items: PaymentHistoryItem[],
+  input: {
+    query: string;
+    kind: PaymentHistoryKindFilter;
+    status: PaymentHistoryStatusFilter;
+  },
+): PaymentHistoryItem[] {
+  const needle = input.query.trim().toLowerCase();
+  const compact = needle.replace(/-/g, "");
+  return items.filter((item) => {
+    if (input.kind === "club" && item.kind !== "club") return false;
+    if (input.kind === "tournament" && item.kind === "club") return false;
+    if (input.status !== "all" && item.status !== input.status) return false;
+    if (!needle) return true;
+    const reference = item.reference.toLowerCase();
+    const haystack = [
+      reference,
+      saleKindLabel(item.kind).toLowerCase(),
+      item.datesLabel?.toLowerCase() ?? "",
+      item.discountCode?.toLowerCase() ?? "",
+      paymentHistoryStatusLabel(item.status).toLowerCase(),
+    ].join(" ");
+    return (
+      haystack.includes(needle) ||
+      (compact.length > 0 && reference.replace(/-/g, "").includes(compact))
+    );
+  });
 }

@@ -164,7 +164,7 @@ export function FacilitySettings({
             ) : null}
             <Button
               type="submit"
-              variant="secondary"
+              variant="default"
               loading={activeBusyKey === "branding"}
               disabled={pending}
             >
@@ -194,7 +194,7 @@ export function FacilitySettings({
             </div>
             <Button
               type="submit"
-              variant="secondary"
+              variant="default"
               loading={activeBusyKey === "courts"}
               disabled={pending}
             >
@@ -254,7 +254,7 @@ export function FacilitySettings({
           </div>
           <Button
             type="submit"
-            variant="secondary"
+            variant="default"
             loading={activeBusyKey === "timezone"}
             disabled={pending}
           >
@@ -329,7 +329,7 @@ export function FacilitySettings({
             </div>
             <Button
               type="submit"
-              variant="secondary"
+              variant="default"
               loading={activeBusyKey === "hours"}
               disabled={pending}
             >
