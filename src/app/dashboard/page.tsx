@@ -6,6 +6,7 @@ import { endLiveSessionFormAction } from "@/app/actions/session";
 import {
   OpenPlansButton,
   PlanSummary,
+  TrialBanner,
   PlansProvider,
   AvailableTournamentLink,
   TournamentModeButton,
@@ -192,7 +193,7 @@ export default async function DashboardPage({
       <main className="mx-auto max-w-2xl space-y-6 px-6 py-16">
         <header>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">
-            Set up your facility
+            Set up your facility or club
           </h1>
           <p className="mt-2 text-[var(--muted)]">
             Name the place you run open play at and how many courts you have.
@@ -567,6 +568,10 @@ export default async function DashboardPage({
           >
             {billingNotice}
           </p>
+        ) : null}
+
+        {access.schemaReady && access.phase === "trial" ? (
+          <TrialBanner />
         ) : null}
 
         <dl className="grid gap-3 sm:grid-cols-3">

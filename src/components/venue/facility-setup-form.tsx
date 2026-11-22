@@ -33,22 +33,22 @@ export function FacilitySetupForm() {
   }
 
   return (
-    <form action={onSubmit} className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-1 sm:col-span-2">
-        <Label htmlFor="facility-name">Facility name</Label>
+    <form action={onSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="facility-name">Facility or club name</Label>
         <Input
           id="facility-name"
           name="name"
           required
           maxLength={120}
-          placeholder="The Picklegrounds"
+          placeholder="Riverside Club"
         />
         <p className="text-xs text-[var(--muted)]">
-          Shown on the wallboard as {PRODUCT_NAME} | your facility.
+          Shown on the wallboard as {PRODUCT_NAME} | your facility or club.
         </p>
       </div>
 
-      <div className="w-28 space-y-1">
+      <div className="space-y-1.5">
         <Label htmlFor="facility-courts">Courts</Label>
         <Input
           id="facility-courts"
@@ -58,20 +58,22 @@ export function FacilitySetupForm() {
           max={MAX_COURT_COUNT}
           defaultValue={DEFAULT_COURT_COUNT}
           required
+          className="w-28"
         />
+        <p className="text-xs text-[var(--muted)]">
+          You can add or remove courts later.
+        </p>
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-700 sm:col-span-2">
+        <p role="alert" className="text-sm text-red-300">
           {error}
         </p>
       ) : null}
 
-      <div className="flex items-end">
-        <Button type="submit" loading={pending}>
-          Create facility
-        </Button>
-      </div>
+      <Button type="submit" className="w-full" loading={pending}>
+        Create facility or club
+      </Button>
     </form>
   );
 }
