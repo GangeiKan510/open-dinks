@@ -25,10 +25,10 @@ describe("sales", () => {
       50000,
     );
     expect(paymentAmountCentavos({ kind: "club", amountCentavos: null })).toBe(
-      69900,
+      79900,
     );
     expect(paymentAmountCentavos({ kind: "day", amountCentavos: null })).toBe(
-      150000,
+      200000,
     );
     expect(
       paymentAmountCentavos({ kind: "weekend", amountCentavos: null }),
@@ -57,9 +57,9 @@ describe("sales", () => {
       NOW,
     );
 
-    expect(summary.totalCentavos).toBe(69900 + 150000 + 400000);
-    expect(summary.monthCentavos).toBe(69900 + 150000);
-    expect(summary.byKind.club).toEqual({ count: 1, centavos: 69900 });
+    expect(summary.totalCentavos).toBe(79900 + 150000 + 400000);
+    expect(summary.monthCentavos).toBe(79900 + 150000);
+    expect(summary.byKind.club).toEqual({ count: 1, centavos: 79900 });
     expect(summary.byKind.day).toEqual({ count: 1, centavos: 150000 });
     expect(summary.byKind.weekend).toEqual({ count: 1, centavos: 400000 });
   });

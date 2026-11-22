@@ -44,13 +44,13 @@ describe("tournament pass windows", () => {
     });
   });
 
-  it("charges 1500 a day through 3 days and 1400 a day from 4", () => {
-    expect(tournamentDayRatePhp(1)).toBe(1500);
-    expect(tournamentDayRatePhp(3)).toBe(1500);
+  it("charges 2000 for every tournament day", () => {
+    expect(tournamentDayRatePhp(1)).toBe(2000);
+    expect(tournamentDayRatePhp(3)).toBe(2000);
     expect(
       tournamentDatesPriceCentavos(["2026-11-20", "2026-11-22", "2026-11-25"]),
-    ).toBe(450000);
-    expect(tournamentDayRatePhp(4)).toBe(1400);
+    ).toBe(600000);
+    expect(tournamentDayRatePhp(4)).toBe(2000);
     expect(
       tournamentDatesPriceCentavos([
         "2026-11-20",
@@ -58,7 +58,7 @@ describe("tournament pass windows", () => {
         "2026-11-24",
         "2026-11-27",
       ]),
-    ).toBe(560000);
+    ).toBe(800000);
   });
 
   it("keeps picked dates and rejects gaps that were not chosen", () => {
@@ -375,9 +375,9 @@ describe("club month", () => {
 
 describe("prices", () => {
   it("formats the club and tournament prices in pesos", () => {
-    expect(formatPeso(CLUB_MONTHLY_PHP)).toBe("₱699");
-    expect(formatPeso(TOURNAMENT_DAY_PHP)).toBe("₱1,500");
+    expect(formatPeso(CLUB_MONTHLY_PHP)).toBe("₱799");
+    expect(formatPeso(TOURNAMENT_DAY_PHP)).toBe("₱2,000");
     expect(formatPeso(TOURNAMENT_WEEKEND_PHP)).toBe("₱4,000");
-    expect(CLUB_PRICE_CENTAVOS).toBe(69900);
+    expect(CLUB_PRICE_CENTAVOS).toBe(79900);
   });
 });
