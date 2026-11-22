@@ -5,22 +5,22 @@ import { clubCheckoutBase, tournamentCheckoutBase } from "./checkout-copy";
 describe("checkout breakdown", () => {
   it("names the club month and the peso amount", () => {
     expect(clubCheckoutBase()).toBe(
-      "Picklrz Club month: open play and booking, ₱699.",
+      "Picklrz Club month: open play and booking, ₱799.",
     );
   });
 
   it("shows the day rate and each date", () => {
     expect(tournamentCheckoutBase(["2026-11-20"])).toBe(
-      "Picklrz tournament: 1 day × ₱1,500 on 2026-11-20.",
+      "Picklrz tournament: 1 day × ₱2,000 on 2026-11-20.",
     );
     expect(
       tournamentCheckoutBase(["2026-11-20", "2026-11-22", "2026-11-25"]),
     ).toBe(
-      "Picklrz tournament: 3 days × ₱1,500 on 2026-11-20, 2026-11-22, 2026-11-25.",
+      "Picklrz tournament: 3 days × ₱2,000 on 2026-11-20, 2026-11-22, 2026-11-25.",
     );
   });
 
-  it("names the volume rate once four days are in one purchase", () => {
+  it("keeps the same day rate for a four-day purchase", () => {
     expect(
       tournamentCheckoutBase([
         "2026-11-20",
@@ -29,7 +29,7 @@ describe("checkout breakdown", () => {
         "2026-11-23",
       ]),
     ).toBe(
-      "Picklrz tournament: 4 days × ₱1,400 (₱1,500 a day through 3) on 2026-11-20, 2026-11-21, 2026-11-22, 2026-11-23.",
+      "Picklrz tournament: 4 days × ₱2,000 on 2026-11-20, 2026-11-21, 2026-11-22, 2026-11-23.",
     );
   });
 
@@ -42,12 +42,12 @@ describe("checkout breakdown", () => {
     expect(
       checkoutDescription({
         base,
-        listCentavos: 450000,
-        dueCentavos: 405000,
+        listCentavos: 600000,
+        dueCentavos: 540000,
         code: "EARLY",
       }),
     ).toBe(
-      "Picklrz tournament: 3 days × ₱1,500 on 2026-11-20, 2026-11-22, 2026-11-25. ₱4,500 less ₱450 with EARLY.",
+      "Picklrz tournament: 3 days × ₱2,000 on 2026-11-20, 2026-11-22, 2026-11-25. ₱6,000 less ₱600 with EARLY.",
     );
   });
 });

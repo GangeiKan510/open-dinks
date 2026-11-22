@@ -51,8 +51,6 @@ import {
   formatTournamentDates,
   TOURNAMENT_DAY_PHP,
   TOURNAMENT_MAX_DAYS,
-  TOURNAMENT_VOLUME_DAY_PHP,
-  TOURNAMENT_VOLUME_MIN_DAYS,
   TRIAL_DAYS,
   tournamentDatesPriceCentavos,
   tournamentDayRatePhp,
@@ -460,9 +458,8 @@ function PlanChoiceDialog({
                   {formatPeso(TOURNAMENT_DAY_PHP)}
                 </p>
                 <p className="text-sm text-amber-100/80">
-                  A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-                  {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked
-                  until you start a trial or a club month.
+                  A day. Open play stays locked until you start a trial or a
+                  club month.
                 </p>
                 <PlanContinue
                   kind="day"
@@ -583,9 +580,8 @@ function PlansDialog({
                   club month.
                 </p>
                 <p className="mt-3 text-sm text-amber-100/80">
-                  {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
-                  {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-                  {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
+                  {formatPeso(TOURNAMENT_DAY_PHP)} a day. Pick the dates you
+                  need.
                 </p>
                 {access.tournamentGrace ? (
                   <p className="mt-3 text-sm">Open until 6:00 AM.</p>
