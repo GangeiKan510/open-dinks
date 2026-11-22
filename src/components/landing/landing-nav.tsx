@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PendingLink } from "@/components/pending-link";
 import { Button } from "@/components/ui/button";
 import { PRODUCT_NAME } from "@/lib/facility";
 import {
-  LANDING_SECTIONS,
   activeLandingSection,
+  visibleLandingSections,
   type LandingSectionId,
 } from "@/lib/landing-sections";
 import { cn } from "@/lib/utils";
@@ -15,14 +15,18 @@ import { cn } from "@/lib/utils";
 export function LandingNav({
   ctaHref,
   ctaLabel,
+  showReviews,
 }: {
   ctaHref: string;
   ctaLabel: string;
+  showReviews: boolean;
 }) {
   const headerRef = useRef<HTMLElement>(null);
-  const [active, setActive] = useState<LandingSectionId>(
-    LANDING_SECTIONS[0].id,
+  const sections = useMemo(
+    () => visibleLandingSections(showReviews),
+    [showReviews],
   );
+  const [active, setActive] = useState<LandingSectionId>(sections[0].id);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -32,7 +36,7 @@ export function LandingNav({
     const read = () => {
       frame = 0;
       const offset = header.offsetHeight + 1;
-      const tops = LANDING_SECTIONS.flatMap((section) => {
+      const tops = sections.flatMap((section) => {
         const node = document.getElementById(section.id);
         if (!node) return [];
         return [{ id: section.id, top: node.getBoundingClientRect().top }];
@@ -40,7 +44,7 @@ export function LandingNav({
       const atPageEnd =
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - 2;
-      const next = LANDING_SECTIONS.find(
+      const next = sections.find(
         (section) =>
           section.id === activeLandingSection(tops, offset, atPageEnd),
       );
@@ -67,7 +71,7 @@ export function LandingNav({
       window.removeEventListener("hashchange", schedule);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [sections]);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -105,7 +109,7 @@ export function LandingNav({
           aria-label="On this page"
           className="flex min-w-0 flex-wrap gap-x-5 md:flex-1 md:flex-nowrap"
         >
-          {LANDING_SECTIONS.map((section) => {
+          {sections.map((section) => {
             const current = active === section.id;
             return (
               <a

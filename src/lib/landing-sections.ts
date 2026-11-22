@@ -8,6 +8,12 @@ export const LANDING_SECTIONS = [
 
 export type LandingSectionId = (typeof LANDING_SECTIONS)[number]["id"];
 
+/** Reviews stays in the catalog, and drops from the nav until one is featured. */
+export function visibleLandingSections(showReviews: boolean) {
+  if (showReviews) return LANDING_SECTIONS;
+  return LANDING_SECTIONS.filter((section) => section.id !== "reviews");
+}
+
 /**
  * The section whose top has reached the sticky bar. A few pixels of slack
  * cover subpixel alignment when a hash link stops just under that bar. At the
