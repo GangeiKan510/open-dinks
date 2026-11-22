@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ArrowRight, Radio } from "lucide-react";
+import { endLiveSessionFormAction } from "@/app/actions/session";
 import {
   OpenPlansButton,
   PlanSummary,
@@ -25,6 +26,7 @@ import { loadAccountVenue } from "@/lib/account-venue";
 import {
   billingNoticeMessage,
   billingNoticeOpensPlans,
+  openPlayPausedCopy,
   receiptSentCopy,
   paymentReceivedCopy,
 } from "@/lib/billing-messages";
@@ -48,8 +50,8 @@ import { isMissingSchemaError } from "@/lib/supabase/errors";
 import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
 import { ensureSingleLiveSession } from "@/lib/live-session";
-import { defaultOpenPlayTitle } from "@/lib/open-play";
-import { gcashPayee, type HostProof } from "@/lib/payment-proof";
+import { canManageOpenPlay, defaultOpenPlayTitle } from "@/lib/open-play";
+import { gcashPayee, proofWaiting, type HostProof } from "@/lib/payment-proof";
 import {
   buildPaymentHistory,
   resolvePaymentListCentavos,
@@ -96,6 +98,37 @@ function Stat({
         {value}
       </dd>
     </div>
+  );
+}
+
+function OpenPlayPaused({
+  pendingClubApproval,
+  trialAvailable,
+  liveSession,
+}: {
+  pendingClubApproval: boolean;
+  trialAvailable: boolean;
+  liveSession: { title: string; publicToken: string } | null;
+}) {
+  const copy = openPlayPausedCopy({
+    pendingApproval: pendingClubApproval,
+    liveSession: liveSession != null,
+    trialAvailable,
+  });
+  return (
+    <>
+      <h2 className="mb-1 font-semibold">{copy.title}</h2>
+      <p className="mb-4 text-sm text-[var(--muted)]">{copy.detail}</p>
+      {liveSession ? (
+        <form action={endLiveSessionFormAction} className="mb-4">
+          <input type="hidden" name="token" value={liveSession.publicToken} />
+          <Button type="submit" variant="outline">
+            End {liveSession.title}
+          </Button>
+        </form>
+      ) : null}
+      <OpenPlansButton>Compare plans</OpenPlansButton>
+    </>
   );
 }
 
@@ -536,10 +569,6 @@ export default async function DashboardPage({
           </p>
         ) : null}
 
-        {access.schemaReady && !access.awaitingPlanChoice ? (
-          <PlanSummary />
-        ) : null}
-
         <dl className="grid gap-3 sm:grid-cols-3">
           <Stat label="Courts" value={String(courtRows.length)} tone="accent" />
           <Stat
@@ -558,14 +587,31 @@ export default async function DashboardPage({
           pendingRequestCount={pendingRequests.length}
           openPlay={
             <OpenPlayPanel
-              startLabel={liveSession ? "Live" : "Start"}
+              startLabel={
+                liveSession && canManageOpenPlay(access) ? "Live" : "Start"
+              }
               sessions={sessionRows.map((session) => ({
                 id: session.id,
                 title: session.title,
                 publicToken: session.public_token,
               }))}
               start={
-                liveSession ? (
+                !canManageOpenPlay(access) ? (
+                  <OpenPlayPaused
+                    pendingClubApproval={
+                      proofWaiting(proofs, "club", null) != null
+                    }
+                    trialAvailable={access.clubTrialAvailable}
+                    liveSession={
+                      liveSession
+                        ? {
+                            title: liveSession.title,
+                            publicToken: liveSession.public_token,
+                          }
+                        : null
+                    }
+                  />
+                ) : liveSession ? (
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--highlight)]/50 bg-[var(--accent-soft)] px-4 py-3">
                       <span className="flex items-center gap-2 text-sm font-medium">
@@ -590,16 +636,6 @@ export default async function DashboardPage({
                       console before starting another.
                     </p>
                   </div>
-                ) : access.schemaReady && !access.openPlay ? (
-                  <>
-                    <h2 className="mb-1 font-semibold">Open play is paused</h2>
-                    <p className="mb-4 text-sm text-[var(--muted)]">
-                      Pay for a club month to start another session. A session
-                      that is already live can still be finished from the host
-                      console.
-                    </p>
-                    <OpenPlansButton>Compare plans</OpenPlansButton>
-                  </>
                 ) : (
                   <>
                     <h2 className="mb-1 font-semibold">Start open play</h2>
@@ -632,6 +668,15 @@ export default async function DashboardPage({
             coachingGrid,
             bookingLocked: access.schemaReady && !access.booking,
           }}
+          subscription={
+            access.schemaReady && !access.awaitingPlanChoice ? (
+              <PlanSummary />
+            ) : (
+              <p className="text-sm text-[var(--muted)]">
+                Subscription details are unavailable right now.
+              </p>
+            )
+          }
           payments={
             <PaymentHistory
               items={paymentHistory}

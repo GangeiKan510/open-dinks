@@ -67,6 +67,17 @@ const MODE_LABELS: Record<SessionMode, string> = {
   singles: "Singles",
 };
 
+/**
+ * Open play runs during the free trial or a paid club month.
+ * A session that is already live does not keep the console open.
+ */
+export function canManageOpenPlay(access: {
+  schemaReady: boolean;
+  openPlay: boolean;
+}): boolean {
+  return !access.schemaReady || access.openPlay;
+}
+
 export function openPlayModeLabel(mode: SessionMode): string {
   return MODE_LABELS[mode];
 }

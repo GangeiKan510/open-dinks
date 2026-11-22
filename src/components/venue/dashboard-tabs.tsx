@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
-import { CalendarClock, Play, Receipt, Settings } from "lucide-react";
+import { CalendarClock, Play, Settings } from "lucide-react";
 import {
   Tabs,
   TabsBadge,
@@ -10,6 +10,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import type { BookingsManagerProps } from "@/components/venue/bookings-manager";
 import type { FacilitySettingsProps } from "@/components/venue/facility-settings";
 
@@ -37,10 +38,19 @@ const FacilitySettings = dynamic(
   },
 );
 
+type SettingsSection = "subscription" | "payments" | "general";
+
+const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
+  { id: "subscription", label: "Subscription details" },
+  { id: "payments", label: "Payment History" },
+  { id: "general", label: "General" },
+];
+
 export type DashboardTabsProps = {
   pendingRequestCount: number;
   openPlay: ReactNode;
   bookings: BookingsManagerProps;
+  subscription: ReactNode;
   payments: ReactNode;
   pendingPaymentCount: number;
   settings: FacilitySettingsProps | null;
@@ -49,19 +59,22 @@ export type DashboardTabsProps = {
 
 /**
  * Client shell for the dashboard. Open play stays a server slot.
- * Bookings and settings JS loads the first time those tabs are opened.
+ * Bookings and general settings JS loads the first time those views open.
  * Tab state is local so server-action revalidation does not reset it.
  */
 export function DashboardTabs({
   pendingRequestCount,
   openPlay,
   bookings,
+  subscription,
   payments,
   pendingPaymentCount,
   settings,
   settingsFallback,
 }: DashboardTabsProps) {
   const [tab, setTab] = useState("play");
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("general");
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
@@ -75,14 +88,10 @@ export function DashboardTabs({
           Bookings
           <TabsBadge count={pendingRequestCount} tone="attention" />
         </TabsTrigger>
-        <TabsTrigger value="payments">
-          <Receipt className="h-4 w-4 shrink-0" aria-hidden />
-          Payment History
-          <TabsBadge count={pendingPaymentCount} tone="attention" />
-        </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 shrink-0" aria-hidden />
           Settings
+          <TabsBadge count={pendingPaymentCount} tone="attention" />
         </TabsTrigger>
       </TabsList>
 
@@ -92,15 +101,52 @@ export function DashboardTabs({
       <TabsContent value="bookings" className="space-y-6">
         {tab === "bookings" ? <BookingsManager {...bookings} /> : null}
       </TabsContent>
-      <TabsContent value="payments">{payments}</TabsContent>
-      <TabsContent value="settings" className="space-y-6">
-        {tab === "settings" ? (
-          settings ? (
-            <FacilitySettings {...settings} />
-          ) : (
-            (settingsFallback ?? null)
-          )
-        ) : null}
+      <TabsContent value="settings">
+        <div className="grid items-start gap-4 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-6">
+          <nav
+            aria-label="Settings sections"
+            className="flex gap-1 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1 md:flex-col"
+          >
+            {SETTINGS_SECTIONS.map((section) => {
+              const selected = settingsSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  aria-current={selected ? "page" : undefined}
+                  onClick={() => setSettingsSection(section.id)}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium whitespace-nowrap md:w-full",
+                    selected
+                      ? "bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm"
+                      : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+                  )}
+                >
+                  <span className="min-w-0 flex-1">{section.label}</span>
+                  {section.id === "payments" ? (
+                    <TabsBadge count={pendingPaymentCount} tone="attention" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="min-w-0">
+            {settingsSection === "subscription" ? (
+              <div className="space-y-4">
+                <h2 className="font-semibold">Subscription details</h2>
+                {subscription}
+              </div>
+            ) : null}
+            {settingsSection === "payments" ? payments : null}
+            {settingsSection === "general" && tab === "settings" ? (
+              settings ? (
+                <FacilitySettings {...settings} />
+              ) : (
+                (settingsFallback ?? null)
+              )
+            ) : null}
+          </div>
+        </div>
       </TabsContent>
     </Tabs>
   );

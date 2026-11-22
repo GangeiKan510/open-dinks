@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   BILLING_ERROR_MESSAGES,
+  clubPlanStatusCopy,
   receiptSentCopy,
 } from "@/lib/billing-messages";
 import { formatCheckoutPesos } from "@/lib/discounts";
@@ -276,6 +277,52 @@ function PlanChip({ label, detail }: { label: string; detail: string }) {
   );
 }
 
+function PlanTile({
+  icon,
+  label,
+  title,
+  detail,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  detail: string;
+  tone: "active" | "waiting" | "idle";
+}) {
+  return (
+    <article
+      className={cn(
+        "flex min-w-0 gap-3 rounded-xl border p-4",
+        tone === "active" &&
+          "border-[var(--highlight)]/45 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))]",
+        tone === "waiting" && "border-amber-400/45 bg-amber-400/10",
+        tone === "idle" && "border-[var(--border)] bg-[var(--surface-2)]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          tone === "active" && "bg-[var(--highlight)] text-[var(--ink)]",
+          tone === "waiting" && "bg-amber-300 text-amber-950",
+          tone === "idle" && "bg-[var(--surface)] text-[var(--muted)]",
+        )}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+          {label}
+        </p>
+        <p className="mt-1 text-base font-semibold leading-snug">{title}</p>
+        <p className="mt-1 text-sm leading-snug text-[var(--muted)]">
+          {detail}
+        </p>
+      </div>
+    </article>
+  );
+}
+
 function tournamentDetail(access: FeatureAccess): string {
   if (access.tournamentGrace && access.tournamentThrough) {
     return `${formatTournamentDates(access.tournamentThrough, access.tournamentThrough)} · until 6:00 AM`;
@@ -284,11 +331,12 @@ function tournamentDetail(access: FeatureAccess): string {
 }
 
 export function PlanSummary() {
-  const { access, openPlans, timeZone } = usePlans();
+  const { access, openPlans, proofs, timeZone } = usePlans();
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
   const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
   const tournamentDates = tournamentDetail(access);
   const clubExpiry = formatWhen(access.clubPeriodEnd, timeZone);
+  const clubReceiptPending = proofWaiting(proofs, "club", null) != null;
 
   if (access.phase === "trial") {
     return (
@@ -323,32 +371,72 @@ export function PlanSummary() {
   }
 
   const subscribed = access.clubPaid || Boolean(tournamentDates);
+  const clubTile = access.clubPaid
+    ? {
+        icon: <Check className="h-4 w-4" aria-hidden />,
+        title: clubExpiry ? `Through ${clubExpiry}` : "Active",
+        detail: "Open play and bookings are open.",
+        tone: "active" as const,
+      }
+    : clubReceiptPending
+      ? {
+          icon: <Clock className="h-4 w-4" aria-hidden />,
+          title: "Waiting on approval",
+          detail: clubPlanStatusCopy(true),
+          tone: "waiting" as const,
+        }
+      : {
+          icon: <Lock className="h-4 w-4" aria-hidden />,
+          title: "Paused",
+          detail: access.clubTrialAvailable
+            ? "The free trial is still available, or pay for a club month."
+            : "Pay for a club month to open play and bookings.",
+          tone: "idle" as const,
+        };
+  const tournamentTitle =
+    access.tournamentGrace && access.tournamentThrough
+      ? formatTournamentDates(
+          access.tournamentThrough,
+          access.tournamentThrough,
+        )
+      : tournamentDates;
+  const tournamentTile = tournamentTitle
+    ? {
+        icon: <Trophy className="h-4 w-4" aria-hidden />,
+        title: tournamentTitle,
+        detail: access.tournamentGrace
+          ? "Open until 6:00 AM."
+          : access.tournament
+            ? "Open today."
+            : "Not open yet. Tournament mode starts on these days.",
+        tone: access.tournament ? ("active" as const) : ("waiting" as const),
+      }
+    : {
+        icon: <Trophy className="h-4 w-4" aria-hidden />,
+        title: "No days yet",
+        detail: "Buy days when you want tournament mode.",
+        tone: "idle" as const,
+      };
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
+    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
         {subscribed ? (
           <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--highlight)]">
             <Check className="h-4 w-4 shrink-0" aria-hidden />
             Subscribed
           </span>
-        ) : null}
-        {access.clubPaid ? (
-          <PlanChip
-            label="Club"
-            detail={clubExpiry ? `through ${clubExpiry}` : "Active"}
-          />
-        ) : null}
-        {tournamentDates ? (
-          <PlanChip label="Tournament" detail={tournamentDates} />
-        ) : null}
-        {!access.clubPaid && !access.tournament ? (
-          <p className="text-sm font-medium">Club plan paused</p>
-        ) : null}
+        ) : (
+          <span className="text-sm font-medium">No active plan</span>
+        )}
+        <Button type="button" onClick={openPlans}>
+          {access.phase === "locked" ? "Upgrade plan" : "Compare plans"}
+        </Button>
       </div>
-      <Button type="button" variant="outline" onClick={openPlans}>
-        {access.phase === "locked" ? "Upgrade plan" : "Compare plans"}
-      </Button>
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
+        <PlanTile label="Club" {...clubTile} />
+        <PlanTile label="Tournament" {...tournamentTile} />
+      </div>
     </section>
   );
 }

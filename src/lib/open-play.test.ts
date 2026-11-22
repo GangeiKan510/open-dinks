@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  canManageOpenPlay,
   defaultOpenPlayTitle,
   parseOpenPlayForm,
   parsePlayerNameList,
 } from "@/lib/open-play";
+
+describe("canManageOpenPlay", () => {
+  it("keeps the console closed when a live session outlasts the club plan", () => {
+    expect(canManageOpenPlay({ schemaReady: true, openPlay: false })).toBe(
+      false,
+    );
+    expect(canManageOpenPlay({ schemaReady: true, openPlay: true })).toBe(true);
+    expect(canManageOpenPlay({ schemaReady: false, openPlay: false })).toBe(
+      true,
+    );
+  });
+});
 
 describe("parsePlayerNameList", () => {
   it("keeps the first spelling and reports later copies", () => {
