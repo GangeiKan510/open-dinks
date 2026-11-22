@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatGcashNumber,
   parseGcashNumber,
+  pendingReceiptStamp,
   proofImageKind,
   proofRejection,
   proofTypeMatches,
@@ -65,5 +66,12 @@ describe("host proof status", () => {
     expect(proofWaiting(proofs, "day", "2026-12-01")).toBeNull();
     expect(proofRejection(proofs, "day")).toBe("Amount does not match.");
     expect(proofRejection(proofs, "club")).toBeNull();
+  });
+});
+
+describe("pending receipt stamp", () => {
+  it("sorts ids so a different row order is the same stamp", () => {
+    expect(pendingReceiptStamp(["b", "a", "a", " "])).toBe("a,b");
+    expect(pendingReceiptStamp([])).toBe("");
   });
 });
