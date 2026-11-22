@@ -1,12 +1,17 @@
 import { paymentAmountCentavos, type SaleKind } from "@/lib/admin-sales";
+import { listCentavosForDiscount } from "@/lib/discounts";
 
 export type PaymentHistoryStatus = "pending" | "approved" | "rejected" | "paid";
 
 export type PaymentHistoryItem = {
   id: string;
+  /** Proof id, or the gateway checkout id. The same value is shown to the host and the operator. */
+  reference: string;
   createdAt: string;
   kind: SaleKind;
   amountCentavos: number;
+  /** Price before the discount. Null when the receipt was not discounted. */
+  listCentavos: number | null;
   status: PaymentHistoryStatus;
   datesLabel: string | null;
   note: string | null;
@@ -23,6 +28,7 @@ export type ProofHistoryRow = {
   id: string;
   kind: string;
   amount_centavos: number;
+  list_centavos: number | null;
   discount_code: string | null;
   dates: string | null;
   status: string;
@@ -83,11 +89,19 @@ export function buildPaymentHistory(
     if (!isProofStatus(proof.status)) continue;
     proofIds.add(proof.id);
     const note = proof.review_note?.trim() ?? "";
+    const list =
+      proof.discount_code &&
+      proof.list_centavos != null &&
+      proof.list_centavos > proof.amount_centavos
+        ? proof.list_centavos
+        : null;
     items.push({
       id: `proof:${proof.id}`,
+      reference: proof.id,
       createdAt: proof.created_at,
       kind: proof.kind,
       amountCentavos: proof.amount_centavos,
+      listCentavos: list,
       status: proof.status,
       datesLabel: proof.kind === "day" ? formatProofDates(proof.dates) : null,
       note: proof.status === "rejected" && note ? note : null,
@@ -103,12 +117,14 @@ export function buildPaymentHistory(
     if (manualId && proofIds.has(manualId)) continue;
     items.push({
       id: `payment:${payment.checkout_id}`,
+      reference: payment.checkout_id,
       createdAt: payment.created_at,
       kind: payment.kind,
       amountCentavos: paymentAmountCentavos({
         kind: payment.kind,
         amountCentavos: payment.amount_centavos,
       }),
+      listCentavos: null,
       status: "paid",
       datesLabel: null,
       note: null,
@@ -124,6 +140,24 @@ export function buildPaymentHistory(
       return bTime - aTime;
     })
     .map(({ item }) => item);
+}
+
+export function resolvePaymentListCentavos(input: {
+  stored: number | null;
+  dueCentavos: number;
+  code: string | null;
+  percentOff: number | null;
+  amountOffCentavos: number | null;
+}): number | null {
+  if (input.stored != null && input.code && input.stored > input.dueCentavos) {
+    return input.stored;
+  }
+  if (!input.code) return null;
+  return listCentavosForDiscount({
+    dueCentavos: input.dueCentavos,
+    percentOff: input.percentOff,
+    amountOffCentavos: input.amountOffCentavos,
+  });
 }
 
 export function formatPaymentAmount(centavos: number): string {

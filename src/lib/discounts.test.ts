@@ -3,6 +3,7 @@ import {
   chargeCentavos,
   checkoutDescription,
   discountSummary,
+  listCentavosForDiscount,
   normalizeDiscountCode,
   parseDiscountDraft,
   priceWithDiscount,
@@ -65,6 +66,37 @@ describe("discount codes", () => {
     ).toBe(
       "Picklrz Club month: open play and booking, ₱699. ₱699 less ₱69.90 with EARLY.",
     );
+  });
+
+  it("recovers the list price from the amount that was paid", () => {
+    expect(
+      listCentavosForDiscount({
+        dueCentavos: 71910,
+        percentOff: 10,
+        amountOffCentavos: null,
+      }),
+    ).toBe(79900);
+    expect(
+      listCentavosForDiscount({
+        dueCentavos: 66405,
+        percentOff: 5,
+        amountOffCentavos: null,
+      }),
+    ).toBe(69900);
+    expect(
+      listCentavosForDiscount({
+        dueCentavos: 400000,
+        percentOff: null,
+        amountOffCentavos: 50000,
+      }),
+    ).toBe(450000);
+    expect(
+      listCentavosForDiscount({
+        dueCentavos: 1,
+        percentOff: 5,
+        amountOffCentavos: null,
+      }),
+    ).toBeNull();
   });
 
   it("takes a fixed peso amount off tournament days", () => {

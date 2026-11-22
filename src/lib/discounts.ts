@@ -182,6 +182,37 @@ export function priceWithDiscount(input: {
   return { dueCentavos: due, offCentavos: off };
 }
 
+/**
+ * The list price behind a stored payment, from the discount still on file.
+ * Returns null when the forward calculation does not land on the amount paid.
+ */
+export function listCentavosForDiscount(input: {
+  dueCentavos: number;
+  percentOff: number | null;
+  amountOffCentavos: number | null;
+}): number | null {
+  const due = input.dueCentavos;
+  if (!Number.isSafeInteger(due) || due <= 0) return null;
+
+  if (input.percentOff != null) {
+    const percent = input.percentOff;
+    if (!Number.isInteger(percent) || percent < 1 || percent > 99) return null;
+    const off = Math.round((due * percent) / (100 - percent));
+    const list = due + off;
+    if (!Number.isSafeInteger(list) || list <= due) return null;
+    if (Math.round((list * percent) / 100) !== off) return null;
+    return list;
+  }
+
+  const amountOff = input.amountOffCentavos;
+  if (amountOff == null || !Number.isSafeInteger(amountOff) || amountOff <= 0) {
+    return null;
+  }
+  const list = due + amountOff;
+  if (!Number.isSafeInteger(list)) return null;
+  return list;
+}
+
 export function formatCheckoutPesos(centavos: number): string {
   const pesos = centavos / 100;
   return new Intl.NumberFormat("en-PH", {

@@ -114,7 +114,16 @@ export async function previewDiscountAction(input: {
   product: DiscountProduct;
   dates: string;
   code: string;
-}): Promise<{ ok: true; summary: string } | { ok: false; message: string }> {
+}): Promise<
+  | {
+      ok: true;
+      summary: string;
+      listCentavos: number;
+      dueCentavos: number;
+      code: string;
+    }
+  | { ok: false; message: string }
+> {
   const host = await hostFacility();
   if (!host) return { ok: false, message: BILLING_ERROR_MESSAGES.signIn };
   if (input.product !== "club" && input.product !== "day") {
@@ -138,10 +147,17 @@ export async function previewDiscountAction(input: {
     codeRaw: input.code,
     baseDescription: "",
   });
-  if (!priced.ok || !priced.summary) {
+  const code = normalizeDiscountCode(input.code);
+  if (!priced.ok || !priced.summary || !code) {
     return { ok: false, message: BILLING_ERROR_MESSAGES.code };
   }
-  return { ok: true, summary: priced.summary };
+  return {
+    ok: true,
+    summary: priced.summary,
+    listCentavos,
+    dueCentavos: priced.amount,
+    code,
+  };
 }
 
 async function checkoutUrl(input: {
@@ -318,6 +334,7 @@ async function submitProof(input: {
   kind: "club" | "day";
   dates: string | null;
   amount: number;
+  listCentavos: number | null;
   discountCode: string | null;
   file: { bytes: Uint8Array; kind: "jpg" | "png" | "webp" };
 }): Promise<"ok" | "pending" | "failed"> {
@@ -342,6 +359,7 @@ async function submitProof(input: {
     submitted_by: input.userId,
     kind: input.kind,
     amount_centavos: input.amount,
+    list_centavos: input.listCentavos,
     discount_code: input.discountCode,
     dates: input.dates,
     storage_path: path,
@@ -377,6 +395,7 @@ export async function submitClubProofAction(formData: FormData): Promise<void> {
     kind: "club",
     dates: null,
     amount: priced.amount,
+    listCentavos: priced.extra.discount_code ? CLUB_PRICE_CENTAVOS : null,
     discountCode: priced.extra.discount_code ?? null,
     file,
   });
@@ -429,6 +448,7 @@ export async function submitTournamentProofAction(
     kind: "day",
     dates: dates.join(","),
     amount: priced.amount,
+    listCentavos: priced.extra.discount_code ? amount : null,
     discountCode: priced.extra.discount_code ?? null,
     file,
   });

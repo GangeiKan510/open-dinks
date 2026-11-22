@@ -3,6 +3,7 @@ import {
   billingNoticeOpensPlans,
   pathWithoutSearchParam,
   paymentReceivedCopy,
+  receiptSentCopy,
 } from "./billing-messages";
 
 describe("billing notices", () => {
@@ -17,6 +18,12 @@ describe("billing notices", () => {
     );
     expect(paymentReceivedCopy({ applied: false, kinds: [] })).toMatch(
       /upgrade reminder/,
+    );
+    expect(receiptSentCopy("club")).toBe(
+      "You have successfully sent your payment. An admin will check the receipt and open the club month.",
+    );
+    expect(receiptSentCopy("day")).toBe(
+      "You have successfully sent your payment. An admin will check the receipt and open those tournament days.",
     );
   });
 

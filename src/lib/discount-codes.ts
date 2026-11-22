@@ -98,6 +98,40 @@ export async function listDiscountOffers(): Promise<
   return { ok: true, offers };
 }
 
+/** Percent or peso-off for the codes named on existing receipts. */
+export async function loadDiscountRates(
+  codes: string[],
+): Promise<
+  Map<string, { percentOff: number | null; amountOffCentavos: number | null }>
+> {
+  const unique = [
+    ...new Set(
+      codes.map((code) => code.trim()).filter((code) => code.length > 0),
+    ),
+  ];
+  const rates = new Map<
+    string,
+    { percentOff: number | null; amountOffCentavos: number | null }
+  >();
+  if (unique.length === 0 || !isServiceRoleConfigured()) return rates;
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("discount_codes")
+    .select("code, percent_off, amount_off_centavos")
+    .in("code", unique);
+  if (error) {
+    console.error("[billing] discount rates failed", error.code);
+    return rates;
+  }
+  for (const row of data ?? []) {
+    rates.set(row.code, {
+      percentOff: row.percent_off,
+      amountOffCentavos: row.amount_off_centavos,
+    });
+  }
+  return rates;
+}
+
 /** A paid checkout consumes one use. A repeated confirmation does not. */
 export async function recordDiscountRedemption(input: {
   code: string;
