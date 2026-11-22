@@ -31,6 +31,8 @@ import {
   startClubCheckoutAction,
   startTournamentPassAction,
   startTrialAction,
+  submitClubProofAction,
+  submitTournamentProofAction,
 } from "@/app/actions/billing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,11 +59,20 @@ import {
   type FeatureAccess,
 } from "@/lib/entitlements";
 import { cn } from "@/lib/utils";
+import { collectsManualPayments } from "@/lib/payments-mode";
+import {
+  formatGcashNumber,
+  proofRejection,
+  proofWaiting,
+  type HostProof,
+} from "@/lib/payment-proof";
 
 type PlansContextValue = {
   openPlans: () => void;
   access: FeatureAccess;
   timeZone: string;
+  gcash: { number: string; name: string } | null;
+  proofs: HostProof[];
 };
 
 const PlansContext = createContext<PlansContextValue | null>(null);
@@ -155,6 +166,8 @@ export function PlansProvider({
   notice,
   statusNotice,
   defaultOpen,
+  gcash = null,
+  proofs = [],
   children,
 }: {
   access: FeatureAccess;
@@ -163,13 +176,28 @@ export function PlansProvider({
   notice: string | null;
   statusNotice: string | null;
   defaultOpen: boolean;
+  gcash?: { number: string; name: string } | null;
+  proofs?: HostProof[];
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const pendingReceipt = proofs.some((proof) => proof.status === "pending");
+  const hadPendingReceipt = useRef(pendingReceipt);
+
+  useEffect(() => {
+    if (hadPendingReceipt.current && !pendingReceipt) setOpen(false);
+    hadPendingReceipt.current = pendingReceipt;
+  }, [pendingReceipt]);
 
   return (
     <PlansContext.Provider
-      value={{ openPlans: () => setOpen(true), access, timeZone }}
+      value={{
+        openPlans: () => setOpen(true),
+        access,
+        timeZone,
+        gcash,
+        proofs,
+      }}
     >
       {children}
       {access.awaitingPlanChoice ? (
@@ -333,6 +361,11 @@ function PlanChoiceDialog({
   notice: string | null;
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
+  const heading = checkoutHeading(checkout, {
+    plans: "Choose how to open your club",
+    plansDetail: `Pick one to continue. A ${TRIAL_DAYS}-day trial or a club month opens open play and booking. Tournament days are separate.`,
+  });
 
   return (
     <Dialog open onOpenChange={() => {}}>
@@ -345,12 +378,9 @@ function PlanChoiceDialog({
       >
         <DialogHeader className="pr-0">
           <DialogTitle className="font-[family-name:var(--font-display)] text-2xl">
-            Choose how to open your club
+            {heading.title}
           </DialogTitle>
-          <DialogDescription>
-            Pick one to continue. A {TRIAL_DAYS}-day trial or a club month opens
-            open play and booking. Tournament days are separate.
-          </DialogDescription>
+          <DialogDescription>{heading.detail}</DialogDescription>
         </DialogHeader>
 
         <FormBusyProvider>
@@ -360,73 +390,90 @@ function PlanChoiceDialog({
             </p>
           ) : null}
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <article className="flex flex-col rounded-xl border border-[var(--accent)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4">
-              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-fg-soft)]">
-                <Clock className="h-3.5 w-3.5" aria-hidden />
-                Free trial
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--accent-fg-soft)]">
-                {TRIAL_DAYS} days
-              </p>
-              <p className="text-sm text-[var(--accent-fg-soft)]">
-                Open play and booking
-              </p>
-              <ul className="mt-4 space-y-1.5 text-sm">
-                <li>Host console and the public session page</li>
-                <li>Court and coaching bookings</li>
-                <li>Tournament mode stays locked</li>
-              </ul>
-              <form action={startTrialAction} className="mt-auto pt-4">
-                <PendingSubmit
-                  busyId="trial"
-                  variant="outline"
-                  className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
-                >
-                  <Clock className="h-4 w-4" aria-hidden />
-                  Start trial
-                </PendingSubmit>
-              </form>
-            </article>
+          {checkout ? (
+            <CheckoutPanel
+              kind={checkout}
+              today={today}
+              clubClassName="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
+              onBack={() => setCheckout(null)}
+            />
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-3">
+              <article className="flex flex-col rounded-xl border border-[var(--accent)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4">
+                <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-fg-soft)]">
+                  <Clock className="h-3.5 w-3.5" aria-hidden />
+                  Free trial
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--accent-fg-soft)]">
+                  {TRIAL_DAYS} days
+                </p>
+                <p className="text-sm text-[var(--accent-fg-soft)]">
+                  Open play and booking
+                </p>
+                <ul className="mt-4 space-y-1.5 text-sm">
+                  <li>Host console and the public session page</li>
+                  <li>Court and coaching bookings</li>
+                  <li>Tournament mode stays locked</li>
+                </ul>
+                <form action={startTrialAction} className="mt-auto pt-4">
+                  <PendingSubmit
+                    busyId="trial"
+                    variant="outline"
+                    className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+                  >
+                    <Clock className="h-4 w-4" aria-hidden />
+                    Start trial
+                  </PendingSubmit>
+                </form>
+              </article>
 
-            <article className="flex flex-col rounded-xl border border-[var(--highlight)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4 shadow-[0_0_32px_-18px_var(--highlight)]">
-              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
-                <Check className="h-3.5 w-3.5" aria-hidden />
-                Club
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)]">
-                {clubPrice}
-              </p>
-              <p className="text-sm text-[var(--accent-fg-soft)]">
-                for 1 month
-              </p>
-              <ul className="mt-4 space-y-1.5 text-sm">
-                <li>Open play and the host console</li>
-                <li>Court and coaching bookings</li>
-                <li>Paying early adds another month</li>
-              </ul>
-              <ClubPayForm
-                label="Pay for 1 month"
-                className="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
-              />
-            </article>
+              <article className="flex flex-col rounded-xl border border-[var(--highlight)]/70 bg-[linear-gradient(165deg,var(--accent-soft),var(--surface))] p-4 shadow-[0_0_32px_-18px_var(--highlight)]">
+                <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  Club
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-[var(--highlight)]">
+                  {clubPrice}
+                </p>
+                <p className="text-sm text-[var(--accent-fg-soft)]">
+                  for 1 month
+                </p>
+                <ul className="mt-4 space-y-1.5 text-sm">
+                  <li>Open play and the host console</li>
+                  <li>Court and coaching bookings</li>
+                  <li>Paying early adds another month</li>
+                </ul>
+                <PlanContinue
+                  kind="club"
+                  label="Continue"
+                  className="bg-[var(--highlight)] text-[var(--ink)] hover:bg-[var(--accent-fg-soft)]"
+                  onClick={() => setCheckout("club")}
+                />
+              </article>
 
-            <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
-              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
-                <Crown className="h-3.5 w-3.5" aria-hidden />
-                Tournament
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
-                {formatPeso(TOURNAMENT_DAY_PHP)}
-              </p>
-              <p className="text-sm text-amber-100/80">
-                A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-                {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked until
-                you start a trial or a club month.
-              </p>
-              <TournamentDatesForm today={today} />
-            </article>
-          </div>
+              <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
+                <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+                  <Crown className="h-3.5 w-3.5" aria-hidden />
+                  Tournament
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
+                  {formatPeso(TOURNAMENT_DAY_PHP)}
+                </p>
+                <p className="text-sm text-amber-100/80">
+                  A day. {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+                  {TOURNAMENT_VOLUME_MIN_DAYS} days. Open play stays locked
+                  until you start a trial or a club month.
+                </p>
+                <PlanContinue
+                  kind="day"
+                  label="Choose days"
+                  icon={<Trophy className="h-4 w-4" aria-hidden />}
+                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                  onClick={() => setCheckout("day")}
+                />
+              </article>
+            </div>
+          )}
 
           <div className="flex justify-end">
             <SignOutButton />
@@ -451,18 +498,25 @@ function PlansDialog({
   notice: string | null;
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
+  const heading = checkoutHeading(checkout, {
+    plans: "Plans",
+    plansDetail: "Open play and tournament days are separate.",
+  });
+
+  function handleOpenChange(next: boolean) {
+    if (!next) setCheckout(null);
+    onOpenChange(next);
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="font-[family-name:var(--font-display)] text-2xl">
-            Plans
+            {heading.title}
           </DialogTitle>
-          <DialogDescription>
-            Pay for open play, tournament days, or both. Each one stands on its
-            own.
-          </DialogDescription>
+          <DialogDescription>{heading.detail}</DialogDescription>
         </DialogHeader>
 
         <FormBusyProvider>
@@ -472,74 +526,198 @@ function PlansDialog({
             </p>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <article className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
-                Club
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl">
-                {clubPrice}
-              </p>
-              <p className="text-sm text-[var(--muted)]">for 1 month</p>
-              <ul className="mt-4 space-y-1.5 text-sm">
-                <li>Open play and the host console</li>
-                <li>Court and coaching bookings</li>
-                <li>Paying early adds another month</li>
-              </ul>
-              {access.clubTrialAvailable ? (
-                <form action={startTrialAction} className="mt-auto pt-4">
-                  <PendingSubmit
-                    busyId="trial"
-                    variant="outline"
-                    className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
-                  >
-                    <Clock className="h-4 w-4" aria-hidden />
-                    Start {TRIAL_DAYS}-day trial
-                  </PendingSubmit>
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Open play and booking for {TRIAL_DAYS} days. Tournament days
-                    stay separate.
-                  </p>
-                </form>
-              ) : null}
-              <ClubPayForm
-                label={access.clubPaid ? "Add 1 month" : "Pay for 1 month"}
-              />
-            </article>
-
-            <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
-              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
-                <Crown className="h-3.5 w-3.5" aria-hidden />
-                Premium
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
-                Tournament
-              </p>
-              <p className="text-sm text-amber-100/80">
-                For tournament days only. Open play and booking stay on the club
-                month.
-              </p>
-              <p className="mt-3 text-sm text-amber-100/80">
-                {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
-                {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
-                {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
-              </p>
-              <TournamentDatesForm today={today} />
-
-              {access.tournamentGrace ? (
-                <p className="mt-3 text-sm">Open until 6:00 AM.</p>
-              ) : access.ownedTournamentDates.length > 0 ? (
-                <p className="mt-3 text-sm">
-                  Paid for{" "}
-                  {formatTournamentDateList(access.ownedTournamentDates)}.
-                  Brackets open on those days.
+          {checkout ? (
+            <CheckoutPanel
+              kind={checkout}
+              today={today}
+              onBack={() => setCheckout(null)}
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <article className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
+                  Club
                 </p>
-              ) : null}
-            </article>
-          </div>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-3xl">
+                  {clubPrice}
+                </p>
+                <p className="text-sm text-[var(--muted)]">for 1 month</p>
+                <ul className="mt-4 space-y-1.5 text-sm">
+                  <li>Open play and the host console</li>
+                  <li>Court and coaching bookings</li>
+                  <li>Paying early adds another month</li>
+                </ul>
+                {access.clubTrialAvailable ? (
+                  <form action={startTrialAction} className="pt-4">
+                    <PendingSubmit
+                      busyId="trial"
+                      variant="outline"
+                      className="border-[var(--accent)] text-[var(--accent-fg-soft)] hover:bg-[var(--accent-soft)]"
+                    >
+                      <Clock className="h-4 w-4" aria-hidden />
+                      Start {TRIAL_DAYS}-day trial
+                    </PendingSubmit>
+                    <p className="mt-2 text-sm text-[var(--muted)]">
+                      Open play and booking for {TRIAL_DAYS} days. Tournament
+                      days stay separate.
+                    </p>
+                  </form>
+                ) : null}
+                <PlanContinue
+                  kind="club"
+                  label={access.clubPaid ? "Add 1 month" : "Continue"}
+                  onClick={() => setCheckout("club")}
+                />
+              </article>
+
+              <article className="flex flex-col rounded-xl border border-amber-300/80 bg-[linear-gradient(165deg,rgba(251,191,36,0.22),var(--surface))] p-4 shadow-[0_0_32px_-18px_#fbbf24]">
+                <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">
+                  <Crown className="h-3.5 w-3.5" aria-hidden />
+                  Premium
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
+                  Tournament
+                </p>
+                <p className="text-sm text-amber-100/80">
+                  For tournament days only. Open play and booking stay on the
+                  club month.
+                </p>
+                <p className="mt-3 text-sm text-amber-100/80">
+                  {formatPeso(TOURNAMENT_DAY_PHP)} a day for up to 3 days.{" "}
+                  {formatPeso(TOURNAMENT_VOLUME_DAY_PHP)} a day from{" "}
+                  {TOURNAMENT_VOLUME_MIN_DAYS} days. Pick the dates you need.
+                </p>
+                {access.tournamentGrace ? (
+                  <p className="mt-3 text-sm">Open until 6:00 AM.</p>
+                ) : access.ownedTournamentDates.length > 0 ? (
+                  <p className="mt-3 text-sm">
+                    Paid for{" "}
+                    {formatTournamentDateList(access.ownedTournamentDates)}.
+                    Brackets open on those days.
+                  </p>
+                ) : null}
+                <PlanContinue
+                  kind="day"
+                  label="Choose days"
+                  icon={<Trophy className="h-4 w-4" aria-hidden />}
+                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                  onClick={() => setCheckout("day")}
+                />
+              </article>
+            </div>
+          )}
         </FormBusyProvider>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type CheckoutKind = "club" | "day";
+
+function checkoutHeading(
+  checkout: CheckoutKind | null,
+  plans: { plans: string; plansDetail: string },
+): { title: string; detail: string } {
+  if (checkout === "club") {
+    return {
+      title: "Club checkout",
+      detail: collectsManualPayments()
+        ? "Send the club amount by GCash, then upload the receipt."
+        : "Pay for one club month.",
+    };
+  }
+  if (checkout === "day") {
+    return {
+      title: "Tournament checkout",
+      detail: collectsManualPayments()
+        ? "Pick the days, send the amount by GCash, then upload the receipt."
+        : "Pick the days, then pay.",
+    };
+  }
+  return { title: plans.plans, detail: plans.plansDetail };
+}
+
+function PlanContinue({
+  kind,
+  label,
+  onClick,
+  className,
+  icon,
+}: {
+  kind: CheckoutKind;
+  label: string;
+  onClick: () => void;
+  className?: string;
+  icon?: ReactNode;
+}) {
+  const { proofs } = usePlans();
+  if (kind === "club" && proofWaiting(proofs, "club", null)) {
+    return (
+      <p className="mt-auto pt-4 text-sm text-[var(--muted)]">
+        Receipt submitted. The month opens after the GCash payment is checked.
+      </p>
+    );
+  }
+  const dayWaiting =
+    kind === "day" &&
+    proofs.some((proof) => proof.kind === "day" && proof.status === "pending");
+
+  return (
+    <div className="mt-auto space-y-3 pt-4">
+      {dayWaiting ? (
+        <p className="text-sm text-amber-100/80">
+          A receipt is already waiting to be checked. You can still send one for
+          other days.
+        </p>
+      ) : null}
+      <Button
+        type="button"
+        size="lg"
+        className={cn("w-full", className)}
+        onClick={onClick}
+      >
+        {icon}
+        {label}
+      </Button>
+    </div>
+  );
+}
+
+function CheckoutPanel({
+  kind,
+  today,
+  onBack,
+  clubClassName,
+}: {
+  kind: CheckoutKind;
+  today: string;
+  onBack: () => void;
+  clubClassName?: string;
+}) {
+  return (
+    <div className="space-y-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="-ml-2 w-fit px-2"
+        onClick={onBack}
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+        Plans
+      </Button>
+      {kind === "club" ? (
+        <div>
+          <p className="font-[family-name:var(--font-display)] text-3xl">
+            {formatPeso(CLUB_MONTHLY_PHP)}
+          </p>
+          <p className="text-sm text-[var(--muted)]">for 1 month</p>
+          <ClubPayForm label="Pay for 1 month" className={clubClassName} />
+        </div>
+      ) : (
+        <TournamentDatesForm today={today} />
+      )}
+    </div>
   );
 }
 
@@ -551,19 +729,75 @@ function ClubPayForm({
   className?: string;
 }) {
   const [quoting, setQuoting] = useState(false);
+  const { proofs } = usePlans();
+  const manual = collectsManualPayments();
+  const waiting = proofWaiting(proofs, "club", null);
+
+  if (manual && waiting) {
+    return (
+      <p className="mt-auto pt-4 text-sm text-[var(--muted)]">
+        Receipt submitted. The month opens after the GCash payment is checked.
+      </p>
+    );
+  }
 
   return (
-    <form action={startClubCheckoutAction} className="mt-auto space-y-3 pt-4">
+    <form
+      action={manual ? submitClubProofAction : startClubCheckoutAction}
+      className="mt-auto space-y-3 pt-4"
+    >
       <DiscountCodeFields
         id="discount-club"
         product="club"
         dates=""
         onPending={setQuoting}
       />
+      {manual ? <GcashReceipt kind="club" /> : null}
       <PendingSubmit busyId="club-pay" disabled={quoting} className={className}>
-        {label}
+        {manual ? "Submit GCash receipt" : label}
       </PendingSubmit>
     </form>
+  );
+}
+
+function GcashReceipt({ kind }: { kind: "club" | "day" }) {
+  const { gcash, proofs } = usePlans();
+  const rejection = proofRejection(proofs, kind);
+  const inputId = kind === "club" ? "club-receipt" : "day-receipt";
+
+  return (
+    <div className="space-y-2 text-sm">
+      <p>
+        Send the amount by GCash, then upload a screenshot of the receipt. The
+        plan opens after it is checked.
+      </p>
+      {gcash ? (
+        <p className="font-medium">
+          {gcash.name ? `${gcash.name} · ` : ""}
+          {formatGcashNumber(gcash.number)}
+        </p>
+      ) : (
+        <p className="text-[var(--muted)]">
+          The GCash number is not on this server yet.
+        </p>
+      )}
+      {rejection ? (
+        <p className="text-amber-200" role="alert">
+          Last receipt was declined. {rejection}
+        </p>
+      ) : null}
+      <div className="space-y-1">
+        <label htmlFor={inputId}>Receipt screenshot</label>
+        <input
+          id={inputId}
+          name="proof"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          required
+          className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--surface-2)] file:px-3 file:py-2 file:text-sm"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -655,13 +889,16 @@ function DiscountCodeFields({
 }
 
 function TournamentDatesForm({ today }: { today: string }) {
-  const { access } = usePlans();
+  const { access, proofs } = usePlans();
   const ownedDates = access.ownedTournamentDates;
   const [dates, setDates] = useState<string[]>([]);
   const [quoting, setQuoting] = useState(false);
   const totalCentavos = tournamentDatesPriceCentavos(dates);
   const total = totalCentavos == null ? null : totalCentavos / 100;
   const rate = dates.length === 0 ? null : tournamentDayRatePhp(dates.length);
+  const manual = collectsManualPayments();
+  const dateKey = dates.join(",");
+  const waiting = dateKey ? proofWaiting(proofs, "day", dateKey) : null;
 
   function toggleDate(iso: string) {
     setDates((current) => {
@@ -673,7 +910,10 @@ function TournamentDatesForm({ today }: { today: string }) {
   }
 
   return (
-    <form action={startTournamentPassAction} className="mt-4 space-y-3">
+    <form
+      action={manual ? submitTournamentProofAction : startTournamentPassAction}
+      className="mt-4 space-y-3"
+    >
       <input type="hidden" name="dates" value={dates.join(",")} />
       <div className="space-y-1">
         <label htmlFor="tournament-day" className="text-sm text-amber-100/80">
@@ -701,15 +941,24 @@ function TournamentDatesForm({ today }: { today: string }) {
         dates={dates.join(",")}
         onPending={setQuoting}
       />
+      {manual && waiting ? (
+        <p className="text-sm text-amber-100/80">
+          A receipt for these days is already waiting to be checked.
+        </p>
+      ) : manual ? (
+        <GcashReceipt kind="day" />
+      ) : null}
       <PendingSubmit
         busyId="tournament-pay"
-        disabled={dates.length === 0 || quoting}
+        disabled={dates.length === 0 || quoting || Boolean(waiting)}
         className="bg-amber-300 text-amber-950 hover:bg-amber-200"
       >
         <Trophy className="h-4 w-4" aria-hidden />
-        {total == null || rate == null
-          ? "Pay for these days"
-          : `Pay ${formatPeso(total)} · ${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(rate)}`}
+        {manual
+          ? "Submit GCash receipt"
+          : total == null || rate == null
+            ? "Pay for these days"
+            : `Pay ${formatPeso(total)} · ${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(rate)}`}
       </PendingSubmit>
     </form>
   );

@@ -9,6 +9,8 @@ import {
   AvailableTournamentLink,
   TournamentModeButton,
 } from "@/components/venue/host-plans";
+import { BillingLive } from "@/components/venue/billing-live";
+import { PaymentHistory } from "@/components/venue/payment-history";
 import { PaymentReceivedDialog } from "@/components/venue/payment-received-dialog";
 import { DashboardTabs } from "@/components/venue/dashboard-tabs";
 import { OpenPlayPanel } from "@/components/venue/open-play-panel";
@@ -42,6 +44,12 @@ import { isSupabaseConfigured, siteUrl } from "@/lib/env";
 import { facilityFromRow, formatBrandTitle } from "@/lib/facility";
 import { ensureSingleLiveSession } from "@/lib/live-session";
 import { defaultOpenPlayTitle } from "@/lib/open-play";
+import { gcashPayee, type HostProof } from "@/lib/payment-proof";
+import {
+  buildPaymentHistory,
+  type GatewayPaymentRow,
+  type ProofHistoryRow,
+} from "@/lib/payment-history";
 import { createClient } from "@/lib/supabase/server";
 import { resolveTheme, THEME_COOKIE } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -240,6 +248,65 @@ export default async function DashboardPage({
     venue.facilityId,
     venue.timezone,
   );
+  const [proofRows, historyProofs, gatewayPayments] = await Promise.all([
+    supabase
+      .from("manual_payment_proofs")
+      .select("kind, dates, status, review_note")
+      .eq("facility_id", venue.facilityId)
+      .in("status", ["pending", "rejected"])
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("manual_payment_proofs")
+      .select(
+        "id, kind, amount_centavos, discount_code, dates, status, review_note, created_at",
+      )
+      .eq("facility_id", venue.facilityId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("paymongo_payments")
+      .select("checkout_id, kind, amount_centavos, created_at")
+      .eq("facility_id", venue.facilityId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
+  const proofs: HostProof[] = [];
+  if (proofRows.error) {
+    if (!isMissingSchemaError(proofRows.error)) {
+      console.error("[dashboard] receipts failed", proofRows.error.code);
+    }
+  } else {
+    for (const row of proofRows.data ?? []) {
+      if (
+        (row.kind === "club" || row.kind === "day") &&
+        (row.status === "pending" || row.status === "rejected")
+      ) {
+        proofs.push({
+          kind: row.kind,
+          dates: row.dates,
+          status: row.status,
+          reviewNote: row.review_note,
+        });
+      }
+    }
+  }
+  const historyProofRows: ProofHistoryRow[] = historyProofs.error
+    ? []
+    : (historyProofs.data ?? []);
+  const gatewayRows: GatewayPaymentRow[] = gatewayPayments.error
+    ? []
+    : (gatewayPayments.data ?? []);
+  if (historyProofs.error && !isMissingSchemaError(historyProofs.error)) {
+    console.error(
+      "[dashboard] payment history failed",
+      historyProofs.error.code,
+    );
+  }
+  if (gatewayPayments.error && !isMissingSchemaError(gatewayPayments.error)) {
+    console.error("[dashboard] payments failed", gatewayPayments.error.code);
+  }
+  const paymentHistory = buildPaymentHistory(historyProofRows, gatewayRows);
   const facility = facilityRow ? facilityFromRow(facilityRow) : null;
   const courtRows = courts ?? [];
   const sessionRows = sessions ?? [];
@@ -362,7 +429,13 @@ export default async function DashboardPage({
       notice={billingNoticeOpensPlans(billingCode) ? billingNotice : null}
       statusNotice={billingNotice}
       defaultOpen={openPlans && !access.awaitingPlanChoice}
+      gcash={gcashPayee()}
+      proofs={proofs}
     >
+      <BillingLive
+        facilityId={venue.facilityId}
+        recheck={proofs.some((proof) => proof.status === "pending")}
+      />
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -387,7 +460,8 @@ export default async function DashboardPage({
           <PaymentReceivedDialog message={paymentReceivedCopy(payment)} />
         ) : null}
 
-        {billingCode === "cancel" && billingNotice ? (
+        {(billingCode === "cancel" || billingCode === "proof") &&
+        billingNotice ? (
           <p
             role="status"
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]"
@@ -492,6 +566,18 @@ export default async function DashboardPage({
             coachingGrid,
             bookingLocked: access.schemaReady && !access.booking,
           }}
+          payments={
+            <PaymentHistory
+              items={paymentHistory}
+              timeZone={venue.timezone}
+              capped={
+                historyProofRows.length === 50 || gatewayRows.length === 50
+              }
+            />
+          }
+          pendingPaymentCount={
+            paymentHistory.filter((item) => item.status === "pending").length
+          }
           settings={
             facility
               ? {

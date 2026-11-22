@@ -23,6 +23,13 @@ import {
 import { clubCheckoutBase, tournamentCheckoutBase } from "@/lib/checkout-copy";
 import { siteUrl } from "@/lib/env";
 import { isPublicBooker } from "@/lib/host-access";
+import {
+  MAX_PAYMENT_PROOF_BYTES,
+  PAYMENT_PROOF_BUCKET,
+  proofContentType,
+  proofImageKind,
+  proofTypeMatches,
+} from "@/lib/payment-proof";
 import { createPaymongoCheckout, isPaymongoConfigured } from "@/lib/paymongo";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -287,4 +294,145 @@ export async function startTournamentPassAction(
   });
   if (!url) notice("checkout");
   redirect(url);
+}
+
+const PG_UNIQUE_VIOLATION = "23505";
+
+async function readProofFile(
+  formData: FormData,
+): Promise<
+  { bytes: Uint8Array; kind: "jpg" | "png" | "webp" } | "file" | "large"
+> {
+  const file = formData.get("proof");
+  if (!(file instanceof File) || file.size <= 0) return "file";
+  if (file.size > MAX_PAYMENT_PROOF_BYTES) return "large";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const kind = proofImageKind(bytes);
+  if (!kind || !proofTypeMatches(kind, file.type)) return "file";
+  return { bytes, kind };
+}
+
+async function submitProof(input: {
+  facilityId: string;
+  userId: string;
+  kind: "club" | "day";
+  dates: string | null;
+  amount: number;
+  discountCode: string | null;
+  file: { bytes: Uint8Array; kind: "jpg" | "png" | "webp" };
+}): Promise<"ok" | "pending" | "failed"> {
+  if (!isServiceRoleConfigured()) return "failed";
+  const supabase = createServiceClient();
+  const id = crypto.randomUUID();
+  const path = `${input.facilityId}/${id}.${input.file.kind}`;
+  const uploaded = await supabase.storage
+    .from(PAYMENT_PROOF_BUCKET)
+    .upload(path, input.file.bytes, {
+      contentType: proofContentType(input.file.kind),
+      upsert: false,
+    });
+  if (uploaded.error) {
+    console.error("[billing] receipt upload failed");
+    return "failed";
+  }
+
+  const { error } = await supabase.from("manual_payment_proofs").insert({
+    id,
+    facility_id: input.facilityId,
+    submitted_by: input.userId,
+    kind: input.kind,
+    amount_centavos: input.amount,
+    discount_code: input.discountCode,
+    dates: input.dates,
+    storage_path: path,
+  });
+  if (!error) return "ok";
+  await supabase.storage.from(PAYMENT_PROOF_BUCKET).remove([path]);
+  if (error.code === PG_UNIQUE_VIOLATION) return "pending";
+  console.error("[billing] receipt insert failed", error.code);
+  return "failed";
+}
+
+export async function submitClubProofAction(formData: FormData): Promise<void> {
+  const host = await hostFacility();
+  if (!host) notice("checkout");
+  if (!isServiceRoleConfigured()) notice("proof-save");
+
+  const priced = await priceCheckout({
+    product: "club",
+    listCentavos: CLUB_PRICE_CENTAVOS,
+    today: localDateISO(host.venue.timezone, new Date()),
+    codeRaw: String(formData.get("discount_code") ?? ""),
+    baseDescription: clubCheckoutBase(),
+  });
+  if (!priced.ok) notice(priced.notice);
+
+  const file = await readProofFile(formData);
+  if (file === "file") notice("proof-file");
+  if (file === "large") notice("proof-large");
+
+  const saved = await submitProof({
+    facilityId: host.venue.facilityId,
+    userId: host.user.id,
+    kind: "club",
+    dates: null,
+    amount: priced.amount,
+    discountCode: priced.extra.discount_code ?? null,
+    file,
+  });
+  if (saved === "pending") notice("proof-pending");
+  if (saved !== "ok") notice("proof-save");
+  notice("proof");
+}
+
+export async function submitTournamentProofAction(
+  formData: FormData,
+): Promise<void> {
+  const host = await hostFacility();
+  if (!host) notice("checkout");
+  if (!isServiceRoleConfigured()) notice("proof-save");
+
+  const dates = parseTournamentDates(String(formData.get("dates") ?? ""));
+  if (!dates) notice("date");
+
+  const today = localDateISO(host.venue.timezone, new Date());
+  if (dates.some((date) => date < today)) notice("past");
+
+  const access = await loadFeatureAccess(
+    host.supabase,
+    host.venue.facilityId,
+    host.venue.timezone,
+  );
+  if (!access.schemaReady) notice("checkout");
+  if (dates.some((date) => access.ownedTournamentDates.includes(date))) {
+    notice("owned");
+  }
+
+  const amount = tournamentDatesPriceCentavos(dates);
+  if (amount == null) notice("date");
+  const priced = await priceCheckout({
+    product: "day",
+    listCentavos: amount,
+    today,
+    codeRaw: String(formData.get("discount_code") ?? ""),
+    baseDescription: tournamentCheckoutBase(dates),
+  });
+  if (!priced.ok) notice(priced.notice);
+
+  const file = await readProofFile(formData);
+  if (file === "file") notice("proof-file");
+  if (file === "large") notice("proof-large");
+
+  const saved = await submitProof({
+    facilityId: host.venue.facilityId,
+    userId: host.user.id,
+    kind: "day",
+    dates: dates.join(","),
+    amount: priced.amount,
+    discountCode: priced.extra.discount_code ?? null,
+    file,
+  });
+  if (saved === "pending") notice("proof-pending");
+  if (saved !== "ok") notice("proof-save");
+  notice("proof");
 }

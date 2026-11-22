@@ -15,7 +15,7 @@ export default async function AdminDiscountCodesPage() {
     <>
       <PanelHeading
         title="Discounts"
-        body="A host enters the code on the plan card before pay. PayMongo then charges the lower amount and shows the original price in the description. A use is counted only after the payment is confirmed."
+        body="A host enters the code on the plan card. The amount due drops, and a use is counted only after the payment is confirmed."
       />
       {!loaded.ok ? (
         <PanelNote>

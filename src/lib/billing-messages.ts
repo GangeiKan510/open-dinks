@@ -19,6 +19,11 @@ export const BILLING_ERROR_MESSAGES = {
   success:
     "Payment received. Your plan updates as soon as PayMongo confirms it.",
   cancel: "Checkout was canceled. Nothing was charged.",
+  proof: "Receipt received. The plan opens after the GCash payment is checked.",
+  proofFile: "Upload a PNG, JPEG, or WebP screenshot of the GCash receipt.",
+  proofLarge: "The receipt must be 5 MB or smaller.",
+  proofPending: "A receipt for that plan is already waiting to be checked.",
+  proofSave: "Could not save the receipt. Try again.",
 } as const;
 
 export type BillingNoticeCode =
@@ -32,7 +37,12 @@ export type BillingNoticeCode =
   | "code"
   | "success"
   | "cancel"
-  | "locked";
+  | "locked"
+  | "proof"
+  | "proof-file"
+  | "proof-large"
+  | "proof-pending"
+  | "proof-save";
 
 /** Drop a return-code query so a refresh does not repeat the notice. */
 export function pathWithoutSearchParam(href: string, key: string): string {
@@ -44,7 +54,7 @@ export function pathWithoutSearchParam(href: string, key: string): string {
 
 /** PayMongo's return URL should not reopen the plans dialog. */
 export function billingNoticeOpensPlans(code: string | undefined): boolean {
-  if (code === "success" || code === "cancel") return false;
+  if (code === "success" || code === "cancel" || code === "proof") return false;
   return billingNoticeMessage(code) !== null;
 }
 
@@ -88,6 +98,16 @@ export function billingNoticeMessage(code: string | undefined): string | null {
       return BILLING_ERROR_MESSAGES.success;
     case "cancel":
       return BILLING_ERROR_MESSAGES.cancel;
+    case "proof":
+      return BILLING_ERROR_MESSAGES.proof;
+    case "proof-file":
+      return BILLING_ERROR_MESSAGES.proofFile;
+    case "proof-large":
+      return BILLING_ERROR_MESSAGES.proofLarge;
+    case "proof-pending":
+      return BILLING_ERROR_MESSAGES.proofPending;
+    case "proof-save":
+      return BILLING_ERROR_MESSAGES.proofSave;
     case "locked":
       return BILLING_ERROR_MESSAGES.openPlay;
     default:

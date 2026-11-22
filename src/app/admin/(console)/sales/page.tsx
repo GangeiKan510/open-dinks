@@ -16,7 +16,7 @@ export default async function AdminSalesPage() {
       <>
         <PanelHeading
           title="Sales"
-          body="Club months and tournament days, after PayMongo confirms the payment."
+          body="Club months and tournament days, after a payment is confirmed."
         />
         <PanelNote>{sales.message}</PanelNote>
       </>
@@ -28,7 +28,7 @@ export default async function AdminSalesPage() {
     <>
       <PanelHeading
         title="Sales"
-        body="Club months and tournament days, after PayMongo confirms the payment. Players are not charged."
+        body="Club months and tournament days, after a payment is confirmed. Players are not charged."
       />
       <dl className="grid gap-3 sm:grid-cols-3">
         <AdminStat
