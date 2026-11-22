@@ -58,6 +58,40 @@ export function billingNoticeOpensPlans(code: string | undefined): boolean {
   return billingNoticeMessage(code) !== null;
 }
 
+/** Status line beside the plan chips while the club month is not active. */
+export function clubPlanStatusCopy(pendingApproval: boolean): string {
+  if (pendingApproval) {
+    return "Club plan opens once an admin approves the payment.";
+  }
+  return "Club plan paused";
+}
+
+/** Open play empty state while the club month is not active. */
+export function openPlayPausedCopy(input: {
+  pendingApproval: boolean;
+  liveSession: boolean;
+  trialAvailable: boolean;
+}): { title: string; detail: string } {
+  const ending = input.liveSession
+    ? " End the session that is still marked live. The console stays closed until the club plan is active."
+    : "";
+  if (input.pendingApproval) {
+    return {
+      title: "Open play opens with the club plan",
+      detail:
+        "An admin will open the club month after checking the receipt. Open play stays closed until then." +
+        ending,
+    };
+  }
+  const start = input.trialAvailable
+    ? "Start the free trial or pay for a club month to run open play."
+    : "Pay for a club month to run open play.";
+  return {
+    title: "Open play is paused",
+    detail: start + ending,
+  };
+}
+
 export function receiptSentCopy(kind: "club" | "day"): string {
   const opens =
     kind === "club" ? "open the club month" : "open those tournament days";
