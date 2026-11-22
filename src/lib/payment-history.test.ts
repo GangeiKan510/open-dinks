@@ -13,6 +13,7 @@ describe("payment history", () => {
           id: "proof-1",
           kind: "club",
           amount_centavos: 66405,
+          list_centavos: 69900,
           discount_code: "5PERCENT",
           dates: null,
           status: "approved",
@@ -44,8 +45,10 @@ describe("payment history", () => {
       status: "approved",
       amountCentavos: 66405,
       discountCode: "5PERCENT",
+      reference: "proof-1",
+      listCentavos: 69900,
     });
-    expect(items[1]?.status).toBe("paid");
+    expect(items[1]).toMatchObject({ status: "paid", reference: "cs_old" });
   });
 
   it("keeps a declined note and the tournament days", () => {
@@ -55,6 +58,7 @@ describe("payment history", () => {
           id: "proof-2",
           kind: "day",
           amount_centavos: 300000,
+          list_centavos: null,
           discount_code: null,
           dates: "2026-11-27,2026-11-29",
           status: "rejected",

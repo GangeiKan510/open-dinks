@@ -1,6 +1,7 @@
+import { CopyReferenceButton } from "@/components/billing/copy-reference-button";
+import { PaymentFigures } from "@/components/billing/payment-figures";
 import { saleKindLabel } from "@/lib/admin-sales";
 import {
-  formatPaymentAmount,
   paymentHistoryStatusLabel,
   type PaymentHistoryItem,
 } from "@/lib/payment-history";
@@ -49,10 +50,16 @@ export function PaymentHistory({
                 <p className="text-sm text-[var(--muted)]">
                   {formatWhen(item.createdAt, timeZone)}
                 </p>
+                <div className="mt-1 flex items-center gap-1">
+                  <p className="break-all font-mono text-xs tracking-wide text-[var(--muted)]">
+                    Reference {item.reference}
+                  </p>
+                  <CopyReferenceButton value={item.reference} />
+                </div>
                 {item.datesLabel ? (
                   <p className="mt-1 text-sm">{item.datesLabel}</p>
                 ) : null}
-                {item.discountCode ? (
+                {item.listCentavos == null && item.discountCode ? (
                   <p className="mt-1 text-sm text-[var(--muted)]">
                     Code {item.discountCode}
                   </p>
@@ -64,9 +71,11 @@ export function PaymentHistory({
                 ) : null}
               </div>
               <div className="text-right">
-                <p className="font-medium tabular-nums">
-                  {formatPaymentAmount(item.amountCentavos)}
-                </p>
+                <PaymentFigures
+                  dueCentavos={item.amountCentavos}
+                  listCentavos={item.listCentavos}
+                  discountCode={item.discountCode}
+                />
                 <p className="text-sm text-[var(--muted)]">
                   {paymentHistoryStatusLabel(item.status)}
                 </p>

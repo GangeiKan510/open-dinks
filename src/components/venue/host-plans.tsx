@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
@@ -45,7 +46,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  BILLING_ERROR_MESSAGES,
+  receiptSentCopy,
+} from "@/lib/billing-messages";
+import { formatCheckoutPesos } from "@/lib/discounts";
+import {
   CLUB_MONTHLY_PHP,
+  CLUB_PRICE_CENTAVOS,
   formatPeso,
   formatTournamentDateList,
   formatTournamentDates,
@@ -181,6 +188,12 @@ export function PlansProvider({
   const [open, setOpen] = useState(defaultOpen);
   const pendingReceipt = proofs.some((proof) => proof.status === "pending");
   const hadPendingReceipt = useRef(pendingReceipt);
+  const receiptSent = statusNotice === BILLING_ERROR_MESSAGES.proof;
+  const [trackedReceipt, setTrackedReceipt] = useState(receiptSent);
+  if (receiptSent !== trackedReceipt) {
+    setTrackedReceipt(receiptSent);
+    if (receiptSent && !access.awaitingPlanChoice) setOpen(false);
+  }
 
   useEffect(() => {
     if (hadPendingReceipt.current && !pendingReceipt) setOpen(false);
@@ -199,10 +212,14 @@ export function PlansProvider({
     >
       {children}
       {access.awaitingPlanChoice ? (
-        <PlanChoiceDialog today={today} notice={statusNotice} />
+        <PlanChoiceDialog
+          today={today}
+          notice={receiptSent ? null : statusNotice}
+          receiptSent={receiptSent}
+        />
       ) : (
         <PlansDialog
-          open={open}
+          open={open && !receiptSent}
           onOpenChange={setOpen}
           access={access}
           today={today}
@@ -354,31 +371,44 @@ export function OpenPlansButton({
 function PlanChoiceDialog({
   today,
   notice,
+  receiptSent,
 }: {
   today: string;
   notice: string | null;
+  receiptSent: boolean;
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
   const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
-  const heading = checkoutHeading(checkout, {
-    plans: "Choose how to open your club",
-    plansDetail: `Pick one to continue. A ${TRIAL_DAYS}-day trial or a club month opens open play and booking. Tournament days are separate.`,
-  });
+  const sent = receiptSent && checkout != null;
+  const heading =
+    checkout && receiptSent
+      ? { title: "Payment sent", detail: receiptSentCopy(checkout) }
+      : checkoutHeading(checkout, {
+          plans: "Choose how to open your club",
+          plansDetail: `Pick one to continue. A ${TRIAL_DAYS}-day trial or a club month opens open play and booking. Tournament days are separate.`,
+        });
 
   return (
     <Dialog open onOpenChange={() => {}}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-4xl"
+        className={sent ? "max-w-md" : "max-w-4xl"}
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader className="pr-0">
+        {sent ? <PaymentSentMark /> : null}
+        <DialogHeader
+          className={sent ? "items-center px-6 pr-6 text-center" : "pr-0"}
+        >
           <DialogTitle className="font-[family-name:var(--font-display)] text-2xl">
             {heading.title}
           </DialogTitle>
-          <DialogDescription>{heading.detail}</DialogDescription>
+          <DialogDescription
+            className={sent ? "text-base text-[var(--foreground)]" : undefined}
+          >
+            {heading.detail}
+          </DialogDescription>
         </DialogHeader>
 
         <FormBusyProvider>
@@ -388,7 +418,7 @@ function PlanChoiceDialog({
             </p>
           ) : null}
 
-          {checkout ? (
+          {sent ? null : checkout ? (
             <CheckoutPanel
               kind={checkout}
               today={today}
@@ -496,6 +526,11 @@ function PlansDialog({
 }) {
   const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
   const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
+  const [trackedOpen, setTrackedOpen] = useState(open);
+  if (open !== trackedOpen) {
+    setTrackedOpen(open);
+    if (!open) setCheckout(null);
+  }
   const heading = checkoutHeading(checkout, {
     plans: "Plans",
     plansDetail: "Open play and tournament days are separate.",
@@ -610,6 +645,16 @@ function PlansDialog({
 
 type CheckoutKind = "club" | "day";
 
+function PaymentSentMark() {
+  return (
+    <div className="flex justify-center py-2">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--highlight)]/80 bg-[var(--highlight)]/15 text-[var(--highlight)]">
+        <Check className="h-8 w-8" strokeWidth={2.5} aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 function checkoutHeading(
   checkout: CheckoutKind | null,
   plans: { plans: string; plansDetail: string },
@@ -650,7 +695,7 @@ function PlanContinue({
   if (kind === "club" && proofWaiting(proofs, "club", null)) {
     return (
       <p className="mt-auto pt-4 text-sm text-[var(--muted)]">
-        Receipt submitted. The month opens after the GCash payment is checked.
+        Payment sent. An admin will check it and open the month.
       </p>
     );
   }
@@ -703,13 +748,7 @@ function CheckoutPanel({
         Plans
       </Button>
       {kind === "club" ? (
-        <div>
-          <p className="font-[family-name:var(--font-display)] text-3xl">
-            {formatPeso(CLUB_MONTHLY_PHP)}
-          </p>
-          <p className="text-sm text-[var(--muted)]">for 1 month</p>
-          <ClubPayForm label="Pay for 1 month" className={clubClassName} />
-        </div>
+        <ClubPayForm label="Pay for 1 month" className={clubClassName} />
       ) : (
         <TournamentDatesForm today={today} />
       )}
@@ -732,7 +771,7 @@ function ClubPayForm({
   if (manual && waiting) {
     return (
       <p className="mt-auto pt-4 text-sm text-[var(--muted)]">
-        Receipt submitted. The month opens after the GCash payment is checked.
+        Payment sent. An admin will check it and open the month.
       </p>
     );
   }
@@ -746,6 +785,8 @@ function ClubPayForm({
         id="discount-club"
         product="club"
         dates=""
+        listCentavos={CLUB_PRICE_CENTAVOS}
+        caption="for 1 month"
         onPending={setQuoting}
       />
       {manual ? <GcashReceipt kind="club" /> : null}
@@ -756,34 +797,64 @@ function ClubPayForm({
   );
 }
 
+const GCASH_QR = {
+  src: "/assets/personal-gcash-qr-code.jpeg",
+  width: 860,
+  height: 1014,
+} as const;
+
 function GcashReceipt({ kind }: { kind: "club" | "day" }) {
   const { gcash, proofs } = usePlans();
   const rejection = proofRejection(proofs, kind);
   const inputId = kind === "club" ? "club-receipt" : "day-receipt";
+  const number = gcash ? formatGcashNumber(gcash.number) : null;
 
   return (
-    <div className="space-y-2 text-sm">
-      <p>
-        Send the amount by GCash, then upload a screenshot of the receipt. The
-        plan opens after it is checked.
-      </p>
-      {gcash ? (
-        <p className="font-medium">
-          {gcash.name ? `${gcash.name} · ` : ""}
-          {formatGcashNumber(gcash.number)}
+    <div className="space-y-3 text-sm">
+      <section className="rounded-xl border border-sky-300/70 bg-[linear-gradient(180deg,rgba(56,189,248,0.18),rgba(0,0,0,0.2))] p-3 shadow-[0_0_32px_-16px_#38bdf8]">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-200">
+          Send by GCash
         </p>
-      ) : (
-        <p className="text-[var(--muted)]">
-          The GCash number is not on this server yet.
-        </p>
-      )}
+        <div className="mt-3 flex flex-col items-center gap-3">
+          <Image
+            src={GCASH_QR.src}
+            alt={
+              number
+                ? `GCash QR code for ${number}`
+                : "GCash QR code for this payment"
+            }
+            width={GCASH_QR.width}
+            height={GCASH_QR.height}
+            className="h-auto w-56 rounded-lg bg-white p-1.5"
+          />
+          <p className="text-xs text-sky-100/80">Scan with the GCash app</p>
+          {number ? (
+            <div className="w-full rounded-lg border border-sky-200/20 bg-black/30 px-3 py-2.5 text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100/70">
+                or send to this number
+              </p>
+              {gcash?.name ? (
+                <p className="mt-1 font-medium text-sky-50">{gcash.name}</p>
+              ) : null}
+              <p className="mt-0.5 font-[family-name:var(--font-display)] text-2xl tracking-wide text-white tabular-nums">
+                {number}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </section>
       {rejection ? (
         <p className="text-amber-200" role="alert">
           Last receipt was declined. {rejection}
         </p>
       ) : null}
-      <div className="space-y-1">
-        <label htmlFor={inputId}>Receipt screenshot</label>
+      <div className="space-y-1 rounded-xl border border-[var(--border)] bg-black/20 p-3">
+        <label htmlFor={inputId} className="font-medium">
+          Receipt screenshot
+        </label>
+        <p className="text-xs text-[var(--muted)]">
+          PNG, JPEG, or WebP. The plan opens after the payment is checked.
+        </p>
         <input
           id={inputId}
           name="proof"
@@ -797,33 +868,47 @@ function GcashReceipt({ kind }: { kind: "club" | "day" }) {
   );
 }
 
+type AppliedDiscount = {
+  key: string;
+  code: string;
+  dueCentavos: number;
+};
+
 function DiscountCodeFields({
   id,
   product,
   dates,
+  listCentavos,
+  caption,
   onPending,
+  onQuote,
 }: {
   id: string;
   product: "club" | "day";
   dates: string;
+  listCentavos: number | null;
+  caption: string;
   onPending: (pending: boolean) => void;
+  onQuote?: (dueCentavos: number | null) => void;
 }) {
   const [code, setCode] = useState("");
-  const [quote, setQuote] = useState<{ key: string; summary: string } | null>(
-    null,
-  );
+  const [quote, setQuote] = useState<AppliedDiscount | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const { pending: submitting } = useFormStatus();
   const busy = useContext(FormBusyContext);
   const quoteKey = `${product}:${dates}:${code.trim().toUpperCase()}`;
-  const summary = quote?.key === quoteKey ? quote.summary : null;
+  const applied = quote?.key === quoteKey ? quote : null;
   const blocked = submitting || Boolean(busy?.active);
 
   useEffect(() => {
     onPending(pending);
     return () => onPending(false);
   }, [onPending, pending]);
+
+  useEffect(() => {
+    onQuote?.(applied?.dueCentavos ?? null);
+  }, [applied?.dueCentavos, onQuote]);
 
   function applyCode() {
     setError(null);
@@ -835,50 +920,105 @@ function DiscountCodeFields({
         setError(result.message);
         return;
       }
-      setQuote({ key: current, summary: result.summary });
+      setQuote({
+        key: current,
+        code: result.code,
+        dueCentavos: result.dueCentavos,
+      });
     });
   }
 
   return (
-    <div className="space-y-1">
-      <input type="hidden" name="discount_code" value={code} />
-      <label htmlFor={id} className="text-sm text-[var(--foreground)]">
-        Discount code
-      </label>
-      <div className="flex gap-2">
-        <Input
-          id={id}
-          value={code}
-          autoComplete="off"
-          maxLength={24}
-          placeholder="e.g. EARLY"
-          disabled={pending || blocked}
-          onChange={(event) => {
-            setCode(event.target.value);
-            setError(null);
-          }}
-          className="bg-black/20 disabled:opacity-50"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0"
-          loading={pending}
-          disabled={blocked || code.trim().length === 0}
-          onClick={applyCode}
-        >
-          {pending ? "Applying…" : "Apply"}
-        </Button>
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <input type="hidden" name="discount_code" value={code} />
+        <label htmlFor={id} className="text-sm text-[var(--foreground)]">
+          Discount code
+        </label>
+        <div className="flex gap-2">
+          <Input
+            id={id}
+            value={code}
+            autoComplete="off"
+            maxLength={24}
+            placeholder="e.g. EARLY"
+            disabled={pending || blocked}
+            onChange={(event) => {
+              setCode(event.target.value);
+              setError(null);
+            }}
+            className="bg-black/20 disabled:opacity-50"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            loading={pending}
+            disabled={blocked || code.trim().length === 0}
+            onClick={applyCode}
+          >
+            {pending ? "Applying…" : "Apply"}
+          </Button>
+        </div>
+        {error ? (
+          <p className="text-sm text-amber-200" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
-      {error ? (
-        <p className="text-sm text-amber-200" role="alert">
-          {error}
-        </p>
+      {listCentavos != null ? (
+        <PaymentBreakdown
+          listCentavos={listCentavos}
+          caption={caption}
+          discount={applied}
+        />
       ) : null}
-      {summary ? (
-        <p className="text-sm" role="status">
-          {summary}
-        </p>
+    </div>
+  );
+}
+
+function PaymentBreakdown({
+  listCentavos,
+  caption,
+  discount,
+}: {
+  listCentavos: number;
+  caption: string;
+  discount: AppliedDiscount | null;
+}) {
+  const off = discount ? listCentavos - discount.dueCentavos : 0;
+  const discounted = discount != null && off > 0;
+  const due = discounted ? discount.dueCentavos : listCentavos;
+
+  return (
+    <div
+      className="rounded-xl border border-[var(--highlight)]/80 bg-[var(--highlight)]/10 px-3 py-3"
+      role="status"
+    >
+      {discounted ? (
+        <div className="mb-3 space-y-1.5 border-b border-[var(--highlight)]/30 pb-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[var(--muted)]">Subtotal</span>
+            <span className="text-[var(--muted)] line-through tabular-nums">
+              {formatCheckoutPesos(listCentavos)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span>Discount</span>
+            <span className="font-medium text-emerald-200 tabular-nums">
+              {discount.code} · −{formatCheckoutPesos(off)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--highlight)]">
+        You pay
+      </p>
+      <p className="font-[family-name:var(--font-display)] text-4xl tabular-nums">
+        {formatCheckoutPesos(due)}
+      </p>
+      {caption ? (
+        <p className="text-sm text-[var(--muted)]">{caption}</p>
       ) : null}
     </div>
   );
@@ -889,12 +1029,19 @@ function TournamentDatesForm({ today }: { today: string }) {
   const ownedDates = access.ownedTournamentDates;
   const [dates, setDates] = useState<string[]>([]);
   const [quoting, setQuoting] = useState(false);
+  const [dueCentavos, setDueCentavos] = useState<number | null>(null);
   const totalCentavos = tournamentDatesPriceCentavos(dates);
-  const total = totalCentavos == null ? null : totalCentavos / 100;
   const rate = dates.length === 0 ? null : tournamentDayRatePhp(dates.length);
   const manual = collectsManualPayments();
   const dateKey = dates.join(",");
   const waiting = dateKey ? proofWaiting(proofs, "day", dateKey) : null;
+  const payable = dueCentavos ?? totalCentavos;
+  const dayLabel = dates.length === 1 ? "day" : "days";
+  const payLabel = manual
+    ? "Submit GCash receipt"
+    : payable == null || rate == null
+      ? "Pay for these days"
+      : `Pay ${formatCheckoutPesos(payable)} · ${dates.length} ${dayLabel} at ${formatPeso(rate)}`;
 
   function toggleDate(iso: string) {
     setDates((current) => {
@@ -935,7 +1082,14 @@ function TournamentDatesForm({ today }: { today: string }) {
         id="discount-day"
         product="day"
         dates={dates.join(",")}
+        listCentavos={totalCentavos}
+        caption={
+          rate == null
+            ? ""
+            : `${dates.length} ${dayLabel} at ${formatPeso(rate)}`
+        }
         onPending={setQuoting}
+        onQuote={setDueCentavos}
       />
       {manual && waiting ? (
         <p className="text-sm text-amber-100/80">
@@ -950,11 +1104,7 @@ function TournamentDatesForm({ today }: { today: string }) {
         className="bg-amber-300 text-amber-950 hover:bg-amber-200"
       >
         <Trophy className="h-4 w-4" aria-hidden />
-        {manual
-          ? "Submit GCash receipt"
-          : total == null || rate == null
-            ? "Pay for these days"
-            : `Pay ${formatPeso(total)} · ${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(rate)}`}
+        {payLabel}
       </PendingSubmit>
     </form>
   );

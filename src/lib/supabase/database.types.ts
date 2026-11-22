@@ -188,6 +188,7 @@ export type Database = {
           submitted_by: string;
           kind: "club" | "day";
           amount_centavos: number;
+          list_centavos: number | null;
           discount_code: string | null;
           dates: string | null;
           storage_path: string;
@@ -203,6 +204,7 @@ export type Database = {
           submitted_by: string;
           kind: "club" | "day";
           amount_centavos: number;
+          list_centavos?: number | null;
           discount_code?: string | null;
           dates?: string | null;
           storage_path: string;
@@ -218,6 +220,7 @@ export type Database = {
           submitted_by?: string;
           kind?: "club" | "day";
           amount_centavos?: number;
+          list_centavos?: number | null;
           discount_code?: string | null;
           dates?: string | null;
           storage_path?: string;
