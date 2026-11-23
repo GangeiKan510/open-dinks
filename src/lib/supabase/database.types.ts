@@ -292,6 +292,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      platform_settings: {
+        Row: {
+          id: boolean;
+          club_monthly_php: number;
+          tournament_day_php: number;
+          show_open_play: boolean;
+          show_booking: boolean;
+          show_tournament: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          club_monthly_php?: number;
+          tournament_day_php?: number;
+          show_open_play?: boolean;
+          show_booking?: boolean;
+          show_tournament?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          club_monthly_php?: number;
+          tournament_day_php?: number;
+          show_open_play?: boolean;
+          show_booking?: boolean;
+          show_tournament?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       platform_admins: {
         Row: {
           user_id: string;
@@ -862,6 +892,16 @@ export type Database = {
       tournament_desk_open: {
         Args: { p_token: string };
         Returns: boolean;
+      };
+      platform_catalog: {
+        Args: Record<string, never>;
+        Returns: {
+          club_monthly_php: number;
+          tournament_day_php: number;
+          show_open_play: boolean;
+          show_booking: boolean;
+          show_tournament: boolean;
+        }[];
       };
       featured_feedback: {
         Args: Record<string, never>;

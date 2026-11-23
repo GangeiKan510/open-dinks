@@ -187,9 +187,11 @@ export function parseTournamentDates(value: string): string[] | null {
 
 export function tournamentDatesPriceCentavos(
   dates: readonly string[],
+  dayPhp: number = TOURNAMENT_DAY_PHP,
 ): number | null {
   if (dates.length === 0 || dates.length > TOURNAMENT_MAX_DAYS) return null;
-  return tournamentDayRatePhp(dates.length) * dates.length * 100;
+  if (!Number.isInteger(dayPhp) || dayPhp < 1) return null;
+  return dayPhp * dates.length * 100;
 }
 
 export function tournamentPassWindow(

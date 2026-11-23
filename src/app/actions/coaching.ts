@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { BILLING_ERROR_MESSAGES } from "@/lib/billing-messages";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 import { createClient } from "@/lib/supabase/server";
 import {
   BOOKING_SLOT_DURATION_MS,
@@ -231,6 +232,9 @@ export async function setCoachActiveAction(
 export async function createCoachingBookingAction(
   formData: FormData,
 ): Promise<CoachingActionResult> {
+  if (!(await loadPlanCatalog()).booking) {
+    return { error: COACHING_ERROR_MESSAGES.closed };
+  }
   const auth = await requireUser();
   if ("error" in auth) return { error: auth.error };
 
@@ -459,6 +463,9 @@ export async function setCoachingBookingPaymentStatusAction(
 export async function requestCoachingBookingAction(
   formData: FormData,
 ): Promise<{ error: string } | { ok: true; statusToken: string }> {
+  if (!(await loadPlanCatalog()).booking) {
+    return { error: COACHING_ERROR_MESSAGES.closed };
+  }
   const venueId = String(formData.get("venueId") ?? "").trim();
   const coachId = String(formData.get("coachId") ?? "").trim();
   const courtId = String(formData.get("courtId") ?? "").trim();

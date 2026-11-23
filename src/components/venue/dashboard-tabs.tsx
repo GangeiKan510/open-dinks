@@ -47,6 +47,8 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
 ];
 
 export type DashboardTabsProps = {
+  showOpenPlay: boolean;
+  showBooking: boolean;
   pendingRequestCount: number;
   openPlay: ReactNode;
   bookings: BookingsManagerProps;
@@ -63,6 +65,8 @@ export type DashboardTabsProps = {
  * Tab state is local so server-action revalidation does not reset it.
  */
 export function DashboardTabs({
+  showOpenPlay,
+  showBooking,
   pendingRequestCount,
   openPlay,
   bookings,
@@ -72,22 +76,28 @@ export function DashboardTabs({
   settings,
   settingsFallback,
 }: DashboardTabsProps) {
-  const [tab, setTab] = useState("play");
+  const [tab, setTab] = useState(
+    showOpenPlay ? "play" : showBooking ? "bookings" : "settings",
+  );
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList aria-label="Facility sections">
-        <TabsTrigger value="play">
-          <Play className="h-4 w-4 shrink-0" aria-hidden />
-          Open play
-        </TabsTrigger>
-        <TabsTrigger value="bookings">
-          <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
-          Bookings
-          <TabsBadge count={pendingRequestCount} tone="attention" />
-        </TabsTrigger>
+        {showOpenPlay ? (
+          <TabsTrigger value="play">
+            <Play className="h-4 w-4 shrink-0" aria-hidden />
+            Open play
+          </TabsTrigger>
+        ) : null}
+        {showBooking ? (
+          <TabsTrigger value="bookings">
+            <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
+            Bookings
+            <TabsBadge count={pendingRequestCount} tone="attention" />
+          </TabsTrigger>
+        ) : null}
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 shrink-0" aria-hidden />
           Settings
@@ -95,12 +105,16 @@ export function DashboardTabs({
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="play" className="space-y-6">
-        {openPlay}
-      </TabsContent>
-      <TabsContent value="bookings" className="space-y-6">
-        {tab === "bookings" ? <BookingsManager {...bookings} /> : null}
-      </TabsContent>
+      {showOpenPlay ? (
+        <TabsContent value="play" className="space-y-6">
+          {openPlay}
+        </TabsContent>
+      ) : null}
+      {showBooking ? (
+        <TabsContent value="bookings" className="space-y-6">
+          {tab === "bookings" ? <BookingsManager {...bookings} /> : null}
+        </TabsContent>
+      ) : null}
       <TabsContent value="settings">
         <div className="grid items-start gap-4 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-6">
           <nav

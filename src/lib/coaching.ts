@@ -12,6 +12,7 @@ import { bookingHourColumns } from "@/lib/booking-hours";
 import { parsePriceToCents } from "@/lib/bookings";
 
 export const COACHING_ERROR_MESSAGES = {
+  closed: "Court booking is not open yet.",
   signIn: "Sign in to manage coaching.",
   signInGoogle: "Sign in with Google to send a coaching request.",
   venue: "Choose a venue before managing coaches.",

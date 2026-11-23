@@ -8,10 +8,22 @@ export const LANDING_SECTIONS = [
 
 export type LandingSectionId = (typeof LANDING_SECTIONS)[number]["id"];
 
-/** Reviews stays in the catalog, and drops from the nav until one is featured. */
-export function visibleLandingSections(showReviews: boolean) {
-  if (showReviews) return LANDING_SECTIONS;
-  return LANDING_SECTIONS.filter((section) => section.id !== "reviews");
+export type LandingVisibility = {
+  reviews: boolean;
+  openPlay: boolean;
+  booking: boolean;
+  tournament: boolean;
+};
+
+/** Drops a section when that feature is hidden or no review is featured. */
+export function visibleLandingSections(flags: LandingVisibility) {
+  return LANDING_SECTIONS.filter((section) => {
+    if (section.id === "reviews") return flags.reviews;
+    if (section.id === "open-play") return flags.openPlay;
+    if (section.id === "tournament") return flags.tournament;
+    if (section.id === "court-rentals") return flags.booking;
+    return true;
+  });
 }
 
 /**

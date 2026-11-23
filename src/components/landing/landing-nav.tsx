@@ -16,15 +16,27 @@ export function LandingNav({
   ctaHref,
   ctaLabel,
   showReviews,
+  showOpenPlay,
+  showBooking,
+  showTournament,
 }: {
   ctaHref: string;
   ctaLabel: string;
   showReviews: boolean;
+  showOpenPlay: boolean;
+  showBooking: boolean;
+  showTournament: boolean;
 }) {
   const headerRef = useRef<HTMLElement>(null);
   const sections = useMemo(
-    () => visibleLandingSections(showReviews),
-    [showReviews],
+    () =>
+      visibleLandingSections({
+        reviews: showReviews,
+        openPlay: showOpenPlay,
+        booking: showBooking,
+        tournament: showTournament,
+      }),
+    [showReviews, showOpenPlay, showBooking, showTournament],
   );
   const [active, setActive] = useState<LandingSectionId>(sections[0].id);
 

@@ -72,13 +72,25 @@ describe("activeLandingSection", () => {
   });
 
   it("hides reviews until a featured note exists", () => {
-    expect(visibleLandingSections(false).map((section) => section.id)).toEqual([
-      "open-play",
-      "tournament",
-      "court-rentals",
-      "pricing",
-    ]);
-    expect(visibleLandingSections(true)).toBe(LANDING_SECTIONS);
+    expect(
+      visibleLandingSections({
+        reviews: false,
+        openPlay: true,
+        booking: true,
+        tournament: true,
+      }).map((section) => section.id),
+    ).toEqual(["open-play", "tournament", "court-rentals", "pricing"]);
+  });
+
+  it("hides a product section the operator turned off", () => {
+    expect(
+      visibleLandingSections({
+        reviews: true,
+        openPlay: true,
+        booking: false,
+        tournament: false,
+      }).map((section) => section.id),
+    ).toEqual(["open-play", "pricing", "reviews"]);
   });
 
   it("returns an empty string when there are no sections", () => {

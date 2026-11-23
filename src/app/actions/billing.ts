@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { loadAccountVenue } from "@/lib/account-venue";
 import { loadFeatureAccess } from "@/lib/billing-server";
 import {
-  CLUB_PRICE_CENTAVOS,
   localDateISO,
   TRIAL_DAYS,
   parseTournamentDates,
@@ -21,6 +20,8 @@ import {
   type DiscountProduct,
 } from "@/lib/discounts";
 import { clubCheckoutBase, tournamentCheckoutBase } from "@/lib/checkout-copy";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
+import { clubPriceCentavos } from "@/lib/platform-catalog";
 import { siteUrl } from "@/lib/env";
 import { isPublicBooker } from "@/lib/host-access";
 import {
@@ -131,10 +132,13 @@ export async function previewDiscountAction(input: {
     return { ok: false, message: BILLING_ERROR_MESSAGES.code };
   }
 
-  let listCentavos = CLUB_PRICE_CENTAVOS;
+  const catalog = await loadPlanCatalog();
+  let listCentavos = clubPriceCentavos(catalog);
   if (input.product === "day") {
     const dates = parseTournamentDates(input.dates);
-    const price = dates ? tournamentDatesPriceCentavos(dates) : null;
+    const price = dates
+      ? tournamentDatesPriceCentavos(dates, catalog.tournamentDayPhp)
+      : null;
     if (price == null) {
       return { ok: false, message: BILLING_ERROR_MESSAGES.date };
     }
@@ -244,12 +248,13 @@ export async function startClubCheckoutAction(
   if (!host) notice("checkout");
   if (!isPaymongoConfigured()) notice("unconfigured");
 
+  const catalog = await loadPlanCatalog();
   const priced = await priceCheckout({
     product: "club",
-    listCentavos: CLUB_PRICE_CENTAVOS,
+    listCentavos: clubPriceCentavos(catalog),
     today: localDateISO(host.venue.timezone, new Date()),
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: clubCheckoutBase(),
+    baseDescription: clubCheckoutBase(clubPriceCentavos(catalog)),
   });
   if (!priced.ok) notice(priced.notice);
 
@@ -287,14 +292,15 @@ export async function startTournamentPassAction(
     notice("owned");
   }
 
-  const amount = tournamentDatesPriceCentavos(dates);
+  const catalog = await loadPlanCatalog();
+  const amount = tournamentDatesPriceCentavos(dates, catalog.tournamentDayPhp);
   if (amount == null) notice("date");
   const priced = await priceCheckout({
     product: "day",
     listCentavos: amount,
     today,
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: tournamentCheckoutBase(dates),
+    baseDescription: tournamentCheckoutBase(dates, catalog.tournamentDayPhp),
   });
   if (!priced.ok) notice(priced.notice);
   const label =
@@ -377,12 +383,14 @@ export async function submitClubProofAction(formData: FormData): Promise<void> {
   if (!host) notice("checkout");
   if (!isServiceRoleConfigured()) notice("proof-save");
 
+  const catalog = await loadPlanCatalog();
+  const clubCentavos = clubPriceCentavos(catalog);
   const priced = await priceCheckout({
     product: "club",
-    listCentavos: CLUB_PRICE_CENTAVOS,
+    listCentavos: clubCentavos,
     today: localDateISO(host.venue.timezone, new Date()),
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: clubCheckoutBase(),
+    baseDescription: clubCheckoutBase(clubCentavos),
   });
   if (!priced.ok) notice(priced.notice);
 
@@ -396,7 +404,7 @@ export async function submitClubProofAction(formData: FormData): Promise<void> {
     kind: "club",
     dates: null,
     amount: priced.amount,
-    listCentavos: priced.extra.discount_code ? CLUB_PRICE_CENTAVOS : null,
+    listCentavos: priced.extra.discount_code ? clubCentavos : null,
     discountCode: priced.extra.discount_code ?? null,
     file,
   });
@@ -428,14 +436,15 @@ export async function submitTournamentProofAction(
     notice("owned");
   }
 
-  const amount = tournamentDatesPriceCentavos(dates);
+  const catalog = await loadPlanCatalog();
+  const amount = tournamentDatesPriceCentavos(dates, catalog.tournamentDayPhp);
   if (amount == null) notice("date");
   const priced = await priceCheckout({
     product: "day",
     listCentavos: amount,
     today,
     codeRaw: String(formData.get("discount_code") ?? ""),
-    baseDescription: tournamentCheckoutBase(dates),
+    baseDescription: tournamentCheckoutBase(dates, catalog.tournamentDayPhp),
   });
   if (!priced.ok) notice(priced.notice);
 

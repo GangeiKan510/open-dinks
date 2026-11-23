@@ -18,6 +18,7 @@ import {
 } from "@/lib/seo";
 import { loadAccountVenue } from "@/lib/account-venue";
 import { loadFeaturedReviews } from "@/lib/feedback-server";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 import { canOpenHostDashboard, isPublicBooker } from "@/lib/host-access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,7 @@ export default async function HomePage() {
   const ctaLabel = signedIn ? "Open dashboard" : "Host login";
   const tournamentHref = signedIn ? "/tournament" : "/login?next=/tournament";
   const reviews = await loadFeaturedReviews();
+  const catalog = await loadPlanCatalog();
 
   return (
     <main className="page-canvas motion-safe:scroll-smooth">
@@ -74,6 +76,9 @@ export default async function HomePage() {
         ctaHref={ctaHref}
         ctaLabel={ctaLabel}
         showReviews={reviews.length > 0}
+        showOpenPlay={catalog.openPlay}
+        showBooking={catalog.booking}
+        showTournament={catalog.tournament}
       />
 
       <section className="mx-auto max-w-6xl px-6 pb-8 pt-14 md:pt-20">
@@ -84,14 +89,27 @@ export default async function HomePage() {
               <span className="mb-4 block text-sm font-semibold tracking-wide text-[var(--highlight)]">
                 {PRODUCT_NAME}
               </span>
-              One board for <span className="gradient-phrase">open play</span>,{" "}
-              <span className="gradient-phrase">tournaments</span>, and{" "}
-              <span className="gradient-phrase">court hours</span>.
+              One board for <span className="gradient-phrase">open play</span>
+              {catalog.booking ? (
+                <>
+                  {catalog.tournament ? (
+                    <>
+                      , <span className="gradient-phrase">tournaments</span>
+                    </>
+                  ) : null}
+                  , and <span className="gradient-phrase">court hours</span>.
+                </>
+              ) : catalog.tournament ? (
+                <>
+                  {" "}
+                  and <span className="gradient-phrase">tournaments</span>.
+                </>
+              ) : (
+                "."
+              )}
             </h1>
             <p className="max-w-xl text-lg leading-relaxed text-[var(--muted)]">
-              Players use a phone. The gym watches the TV. You send the next
-              group, keep the draw moving, and confirm a booking before a court
-              is held.
+              {`Players use a phone. The gym watches the TV. You send the next group and keep the draw moving${catalog.booking ? ", and confirm a booking before a court is held" : ""}.`}
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Button size="lg" className="rounded-full" asChild>
@@ -115,15 +133,17 @@ export default async function HomePage() {
 
       <section className="mx-auto max-w-6xl px-6 py-16" aria-label="The board">
         <div className="flex flex-wrap gap-x-10 gap-y-3 text-sm font-medium tracking-wide text-[var(--muted)]">
-          {products.map((product) => (
-            <a
-              key={product.href}
-              href={product.href}
-              className="transition hover:text-[var(--foreground)]"
-            >
-              {product.kicker}
-            </a>
-          ))}
+          {products
+            .filter((product) => surfaceVisible(product.href, catalog))
+            .map((product) => (
+              <a
+                key={product.href}
+                href={product.href}
+                className="transition hover:text-[var(--foreground)]"
+              >
+                {product.kicker}
+              </a>
+            ))}
         </div>
       </section>
 
@@ -134,190 +154,201 @@ export default async function HomePage() {
           </h2>
         </Reveal>
         <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {selectedWork.map((work, index) => (
-            <Reveal key={work.src} delay={index * 90}>
-              <a
-                href={work.href}
-                className="group block overflow-hidden rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)] motion-safe:transition motion-safe:duration-500 motion-safe:hover:-translate-y-1"
-              >
-                <div className="relative aspect-[16/10]">
-                  <Image
-                    src={work.src}
-                    alt={work.alt}
-                    fill
-                    sizes="(min-width: 768px) 36rem, 100vw"
-                    className="object-cover transition duration-500 group-hover:scale-[1.03]"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
-                  <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 md:p-6">
-                    <p className="text-xs font-medium tracking-wide text-white/70">
-                      {work.kicker}
-                    </p>
-                    <h3 className="text-2xl font-semibold text-white">
-                      {work.title}
-                    </h3>
-                    <p className="max-w-md text-sm leading-relaxed text-white/75">
-                      {work.body}
-                    </p>
+          {selectedWork
+            .filter((work) => surfaceVisible(work.href, catalog))
+            .map((work, index) => (
+              <Reveal key={work.src} delay={index * 90}>
+                <a
+                  href={work.href}
+                  className="group block overflow-hidden rounded-[1.75rem] border border-[var(--border)] bg-[var(--surface)] motion-safe:transition motion-safe:duration-500 motion-safe:hover:-translate-y-1"
+                >
+                  <div className="relative aspect-[16/10]">
+                    <Image
+                      src={work.src}
+                      alt={work.alt}
+                      fill
+                      sizes="(min-width: 768px) 36rem, 100vw"
+                      className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 md:p-6">
+                      <p className="text-xs font-medium tracking-wide text-white/70">
+                        {work.kicker}
+                      </p>
+                      <h3 className="text-2xl font-semibold text-white">
+                        {work.title}
+                      </h3>
+                      <p className="max-w-md text-sm leading-relaxed text-white/75">
+                        {work.body}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </a>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      <section id="open-play" className="border-t border-[var(--border)] py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <Reveal className="max-w-2xl space-y-4">
-            <Pill>Open Play OS</Pill>
-            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
-              Saturday open play, without the whiteboard.
-            </h2>
-            <p className="text-lg text-[var(--muted)]">
-              You add each player from the host console. They open the public
-              session page and see the courts and their place in the queue. The
-              same list is on every phone and on the gym TV.
-            </p>
-          </Reveal>
-
-          <div className="mt-10 grid gap-5 md:grid-cols-2">
-            {openPlaySteps.map((step, index) => (
-              <Reveal key={step.title} delay={(index % 2) * 90}>
-                <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
-                  <div>
-                    <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
-                      0{index + 1}
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
-                      {step.title}
-                    </h3>
-                    <p className="mt-3 text-[var(--muted)]">{step.body}</p>
-                  </div>
-                  <div className="mt-auto">{step.media}</div>
-                </article>
+                </a>
               </Reveal>
             ))}
-          </div>
-
-          <p className="mt-8 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
-            Before anyone joins, you pick the session: Fair Mix, Chaos Draw,
-            Rating Band, Winner Path, Skill Lanes, Court Hold, Fresh Partners,
-            or Mixed Only. Doubles or singles.
-          </p>
         </div>
       </section>
 
-      <section
-        id="tournament"
-        className="border-t border-[var(--border)] py-20"
-      >
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid items-center gap-10 md:grid-cols-[1.05fr_0.95fr]">
-            <Reveal className="max-w-xl space-y-5">
-              <Pill>Tournament Mode</Pill>
+      {catalog.openPlay ? (
+        <section
+          id="open-play"
+          className="border-t border-[var(--border)] py-20"
+        >
+          <div className="mx-auto max-w-6xl px-6">
+            <Reveal className="max-w-2xl space-y-4">
+              <Pill>Open Play OS</Pill>
               <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
-                Several categories. The courts you actually have.
+                Saturday open play, without the whiteboard.
               </h2>
               <p className="text-lg text-[var(--muted)]">
-                Mixed, novice, and intermediate can share the gym. You assign
-                courts to each category. Pools feed a bracket. Umpires enter
-                points only for the court they claimed. Everyone else follows
-                one link, with no account.
+                You add each player from the host console. They open the public
+                session page and see the courts and their place in the queue.
+                The same list is on every phone and on the gym TV.
               </p>
-              <Button size="lg" className="rounded-full" asChild>
-                <PendingLink href={tournamentHref}>
-                  Run a tournament
-                </PendingLink>
-              </Button>
             </Reveal>
-            <Reveal delay={120}>
-              <Shot
-                src="/assets/tournament-gym-board.jpg"
-                alt="A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV."
-                width={2752}
-                height={1536}
-                brief="A player in the gym, phone in hand, with the same tournament board on the wall TV: live courts and the bracket."
-              />
-            </Reveal>
-          </div>
 
-          <div className="mt-12 grid gap-5 md:grid-cols-2">
-            {tournamentBlocks.map((block, index) => (
-              <Reveal key={block.title} delay={(index % 2) * 90}>
-                <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
-                  <div>
-                    <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
-                      0{index + 1}
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
-                      {block.title}
-                    </h3>
-                    <p className="mt-3 text-[var(--muted)]">{block.body}</p>
-                  </div>
-                  <div className="mt-auto">{block.media}</div>
-                </article>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+            <div className="mt-10 grid gap-5 md:grid-cols-2">
+              {openPlaySteps.map((step, index) => (
+                <Reveal key={step.title} delay={(index % 2) * 90}>
+                  <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
+                    <div>
+                      <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                        0{index + 1}
+                      </p>
+                      <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
+                        {step.title}
+                      </h3>
+                      <p className="mt-3 text-[var(--muted)]">{step.body}</p>
+                    </div>
+                    <div className="mt-auto">{step.media}</div>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
 
-      <section
-        id="court-rentals"
-        className="border-t border-[var(--border)] py-20"
-      >
-        <div className="mx-auto max-w-6xl px-6">
-          <Reveal className="max-w-xl space-y-4">
-            <Pill>Court rentals and coaching</Pill>
-            <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
-              Court hours and lessons, off the group chat.
-            </h2>
-            <p className="text-lg text-[var(--muted)]">
-              Your public link has two tabs. Court rental is consecutive open
-              hours on one court. Coaching is a coach&apos;s weekly hours and
-              hourly rate, then a court that is still free. The player signs in
-              with Google and sends a request. Nothing is held until you accept
-              it.
+            <p className="mt-8 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+              Before anyone joins, you pick the session: Fair Mix, Chaos Draw,
+              Rating Band, Winner Path, Skill Lanes, Court Hold, Fresh Partners,
+              or Mixed Only. Doubles or singles.
             </p>
-          </Reveal>
-          <div className="mt-10 grid items-start gap-6 md:grid-cols-[minmax(0,2752fr)_minmax(0,2400fr)]">
-            <Reveal>
-              <Shot
-                src="/assets/05-booking-phone.jpeg"
-                alt="A player in the gym holding a phone on the public court rental page, with Court 1 hours selected and a Google sign-in for John Doe."
-                width={2752}
-                height={1536}
-                brief="The public booking page, in the gym: consecutive open hours on one court, then Google sign-in before the request is sent."
-              />
-            </Reveal>
-            <Reveal delay={120}>
-              <Shot
-                src="/assets/06-host-approve.jpeg"
-                alt="A monitor at the club desk showing John Doe's Tuesday court request selected, with Approve and Decline ready."
-                width={2400}
-                height={1792}
-                brief="The host schedule in the gym: pending requests in amber. Approve holds the court. Decline sends it back."
-              />
-            </Reveal>
           </div>
+        </section>
+      ) : null}
 
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {rentalFacts.map((fact, index) => (
-              <Reveal key={fact.title} delay={index * 80}>
-                <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
-                  <h3 className="text-xl font-semibold text-[var(--foreground)]">
-                    {fact.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                    {fact.body}
-                  </p>
-                </article>
+      {catalog.tournament ? (
+        <section
+          id="tournament"
+          className="border-t border-[var(--border)] py-20"
+        >
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="grid items-center gap-10 md:grid-cols-[1.05fr_0.95fr]">
+              <Reveal className="max-w-xl space-y-5">
+                <Pill>Tournament Mode</Pill>
+                <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
+                  Several categories. The courts you actually have.
+                </h2>
+                <p className="text-lg text-[var(--muted)]">
+                  Mixed, novice, and intermediate can share the gym. You assign
+                  courts to each category. Pools feed a bracket. Umpires enter
+                  points only for the court they claimed. Everyone else follows
+                  one link, with no account.
+                </p>
+                <Button size="lg" className="rounded-full" asChild>
+                  <PendingLink href={tournamentHref}>
+                    Run a tournament
+                  </PendingLink>
+                </Button>
               </Reveal>
-            ))}
+              <Reveal delay={120}>
+                <Shot
+                  src="/assets/tournament-gym-board.jpg"
+                  alt="A player checking the tournament on a phone while the same board, with live courts and brackets, is on the gym TV."
+                  width={2752}
+                  height={1536}
+                  brief="A player in the gym, phone in hand, with the same tournament board on the wall TV: live courts and the bracket."
+                />
+              </Reveal>
+            </div>
+
+            <div className="mt-12 grid gap-5 md:grid-cols-2">
+              {tournamentBlocks.map((block, index) => (
+                <Reveal key={block.title} delay={(index % 2) * 90}>
+                  <article className="glow-card flex h-full flex-col gap-5 rounded-[1.75rem] border border-[var(--border)] p-5 md:p-6">
+                    <div>
+                      <p className="text-xs tabular-nums tracking-[0.22em] text-[var(--accent)]">
+                        0{index + 1}
+                      </p>
+                      <h3 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
+                        {block.title}
+                      </h3>
+                      <p className="mt-3 text-[var(--muted)]">{block.body}</p>
+                    </div>
+                    <div className="mt-auto">{block.media}</div>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
+
+      {catalog.booking ? (
+        <section
+          id="court-rentals"
+          className="border-t border-[var(--border)] py-20"
+        >
+          <div className="mx-auto max-w-6xl px-6">
+            <Reveal className="max-w-xl space-y-4">
+              <Pill>Court rentals and coaching</Pill>
+              <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] md:text-5xl">
+                Court hours and lessons, off the group chat.
+              </h2>
+              <p className="text-lg text-[var(--muted)]">
+                Your public link has two tabs. Court rental is consecutive open
+                hours on one court. Coaching is a coach&apos;s weekly hours and
+                hourly rate, then a court that is still free. The player signs
+                in with Google and sends a request. Nothing is held until you
+                accept it.
+              </p>
+            </Reveal>
+            <div className="mt-10 grid items-start gap-6 md:grid-cols-[minmax(0,2752fr)_minmax(0,2400fr)]">
+              <Reveal>
+                <Shot
+                  src="/assets/05-booking-phone.jpeg"
+                  alt="A player in the gym holding a phone on the public court rental page, with Court 1 hours selected and a Google sign-in for John Doe."
+                  width={2752}
+                  height={1536}
+                  brief="The public booking page, in the gym: consecutive open hours on one court, then Google sign-in before the request is sent."
+                />
+              </Reveal>
+              <Reveal delay={120}>
+                <Shot
+                  src="/assets/06-host-approve.jpeg"
+                  alt="A monitor at the club desk showing John Doe's Tuesday court request selected, with Approve and Decline ready."
+                  width={2400}
+                  height={1792}
+                  brief="The host schedule in the gym: pending requests in amber. Approve holds the court. Decline sends it back."
+                />
+              </Reveal>
+            </div>
+
+            <div className="mt-10 grid gap-5 md:grid-cols-3">
+              {rentalFacts.map((fact, index) => (
+                <Reveal key={fact.title} delay={index * 80}>
+                  <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
+                    <h3 className="text-xl font-semibold text-[var(--foreground)]">
+                      {fact.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                      {fact.body}
+                    </p>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="border-t border-[var(--border)]">
         <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-20 lg:grid-cols-[0.9fr_1.1fr]">
@@ -327,26 +358,37 @@ export default async function HomePage() {
               The gym runs from the same screen.
             </h2>
             <p className="text-lg text-[var(--muted)]">
-              Queue, draw, and court hours stay together. Players follow a link.
-              You confirm what the TV is allowed to show.
+              {catalog.booking
+                ? "Queue, draw, and court hours stay together."
+                : "Queue and draw stay together."}{" "}
+              Players follow a link. You confirm what the TV is allowed to show.
             </p>
             <Button size="lg" className="rounded-full" asChild>
               <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
             </Button>
           </Reveal>
           <div className="grid gap-4 sm:grid-cols-2">
-            {capabilities.map((item, index) => (
-              <Reveal key={item.title} delay={index * 80}>
-                <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">
-                    {item.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                    {item.body}
-                  </p>
-                </article>
-              </Reveal>
-            ))}
+            {capabilities
+              .filter((item) => {
+                if (item.title === "Requests you confirm")
+                  return catalog.booking;
+                if (item.title === "A score from the court") {
+                  return catalog.tournament;
+                }
+                return catalog.openPlay;
+              })
+              .map((item, index) => (
+                <Reveal key={item.title} delay={index * 80}>
+                  <article className="glow-card h-full rounded-[1.5rem] border border-[var(--border)] p-5">
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                      {item.body}
+                    </p>
+                  </article>
+                </Reveal>
+              ))}
           </div>
         </div>
       </section>
@@ -359,26 +401,29 @@ export default async function HomePage() {
             first game.
           </h2>
           <p className="mx-auto max-w-xl text-lg text-[var(--muted)]">
-            Hosts sign in and add players by name. Players follow the session
-            from the public page, or request a court from your public link.
+            {`Hosts sign in and add players by name. Players follow the session from the public page${catalog.booking ? ", or request a court from your public link" : ""}.`}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" className="rounded-full" asChild>
               <PendingLink href={ctaHref}>{ctaLabel}</PendingLink>
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="rounded-full"
-              asChild
-            >
-              <PendingLink href={tournamentHref}>Run a tournament</PendingLink>
-            </Button>
+            {catalog.tournament ? (
+              <Button
+                size="lg"
+                variant="outline"
+                className="rounded-full"
+                asChild
+              >
+                <PendingLink href={tournamentHref}>
+                  Run a tournament
+                </PendingLink>
+              </Button>
+            ) : null}
           </div>
         </Reveal>
       </section>
 
-      <PricingSection ctaHref={ctaHref} ctaLabel={ctaLabel} />
+      <PricingSection ctaHref={ctaHref} ctaLabel={ctaLabel} catalog={catalog} />
 
       <FeaturedReviews reviews={reviews} />
 
@@ -404,21 +449,22 @@ export default async function HomePage() {
               aria-label={PRODUCT_NAME}
             />
             <p className="max-w-xs text-sm leading-relaxed text-[var(--muted)]">
-              {PRODUCT_NAME} runs open play, tournaments, and court hours on one
-              board.
+              {PRODUCT_NAME} runs {featureList(catalog)} on one board.
             </p>
           </div>
           <div className="space-y-2 text-sm">
             <p className="font-medium text-[var(--foreground)]">On the floor</p>
-            {products.map((product) => (
-              <a
-                key={product.href}
-                href={product.href}
-                className="block text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                {product.kicker}
-              </a>
-            ))}
+            {products
+              .filter((product) => surfaceVisible(product.href, catalog))
+              .map((product) => (
+                <a
+                  key={product.href}
+                  href={product.href}
+                  className="block text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  {product.kicker}
+                </a>
+              ))}
           </div>
           <div className="space-y-2 text-sm">
             <p className="font-medium text-[var(--foreground)]">Hosts</p>
@@ -447,6 +493,30 @@ export default async function HomePage() {
       </footer>
     </main>
   );
+}
+
+function featureList(catalog: {
+  openPlay: boolean;
+  booking: boolean;
+  tournament: boolean;
+}): string {
+  const parts = [
+    catalog.openPlay ? "open play" : null,
+    catalog.tournament ? "tournaments" : null,
+    catalog.booking ? "court hours" : null,
+  ].filter((part): part is string => part != null);
+  if (parts.length <= 1) return parts[0] ?? "open play";
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function surfaceVisible(
+  href: string,
+  catalog: { openPlay: boolean; booking: boolean; tournament: boolean },
+): boolean {
+  if (href === "#open-play") return catalog.openPlay;
+  if (href === "#tournament") return catalog.tournament;
+  if (href === "#court-rentals") return catalog.booking;
+  return true;
 }
 
 const products = [

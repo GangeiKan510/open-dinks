@@ -7,14 +7,19 @@ import {
 } from "@/lib/entitlements";
 
 /** One club month, with the price the amount column will show. */
-export function clubCheckoutBase(): string {
-  return `Picklrz Club month: open play and booking, ${formatCheckoutPesos(CLUB_PRICE_CENTAVOS)}.`;
+export function clubCheckoutBase(
+  clubCentavos: number = CLUB_PRICE_CENTAVOS,
+): string {
+  return `Picklrz Club month: open play and booking, ${formatCheckoutPesos(clubCentavos)}.`;
 }
 
 /** Days times the rate, then the dates. Volume rate says what the shorter rate was. */
-export function tournamentCheckoutBase(dates: readonly string[]): string {
+export function tournamentCheckoutBase(
+  dates: readonly string[],
+  dayPhp: number = TOURNAMENT_DAY_PHP,
+): string {
   const count = dates.length;
-  const rate = formatCheckoutPesos(tournamentDayRatePhp(count) * 100);
+  const rate = formatCheckoutPesos(dayPhp * 100);
   const dayWord = count === 1 ? "day" : "days";
   const shortRate = tournamentDayRatePhp(1);
   const volume =

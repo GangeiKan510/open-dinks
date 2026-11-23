@@ -10,6 +10,7 @@ const SESSION_BOOKING_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 const SESSION_BOOKING_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
 
 export const BOOKING_ERROR_MESSAGES = {
+  closed: "Court booking is not open yet.",
   signIn: "Sign in to manage bookings.",
   signInGoogle: "Sign in with Google to send a booking request.",
   venue: "Choose a venue before booking a court.",
