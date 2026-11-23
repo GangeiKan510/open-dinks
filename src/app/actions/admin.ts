@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ADMIN_ERROR_MESSAGES } from "@/lib/admin-messages";
+import {
+  CATALOG_ERROR_MESSAGES,
+  parsePlanPricePhp,
+} from "@/lib/platform-catalog";
 import { DISCOUNT_ADMIN_MESSAGES, parseDiscountDraft } from "@/lib/discounts";
 import { fulfillPaidCheckout } from "@/lib/billing-fulfill";
 import { countOperators, requireOperator } from "@/lib/admin-server";
@@ -336,4 +340,44 @@ export async function rejectManualPaymentAction(
   revalidatePath("/admin/payments");
   revalidatePath("/dashboard");
   redirect("/admin/payments?review=rejected");
+}
+
+export async function savePlanCatalogAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireOperator();
+  if (!gate.ok) return { ok: false, error: ADMIN_ERROR_MESSAGES.forbidden };
+  const clubMonthlyPhp = parsePlanPricePhp(formData.get("clubMonthlyPhp"));
+  const tournamentDayPhp = parsePlanPricePhp(formData.get("tournamentDayPhp"));
+  if (clubMonthlyPhp == null || tournamentDayPhp == null) {
+    return { ok: false, error: CATALOG_ERROR_MESSAGES.price };
+  }
+  if (!isServiceRoleConfigured()) {
+    return { ok: false, error: ADMIN_ERROR_MESSAGES.unconfigured };
+  }
+  const service = createServiceClient();
+  const { error } = await service.from("platform_settings").upsert(
+    {
+      id: true,
+      club_monthly_php: clubMonthlyPhp,
+      tournament_day_php: tournamentDayPhp,
+      show_open_play: formData.get("showOpenPlay") === "1",
+      show_booking: formData.get("showBooking") === "1",
+      show_tournament: formData.get("showTournament") === "1",
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (error) {
+    console.error("[admin] catalog save failed", error.code);
+    if (isMissingSchemaError(error)) {
+      return { ok: false, error: ADMIN_ERROR_MESSAGES.missingSchema };
+    }
+    return { ok: false, error: CATALOG_ERROR_MESSAGES.save };
+  }
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/plans");
+  revalidatePath("/tournament");
+  return { ok: true };
 }

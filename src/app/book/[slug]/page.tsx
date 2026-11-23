@@ -14,6 +14,7 @@ import { formatVenueTimezoneLabel } from "@/lib/timezone";
 import { PRODUCT_NAME } from "@/lib/facility";
 import { PRIVATE_ROBOTS } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 
 const loadPublicBookingVenue = cache(async (slug: string) => {
   const supabase = await createClient();
@@ -48,6 +49,18 @@ export default async function PublicBookingPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  if (!(await loadPlanCatalog()).booking) {
+    return (
+      <main className="mx-auto max-w-lg space-y-4 px-6 py-16">
+        <h1 className="font-[family-name:var(--font-display)] text-4xl">
+          Court booking is not open yet
+        </h1>
+        <p className="text-[var(--muted)]">
+          This club is not taking court or coaching requests right now.
+        </p>
+      </main>
+    );
+  }
   const { supabase, venue } = await loadPublicBookingVenue(slug);
   if (!venue) notFound();
 

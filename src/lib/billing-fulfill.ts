@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { catalogCentavos } from "@/lib/admin-sales";
+import { clubPriceCentavos, type PlanCatalog } from "@/lib/platform-catalog";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 import { recordDiscountRedemption } from "@/lib/discount-codes";
 import { chargeCentavos } from "@/lib/discounts";
 import {
@@ -31,19 +33,24 @@ export type ConfirmedPayment = {
 function listCentavos(
   kind: PaymentKind,
   metadata: Record<string, string>,
+  catalog: PlanCatalog,
 ): number | null {
   if (kind === "day" && metadata.dates) {
     const dates = parseTournamentDates(metadata.dates);
-    return dates ? tournamentDatesPriceCentavos(dates) : null;
+    return dates
+      ? tournamentDatesPriceCentavos(dates, catalog.tournamentDayPhp)
+      : null;
   }
+  if (kind === "club") return clubPriceCentavos(catalog);
   return catalogCentavos(kind);
 }
 
 function paidAmountMatches(
   kind: PaymentKind,
   payment: { amount: number; metadata: Record<string, string> },
+  catalog: PlanCatalog,
 ): boolean {
-  const list = listCentavos(kind, payment.metadata);
+  const list = listCentavos(kind, payment.metadata, catalog);
   if (list == null) return false;
   return (
     chargeCentavos({
@@ -115,7 +122,8 @@ export async function fulfillPaidCheckout(checkout: {
     console.error("[billing] pass dates rejected");
     return null;
   }
-  const list = listCentavos(kind, checkout.metadata);
+  const catalog = await loadPlanCatalog();
+  const list = listCentavos(kind, checkout.metadata, catalog);
   const amountCentavos =
     list == null
       ? null
@@ -249,6 +257,7 @@ export async function confirmReturnedCheckout(
   const cookieId = jar.get(CHECKOUT_COOKIE)?.value ?? "";
   const remembered = cookieId ? await retrievePaidCheckout(cookieId) : null;
   const payments = remembered ? [] : await listRecentPaidPayments();
+  const catalog = await loadPlanCatalog();
   const candidates: {
     id: string;
     metadata: Record<string, string>;
@@ -263,7 +272,7 @@ export async function confirmReturnedCheckout(
   }
   for (const payment of payments) {
     const kind = paymentPlanForFacility(payment, facilityId);
-    if (!kind || !paidAmountMatches(kind, payment)) continue;
+    if (!kind || !paidAmountMatches(kind, payment, catalog)) continue;
     candidates.push({
       id: payment.id,
       metadata: {

@@ -58,6 +58,7 @@ import {
   proofWaiting,
   type HostProof,
 } from "@/lib/payment-proof";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 import {
   buildPaymentHistory,
   resolvePaymentListCentavos,
@@ -288,6 +289,7 @@ export default async function DashboardPage({
   const openPlans =
     (await searchParams)?.plans === "open" ||
     billingNoticeOpensPlans(billingCode);
+  const catalog = await loadPlanCatalog();
   const access = await loadFeatureAccess(
     supabase,
     venue.facilityId,
@@ -527,6 +529,7 @@ export default async function DashboardPage({
       defaultOpen={openPlans && !access.awaitingPlanChoice}
       gcash={gcashPayee()}
       proofs={proofs}
+      catalog={catalog}
     >
       <BillingLive
         facilityId={venue.facilityId}
@@ -548,11 +551,13 @@ export default async function DashboardPage({
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
-            {access.schemaReady ? (
-              <TournamentModeButton />
-            ) : (
-              <AvailableTournamentLink />
-            )}
+            {catalog.tournament ? (
+              access.schemaReady ? (
+                <TournamentModeButton />
+              ) : (
+                <AvailableTournamentLink />
+              )
+            ) : null}
             <SignOutButton />
           </div>
         </header>
@@ -584,21 +589,27 @@ export default async function DashboardPage({
           <TrialBanner />
         ) : null}
 
-        <dl className="grid gap-3 sm:grid-cols-3">
+        <dl className={`grid gap-3 ${catalog.booking ? "sm:grid-cols-3" : ""}`}>
           <Stat label="Courts" value={String(courtRows.length)} tone="accent" />
-          <Stat
-            label="Pending requests"
-            value={String(pendingRequests.length)}
-            tone={pendingRequests.length > 0 ? "attention" : "default"}
-          />
-          <Stat
-            label="Upcoming bookings"
-            value={String(upcomingBookings.length)}
-            tone={upcomingBookings.length > 0 ? "accent" : "default"}
-          />
+          {catalog.booking ? (
+            <Stat
+              label="Pending requests"
+              value={String(pendingRequests.length)}
+              tone={pendingRequests.length > 0 ? "attention" : "default"}
+            />
+          ) : null}
+          {catalog.booking ? (
+            <Stat
+              label="Upcoming bookings"
+              value={String(upcomingBookings.length)}
+              tone={upcomingBookings.length > 0 ? "accent" : "default"}
+            />
+          ) : null}
         </dl>
 
         <DashboardTabs
+          showOpenPlay={catalog.openPlay}
+          showBooking={catalog.booking}
           pendingRequestCount={pendingRequests.length}
           openPlay={
             <OpenPlayPanel
