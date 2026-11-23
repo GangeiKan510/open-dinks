@@ -52,18 +52,15 @@ import {
 } from "@/lib/billing-messages";
 import { formatCheckoutPesos } from "@/lib/discounts";
 import {
-  CLUB_MONTHLY_PHP,
-  CLUB_PRICE_CENTAVOS,
   formatPeso,
   formatTournamentDateList,
   formatTournamentDates,
-  TOURNAMENT_DAY_PHP,
   TOURNAMENT_MAX_DAYS,
   TRIAL_DAYS,
   tournamentDatesPriceCentavos,
-  tournamentDayRatePhp,
   type FeatureAccess,
 } from "@/lib/entitlements";
+import type { PlanCatalog } from "@/lib/platform-catalog";
 import { cn } from "@/lib/utils";
 import { collectsManualPayments } from "@/lib/payments-mode";
 import {
@@ -79,6 +76,7 @@ type PlansContextValue = {
   timeZone: string;
   gcash: { number: string; name: string } | null;
   proofs: HostProof[];
+  catalog: PlanCatalog;
 };
 
 const PlansContext = createContext<PlansContextValue | null>(null);
@@ -174,6 +172,7 @@ export function PlansProvider({
   defaultOpen,
   gcash = null,
   proofs = [],
+  catalog,
   children,
 }: {
   access: FeatureAccess;
@@ -184,6 +183,7 @@ export function PlansProvider({
   defaultOpen: boolean;
   gcash?: { number: string; name: string } | null;
   proofs?: HostProof[];
+  catalog: PlanCatalog;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -209,6 +209,7 @@ export function PlansProvider({
         timeZone,
         gcash,
         proofs,
+        catalog,
       }}
     >
       {children}
@@ -320,8 +321,8 @@ function tournamentDetail(access: FeatureAccess): string {
 }
 
 export function TrialBanner() {
-  const { access, openPlans } = usePlans();
-  const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const { access, openPlans, catalog } = usePlans();
+  const clubPrice = formatPeso(catalog.clubMonthlyPhp);
   const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
 
   return (
@@ -338,8 +339,8 @@ export function TrialBanner() {
             {access.trialDaysLeft} {daysLabel} left
           </p>
           <p className="mt-0.5 max-w-xl text-sm text-amber-100/85">
-            Open play and booking stop when the trial ends. Upgrade for{" "}
-            {clubPrice} a month to keep them.
+            {catalog.booking ? "Open play and booking stop" : "Open play stops"}{" "}
+            when the trial ends. Upgrade for {clubPrice} a month to keep them.
           </p>
         </div>
       </div>
@@ -351,7 +352,7 @@ export function TrialBanner() {
 }
 
 export function PlanSummary() {
-  const { access, openPlans, proofs, timeZone } = usePlans();
+  const { access, openPlans, proofs, timeZone, catalog } = usePlans();
   const daysLabel = access.trialDaysLeft === 1 ? "day" : "days";
   const tournamentDates = tournamentDetail(access);
   const clubExpiry = formatWhen(access.clubPeriodEnd, timeZone);
@@ -362,14 +363,18 @@ export function PlanSummary() {
     ? {
         icon: <Clock className="h-4 w-4" aria-hidden />,
         title: `${access.trialDaysLeft} ${daysLabel} left`,
-        detail: "Open play and bookings stay open until the trial ends.",
+        detail: catalog.booking
+          ? "Open play and bookings stay open until the trial ends."
+          : "Open play stays open until the trial ends.",
         tone: "waiting" as const,
       }
     : access.clubPaid
       ? {
           icon: <Check className="h-4 w-4" aria-hidden />,
           title: clubExpiry ? `Through ${clubExpiry}` : "Active",
-          detail: "Open play and bookings are open.",
+          detail: catalog.booking
+            ? "Open play and bookings are open."
+            : "Open play is open.",
           tone: "active" as const,
         }
       : clubReceiptPending
@@ -466,7 +471,8 @@ function PlanChoiceDialog({
   notice: string | null;
   receiptSent: boolean;
 }) {
-  const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const { catalog } = usePlans();
+  const clubPrice = formatPeso(catalog.clubMonthlyPhp);
   const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
   const sent = receiptSent && checkout != null;
   const heading =
@@ -525,11 +531,13 @@ function PlanChoiceDialog({
                   {TRIAL_DAYS} days
                 </p>
                 <p className="text-sm text-[var(--accent-fg-soft)]">
-                  Open play and booking
+                  {catalog.booking ? "Open play and booking" : "Open play"}
                 </p>
                 <ul className="mt-4 space-y-1.5 text-sm">
                   <li>Host console and the public session page</li>
-                  <li>Court and coaching bookings</li>
+                  {catalog.booking ? (
+                    <li>Court and coaching bookings</li>
+                  ) : null}
                   <li>Tournament mode stays locked</li>
                 </ul>
                 <form action={startTrialAction} className="mt-auto pt-4">
@@ -557,7 +565,9 @@ function PlanChoiceDialog({
                 </p>
                 <ul className="mt-4 space-y-1.5 text-sm">
                   <li>Open play and the host console</li>
-                  <li>Court and coaching bookings</li>
+                  {catalog.booking ? (
+                    <li>Court and coaching bookings</li>
+                  ) : null}
                   <li>Paying early adds another month</li>
                 </ul>
                 <PlanContinue
@@ -574,7 +584,7 @@ function PlanChoiceDialog({
                   Tournament
                 </p>
                 <p className="mt-2 font-[family-name:var(--font-display)] text-3xl text-amber-200">
-                  {formatPeso(TOURNAMENT_DAY_PHP)}
+                  {formatPeso(catalog.tournamentDayPhp)}
                 </p>
                 <p className="text-sm text-amber-100/80">
                   A day. Open play stays locked until you start a trial or a
@@ -613,7 +623,8 @@ function PlansDialog({
   today: string;
   notice: string | null;
 }) {
-  const clubPrice = formatPeso(CLUB_MONTHLY_PHP);
+  const { catalog } = usePlans();
+  const clubPrice = formatPeso(catalog.clubMonthlyPhp);
   const [checkout, setCheckout] = useState<CheckoutKind | null>(null);
   const [trackedOpen, setTrackedOpen] = useState(open);
   if (open !== trackedOpen) {
@@ -665,7 +676,9 @@ function PlansDialog({
                 <p className="text-sm text-[var(--muted)]">for 1 month</p>
                 <ul className="mt-4 space-y-1.5 text-sm">
                   <li>Open play and the host console</li>
-                  <li>Court and coaching bookings</li>
+                  {catalog.booking ? (
+                    <li>Court and coaching bookings</li>
+                  ) : null}
                   <li>Paying early adds another month</li>
                 </ul>
                 {access.clubTrialAvailable ? (
@@ -679,8 +692,8 @@ function PlansDialog({
                       Start {TRIAL_DAYS}-day trial
                     </PendingSubmit>
                     <p className="mt-2 text-sm text-[var(--muted)]">
-                      Open play and booking for {TRIAL_DAYS} days. Tournament
-                      days stay separate.
+                      {catalog.booking ? "Open play and booking" : "Open play"}{" "}
+                      for {TRIAL_DAYS} days. Tournament days stay separate.
                     </p>
                   </form>
                 ) : null}
@@ -700,12 +713,14 @@ function PlansDialog({
                   Tournament
                 </p>
                 <p className="text-sm text-amber-100/80">
-                  For tournament days only. Open play and booking stay on the
-                  club month.
+                  For tournament days only.{" "}
+                  {catalog.booking
+                    ? "Open play and booking stay on the club month."
+                    : "Open play stays on the club month."}
                 </p>
                 <p className="mt-3 text-sm text-amber-100/80">
-                  {formatPeso(TOURNAMENT_DAY_PHP)} a day. Pick the dates you
-                  need.
+                  {formatPeso(catalog.tournamentDayPhp)} a day. Pick the dates
+                  you need.
                 </p>
                 {access.tournamentGrace ? (
                   <p className="mt-3 text-sm">Open until 6:00 AM.</p>
@@ -853,7 +868,7 @@ function ClubPayForm({
   className?: string;
 }) {
   const [quoting, setQuoting] = useState(false);
-  const { proofs } = usePlans();
+  const { proofs, catalog } = usePlans();
   const manual = collectsManualPayments();
   const waiting = proofWaiting(proofs, "club", null);
 
@@ -874,7 +889,7 @@ function ClubPayForm({
         id="discount-club"
         product="club"
         dates=""
-        listCentavos={CLUB_PRICE_CENTAVOS}
+        listCentavos={catalog.clubMonthlyPhp * 100}
         caption="for 1 month"
         onPending={setQuoting}
       />
@@ -1114,13 +1129,16 @@ function PaymentBreakdown({
 }
 
 function TournamentDatesForm({ today }: { today: string }) {
-  const { access, proofs } = usePlans();
+  const { access, proofs, catalog } = usePlans();
   const ownedDates = access.ownedTournamentDates;
   const [dates, setDates] = useState<string[]>([]);
   const [quoting, setQuoting] = useState(false);
   const [dueCentavos, setDueCentavos] = useState<number | null>(null);
-  const totalCentavos = tournamentDatesPriceCentavos(dates);
-  const rate = dates.length === 0 ? null : tournamentDayRatePhp(dates.length);
+  const totalCentavos = tournamentDatesPriceCentavos(
+    dates,
+    catalog.tournamentDayPhp,
+  );
+  const rate = dates.length === 0 ? null : catalog.tournamentDayPhp;
   const manual = collectsManualPayments();
   const dateKey = dates.join(",");
   const waiting = dateKey ? proofWaiting(proofs, "day", dateKey) : null;
@@ -1281,6 +1299,7 @@ function TournamentDateField({
 }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => monthOf(today));
+  const { catalog } = usePlans();
   const { pending } = useFormStatus();
   const [box, setBox] = useState<{
     top: number;
@@ -1441,7 +1460,7 @@ function TournamentDateField({
             <p className="mt-2 text-center text-xs text-amber-100/70">
               {dates.length === 0
                 ? "Tap a day to add it. Tap it again to remove it."
-                : `${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(tournamentDayRatePhp(dates.length))}`}
+                : `${dates.length} ${dates.length === 1 ? "day" : "days"} at ${formatPeso(catalog.tournamentDayPhp)}`}
             </p>
           </div>,
           document.body,

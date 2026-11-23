@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TournamentDirector } from "@/components/tournament/tournament-director";
 import { loadDirectorTournament } from "@/lib/tournament-server";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 
 export const metadata: Metadata = {
   title: "Tournament",
@@ -10,6 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function TournamentPage() {
+  if (!(await loadPlanCatalog()).tournament) {
+    return <TournamentUnavailable closed />;
+  }
   const tournament = await loadDirectorTournament();
   if (tournament.status === "signed-out") {
     redirect("/login?next=/tournament");
@@ -46,21 +50,29 @@ export default async function TournamentPage() {
 function TournamentUnavailable({
   missingSchema = false,
   failed = false,
+  closed = false,
 }: {
   missingSchema?: boolean;
   failed?: boolean;
+  closed?: boolean;
 }) {
   return (
     <main className="mx-auto max-w-lg space-y-4 px-6 py-16">
       <h1 className="font-[family-name:var(--font-display)] text-4xl">
-        {failed ? "Could not open the tournament" : "Connect Supabase"}
+        {closed
+          ? "Tournament mode is not open yet"
+          : failed
+            ? "Could not open the tournament"
+            : "Connect Supabase"}
       </h1>
       <p className="text-[var(--muted)]">
-        {missingSchema
-          ? "The tournament table is not in the database yet. Apply the latest migration in supabase/migrations, then reload."
-          : failed
-            ? "The tournament could not be loaded. Try again in a moment."
-            : "Add your project URL and anon key to .env.local, then apply the migrations in supabase/migrations."}
+        {closed
+          ? "Tournament setup is hidden until an operator turns it on."
+          : missingSchema
+            ? "The tournament table is not in the database yet. Apply the latest migration in supabase/migrations, then reload."
+            : failed
+              ? "The tournament could not be loaded. Try again in a moment."
+              : "Add your project URL and anon key to .env.local, then apply the migrations in supabase/migrations."}
       </p>
     </main>
   );

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { loadPlanCatalog } from "@/lib/platform-catalog-server";
 import {
   BOOKING_ERROR_MESSAGES,
   parseBookingTime,
@@ -76,6 +77,9 @@ function readContact(formData: FormData) {
 export async function createBookingAction(
   formData: FormData,
 ): Promise<BookingActionResult> {
+  if (!(await loadPlanCatalog()).booking) {
+    return { error: BOOKING_ERROR_MESSAGES.closed };
+  }
   const venueId = String(formData.get("venueId") ?? "").trim();
   const courtId = String(formData.get("courtId") ?? "").trim();
   const bookedByName = String(formData.get("bookedByName") ?? "").trim();
@@ -330,6 +334,9 @@ export async function deleteBookingAction(
 export async function requestBookingAction(
   formData: FormData,
 ): Promise<BookingRequestResult> {
+  if (!(await loadPlanCatalog()).booking) {
+    return { error: BOOKING_ERROR_MESSAGES.closed };
+  }
   const venueId = String(formData.get("venueId") ?? "").trim();
   const courtId = String(formData.get("courtId") ?? "").trim();
   const bookedByName = String(formData.get("bookedByName") ?? "").trim();
